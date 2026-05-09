@@ -6,5 +6,35 @@ date-released: 2026-05-09
 authors:
   - family-names: Ennis
     given-names: John
+  - family-names: Graham
+    given-names: Carl
+  - family-names: Castro
+    given-names: Luciana
+  - family-names: Lampert
+    given-names: Rachel
+  - family-names: Jordan
+    given-names: Ryan
+  - family-names: Rios de Souza
+    given-names: Vanessa
 repository-code: "https://github.com/aigorahub/cld-reducer"
 license: MIT
+preferred-citation:
+  type: conference-paper
+  title: "Too many letters? Cutting through the sensory clutter with letter reduction algorithms"
+  year: 2026
+  conference:
+    name: "Sensometrics 2026"
+    location: "Valencia, Spain"
+  authors:
+    - family-names: Ennis
+      given-names: John
+    - family-names: Graham
+      given-names: Carl
+    - family-names: Castro
+      given-names: Luciana
+    - family-names: Lampert
+      given-names: Rachel
+    - family-names: Jordan
+      given-names: Ryan
+    - family-names: Rios de Souza
+      given-names: Vanessa

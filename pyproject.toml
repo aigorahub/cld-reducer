@@ -10,7 +10,12 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [
-  { name = "Aigora" },
+  { name = "John Ennis" },
+  { name = "Carl Graham" },
+  { name = "Luciana Castro" },
+  { name = "Rachel Lampert" },
+  { name = "Ryan Jordan" },
+  { name = "Vanessa Rios de Souza" },
 ]
 keywords = [
   "compact-letter-display",
