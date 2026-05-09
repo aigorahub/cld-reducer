@@ -22,6 +22,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--group1", default="group1", help="First group column")
     parser.add_argument("--group2", default="group2", help="Second group column")
     parser.add_argument("--significant", default="significant", help="Significance column")
+    parser.add_argument("--time-limit", type=float, help="Optional solver time limit in seconds")
+    parser.add_argument(
+        "--max-cliques",
+        type=int,
+        default=10_000,
+        help="Maximum maximal cliques to enumerate before failing",
+    )
+    parser.add_argument(
+        "--no-max-cliques",
+        action="store_const",
+        const=None,
+        dest="max_cliques",
+        help="Disable the maximal-clique enumeration cap",
+    )
     parser.add_argument(
         "--method",
         default="assignment_minimum",
@@ -43,6 +57,8 @@ def main(argv: list[str] | None = None) -> int:
         group1=args.group1,
         group2=args.group2,
         significant=args.significant,
+        time_limit=args.time_limit,
+        max_cliques=args.max_cliques,
     )
     frame = result.to_frame()
     for key, value in result.stats.items():

@@ -45,8 +45,10 @@ python -m pip install -e ".[dev]"
 
 ## Python API
 
-Use `reduce_letters` with pairwise post-hoc results. Each row identifies two
-groups and whether that comparison is statistically significant.
+Use `reduce_letters` with complete pairwise post-hoc results. Each row
+identifies two groups and whether that comparison is statistically significant.
+Missing unordered pairs are rejected so an accidental omission is not silently
+treated as a significant difference.
 
 ```python
 import pandas as pd
@@ -93,7 +95,13 @@ The returned `CLDReductionResult` includes:
 
 If you already have a non-significance adjacency matrix, use
 `reduce_from_adjacency`. In that matrix, `True` means two groups are not
-significantly different and must share at least one letter.
+significantly different and must share at least one letter. The adjacency input
+must contain booleans or explicit `0`/`1` values; missing values and strings are
+rejected.
+
+When labels extend beyond `Z`, `letters` uses spaces to avoid ambiguous strings
+such as `XYZAA`. The `assignments` tuple is always the safest machine-readable
+representation.
 
 ## CLI
 
@@ -120,6 +128,7 @@ Run:
 ```bash
 cld-reduce examples/simple_abc_to_ac_pairs.csv \
   --means examples/simple_abc_to_ac_means.csv \
+  --time-limit 30 \
   --out reduced.csv
 ```
 
@@ -138,6 +147,11 @@ The current method is `assignment_minimum`.
 
 Additional CLD algorithms can be added later under `cld_reducer.algorithms`
 without changing the public package name.
+
+Exact assignment minimization can become expensive for dense or highly
+structured graphs. The API and CLI expose `time_limit` and `max_cliques`
+controls; by default, maximal clique enumeration stops with a clear solver
+error after 10,000 cliques.
 
 ## Development Checks
 

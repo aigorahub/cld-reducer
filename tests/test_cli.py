@@ -54,6 +54,8 @@ def test_cli_writes_reduced_letters(tmp_path: Path) -> None:
             str(pairs),
             "--means",
             str(means),
+            "--time-limit",
+            "30",
             "--out",
             str(output),
         ],
