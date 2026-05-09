@@ -106,6 +106,17 @@ When labels extend beyond `Z`, `letters` uses spaces to avoid ambiguous strings
 such as `XYZAA`. The `assignments` tuple is always the safest machine-readable
 representation.
 
+## Example datasets
+
+Two examples ship with the package:
+
+- [`examples/simple_abc_to_ac.py`](examples/simple_abc_to_ac.py) — the 5-group
+  toy example used in the Python API section above.
+- [`examples/piepho2004_wheat.py`](examples/piepho2004_wheat.py) — the
+  20-treatment CIMMYT wheat yield trial from Piepho (2004), reproduced in
+  Table 7 of Ennis, Fayle, & Ennis (2012). Reduces 56 letter assignments to
+  44 (21.4% reduction) using 4 letters, matching the result in the paper.
+
 ## CLI
 
 Input pairwise CSV:
