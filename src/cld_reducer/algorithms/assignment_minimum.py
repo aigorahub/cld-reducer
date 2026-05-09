@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import inf
+from math import inf, isfinite
+from numbers import Integral, Real
 
 import networkx as nx
 import numpy as np
@@ -35,6 +36,8 @@ def reduce_assignment_minimum(
     means: pd.Series | None = None,
     *,
     method: str = "assignment_minimum",
+    time_limit: float | None = None,
+    max_cliques: int | None = 10_000,
 ) -> CLDReductionResult:
     """Reduce a CLD by minimizing total letter assignments.
 
@@ -49,18 +52,26 @@ def reduce_assignment_minimum(
         Optional group means used only to produce stable, mean-ordered letters.
     method:
         Method label stored in the result metadata.
+    time_limit:
+        Optional solver time limit in seconds.
+    max_cliques:
+        Optional cap on maximal cliques to enumerate before failing with a
+        controlled `SolverError`. Pass `None` to disable the cap.
     """
     adjacency, groups = validate_adjacency(adjacency, groups)
     means = normalize_means(means, groups)
+    time_limit, max_cliques = _validate_solver_controls(time_limit, max_cliques)
 
-    cliques = _maximal_cliques(adjacency)
+    cliques = _maximal_cliques(adjacency, max_cliques=max_cliques)
     maximal_matrix = _membership_matrix(len(groups), cliques)
     assignments_before = int(maximal_matrix.sum())
 
-    selected_matrix, solver_info = _solve_assignment_minimum(adjacency, maximal_matrix)
+    selected_matrix, solver_info = _solve_assignment_minimum(
+        adjacency, maximal_matrix, time_limit=time_limit
+    )
     selected_matrix = _drop_empty_columns(selected_matrix)
     assignments = _assign_letter_tokens(selected_matrix, groups, means)
-    letters = {group: "".join(tokens) for group, tokens in assignments.items()}
+    letters = {group: _format_letter_tokens(tokens) for group, tokens in assignments.items()}
     reconstructed = reconstruct_adjacency_from_assignments(assignments, groups)
     relationship_preserved = bool(np.array_equal(reconstructed, adjacency))
     if not relationship_preserved:
@@ -95,12 +106,43 @@ def reduce_assignment_minimum(
     )
 
 
-def _maximal_cliques(adjacency: np.ndarray) -> list[set[int]]:
+def _validate_solver_controls(
+    time_limit: float | None, max_cliques: int | None
+) -> tuple[float | None, int | None]:
+    if time_limit is not None and (
+        isinstance(time_limit, bool)
+        or not isinstance(time_limit, Real)
+        or not isfinite(float(time_limit))
+        or time_limit <= 0
+    ):
+        msg = "time_limit must be positive when provided"
+        raise SolverError(msg)
+    if max_cliques is not None and (
+        isinstance(max_cliques, bool) or not isinstance(max_cliques, Integral) or max_cliques < 1
+    ):
+        msg = "max_cliques must be a positive integer or None"
+        raise SolverError(msg)
+    return (
+        float(time_limit) if time_limit is not None else None,
+        int(max_cliques) if max_cliques is not None else None,
+    )
+
+
+def _maximal_cliques(adjacency: np.ndarray, *, max_cliques: int | None) -> list[set[int]]:
     graph = nx.Graph()
     graph.add_nodes_from(range(adjacency.shape[0]))
     edge_indices = np.argwhere(np.triu(adjacency, k=1))
     graph.add_edges_from((int(i), int(j)) for i, j in edge_indices)
-    return [set(clique) for clique in nx.find_cliques(graph)]
+    cliques = []
+    for clique in nx.find_cliques(graph):
+        cliques.append(set(clique))
+        if max_cliques is not None and len(cliques) > max_cliques:
+            msg = (
+                "maximal clique enumeration exceeded max_cliques="
+                f"{max_cliques}; increase max_cliques or pass None to disable the cap"
+            )
+            raise SolverError(msg)
+    return cliques
 
 
 def _membership_matrix(num_groups: int, cliques: list[set[int]]) -> np.ndarray:
@@ -112,7 +154,7 @@ def _membership_matrix(num_groups: int, cliques: list[set[int]]) -> np.ndarray:
 
 
 def _solve_assignment_minimum(
-    adjacency: np.ndarray, maximal_matrix: np.ndarray
+    adjacency: np.ndarray, maximal_matrix: np.ndarray, *, time_limit: float | None
 ) -> tuple[np.ndarray, dict[str, str | float]]:
     n_groups, n_cliques = maximal_matrix.shape
     edges = [(int(i), int(j)) for i, j in np.argwhere(np.triu(adjacency, k=1))]
@@ -166,6 +208,7 @@ def _solve_assignment_minimum(
         integrality=np.ones(variables.count),
         bounds=Bounds(lb=np.zeros(variables.count), ub=np.ones(variables.count)),
         constraints=constraints,
+        options={"time_limit": time_limit} if time_limit is not None else None,
     )
     if not result.success or result.x is None:
         msg = f"assignment-minimum MILP failed: {result.message}"
@@ -226,6 +269,12 @@ def _assign_letter_tokens(
         group_columns = [column for column in column_order if selected_matrix[group_index, column]]
         assignments[group] = tuple(column_to_label[column] for column in group_columns)
     return assignments
+
+
+def _format_letter_tokens(tokens: tuple[str, ...]) -> str:
+    if all(len(token) == 1 for token in tokens):
+        return "".join(tokens)
+    return " ".join(tokens)
 
 
 def _column_sort_key(

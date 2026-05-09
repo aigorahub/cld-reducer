@@ -124,6 +124,19 @@ def adjacency_from_pairs(frame: pd.DataFrame, groups: Sequence[str]) -> np.ndarr
         msg = f"post_hoc_results contains groups not present in means/groups: {unknown}"
         raise InvalidInputError(msg)
 
+    observed_pairs = {
+        tuple(sorted((row.group1, row.group2))) for row in frame.itertuples(index=False)
+    }
+    expected_pairs = {
+        tuple(sorted((groups[index], groups[other_index])))
+        for index in range(len(groups))
+        for other_index in range(index + 1, len(groups))
+    }
+    missing_pairs = sorted(expected_pairs.difference(observed_pairs))
+    if missing_pairs:
+        msg = f"post_hoc_results missing unordered pairwise comparisons: {missing_pairs}"
+        raise InvalidInputError(msg)
+
     for row in frame.itertuples(index=False):
         i = group_to_index[row.group1]
         j = group_to_index[row.group2]
@@ -138,7 +151,7 @@ def validate_adjacency(
     adjacency: Any, groups: Sequence[Any] | None = None
 ) -> tuple[np.ndarray, list[str]]:
     """Validate and normalize a non-significance adjacency matrix."""
-    matrix = np.asarray(adjacency, dtype=bool)
+    matrix = _coerce_adjacency_matrix(adjacency)
     if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
         msg = "adjacency must be a square matrix"
         raise InvalidInputError(msg)
@@ -161,6 +174,34 @@ def validate_adjacency(
             raise InvalidInputError(msg)
 
     return matrix, normalized_groups
+
+
+def _coerce_adjacency_matrix(adjacency: Any) -> np.ndarray:
+    raw = np.asarray(adjacency)
+    matrix = np.empty(raw.shape, dtype=bool)
+    try:
+        missing = pd.isna(raw)
+    except TypeError:
+        missing = np.zeros(raw.shape, dtype=bool)
+    if bool(np.asarray(missing).any()):
+        msg = "adjacency must not contain missing values"
+        raise InvalidInputError(msg)
+
+    for index, value in np.ndenumerate(raw):
+        if _is_explicit_bool_value(value):
+            matrix[index] = bool(value)
+        else:
+            msg = "adjacency must contain only booleans or explicit 0/1 values"
+            raise InvalidInputError(msg)
+    return matrix
+
+
+def _is_explicit_bool_value(value: Any) -> bool:
+    return (
+        isinstance(value, (bool, np.bool_))
+        or (isinstance(value, (int, np.integer)) and value in {0, 1})
+        or (isinstance(value, (float, np.floating)) and value in {0.0, 1.0})
+    )
 
 
 def reconstruct_adjacency_from_assignments(

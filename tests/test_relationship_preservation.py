@@ -42,3 +42,18 @@ def test_random_symmetric_graphs_preserve_relationships() -> None:
         assert result.relationship_preserved is True
         assert np.array_equal(reconstructed, adjacency)
         assert result.stats["assignments_after"] <= result.stats["assignments_before"]
+
+
+def test_display_letters_are_delimited_after_z() -> None:
+    group_count = 28
+    adjacency = np.eye(group_count, dtype=bool)
+    adjacency[0, 1:] = True
+    adjacency[1:, 0] = True
+    groups = ["center", *[f"leaf_{index}" for index in range(1, group_count)]]
+
+    result = reduce_from_adjacency(adjacency, groups=groups)
+    center_tokens = result.assignments["center"]
+
+    assert "AA" in center_tokens
+    assert " " in result.letters["center"]
+    assert result.letters["center"].split() == list(center_tokens)

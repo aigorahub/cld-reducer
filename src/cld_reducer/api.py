@@ -27,6 +27,8 @@ def reduce_letters(
     group1: str = "group1",
     group2: str = "group2",
     significant: str = "significant",
+    time_limit: float | None = None,
+    max_cliques: int | None = 10_000,
 ) -> CLDReductionResult:
     """Reduce compact letter assignments from pairwise post-hoc results.
 
@@ -41,6 +43,11 @@ def reduce_letters(
         Reduction algorithm. Currently only `"assignment_minimum"` is supported.
     group1, group2, significant:
         Column names in `post_hoc_results`.
+    time_limit:
+        Optional solver time limit in seconds.
+    max_cliques:
+        Optional cap on maximal cliques to enumerate before failing with a
+        controlled solver error. Pass `None` to disable the cap.
     """
     frame = normalize_pairwise_frame(
         post_hoc_results,
@@ -51,7 +58,14 @@ def reduce_letters(
     groups = groups_from_pairs(frame, means)
     normalized_means = normalize_means(means, groups)
     adjacency = adjacency_from_pairs(frame, groups)
-    return reduce_from_adjacency(adjacency, groups=groups, means=normalized_means, method=method)
+    return reduce_from_adjacency(
+        adjacency,
+        groups=groups,
+        means=normalized_means,
+        method=method,
+        time_limit=time_limit,
+        max_cliques=max_cliques,
+    )
 
 
 def reduce_from_adjacency(
@@ -60,6 +74,8 @@ def reduce_from_adjacency(
     means: Mapping[Any, float] | pd.Series | pd.DataFrame | None = None,
     *,
     method: str = "assignment_minimum",
+    time_limit: float | None = None,
+    max_cliques: int | None = 10_000,
 ) -> CLDReductionResult:
     """Reduce compact letters directly from a non-significance adjacency matrix.
 
@@ -74,6 +90,8 @@ def reduce_from_adjacency(
             normalized_groups,
             normalized_means,
             method="assignment_minimum",
+            time_limit=time_limit,
+            max_cliques=max_cliques,
         )
     msg = f"unsupported CLD reduction method: {method!r}"
     raise InvalidInputError(msg)
