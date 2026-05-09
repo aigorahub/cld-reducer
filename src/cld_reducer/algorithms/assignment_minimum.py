@@ -2,9 +2,9 @@
 
 Solves the assignment-minimum clique covering problem defined in Ennis, Fayle,
 & Ennis (2012), "Assignment-Minimum Clique Coverings", ACM JEA 17, Art. 1.5
-(doi:10.1145/2133803.2275596). The paper uses a backtracking algorithm
-(FIND-AM); this module solves the same problem as a binary mixed-integer
-program via SciPy's HiGHS backend.
+(https://doi.org/10.1145/2133803.2275596). The paper uses a backtracking
+algorithm (FIND-AM); this module solves the same problem as a binary
+mixed-integer program via SciPy's HiGHS backend.
 """
 
 from __future__ import annotations

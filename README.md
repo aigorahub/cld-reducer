@@ -157,8 +157,8 @@ are graphs whose unique assignment-minimum covering uses more cliques than the
 clique-minimum covering — so a dedicated algorithm is needed.
 
 1. Build the non-significance graph from pairwise post-hoc results.
-2. Generate the maximal cover, the starting point used by the 2012 paper
-   (every assignment-minimum covering is a subcovering of the maximal cover).
+2. Generate the maximal covering, the starting point used by the 2012 paper
+   (every assignment-minimum covering is a subcovering of the maximal covering).
 3. Solve a binary mixed-integer program that selects group-letter assignments
    with the smallest total assignment count. This replaces the `FIND-AM`
    backtracking algorithm of the 2012 paper with a MILP formulation solved by

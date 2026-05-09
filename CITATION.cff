@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: >-
   If you use cld-reducer, please cite the foundational 2012 paper that
   introduced the assignment-minimum clique covering problem (Ennis, Fayle, &
-  Ennis 2012). You may also reference the Sensometrics 2026 talk that presents
-  this MILP-based implementation.
+  Ennis 2012). You may additionally reference the related talks listed under
+  `references` (CSP 2019, Sensometrics 2026).
 title: "cld-reducer"
 version: 0.1.0
 date-released: 2026-05-09
@@ -33,12 +33,13 @@ preferred-citation:
     - family-names: Ennis
       given-names: Daniel M.
   year: 2012
+  month: 7
+  date-published: "2012-07-19"
   journal: "ACM Journal of Experimental Algorithmics"
   volume: 17
-  issue: 1
-  article-number: "1.5"
+  number: "1.5"
   doi: "10.1145/2133803.2275596"
-  url: "https://dl.acm.org/doi/10.1145/2133803.2275596"
+  url: "https://doi.org/10.1145/2133803.2275596"
 references:
   - type: conference-paper
     title: "Computational Advances in the Production of Compact Letter Displays"

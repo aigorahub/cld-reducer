@@ -3,9 +3,9 @@
 Source: 20-treatment multi-environment wheat yield trial reported by Piepho
 (2004), reproduced in Table 7 of Ennis, Fayle, & Ennis (2012),
 "Assignment-Minimum Clique Coverings", ACM JEA 17, Art. 1.5
-(doi:10.1145/2133803.2275596). The maximal cover has 4 cliques and 56
-letter assignments; the assignment-minimum reduction has 4 cliques and 44
-letter assignments, matching the result reported in the paper.
+(https://doi.org/10.1145/2133803.2275596). The maximal covering has 4 cliques
+and 56 letter assignments; the assignment-minimum reduction has 4 cliques and
+44 letter assignments, matching the result reported in the paper.
 """
 
 from __future__ import annotations
