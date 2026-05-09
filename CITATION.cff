@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use cld-reducer, please cite the repository and the associated CLD reduction work."
+title: "cld-reducer"
+version: 0.1.0
+date-released: 2026-05-09
+authors:
+  - family-names: Ennis
+    given-names: John
+repository-code: "https://github.com/aigorahub/cld-reducer"
+license: MIT

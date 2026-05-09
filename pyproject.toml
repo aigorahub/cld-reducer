@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cld-reducer"
+version = "0.1.0"
+description = "Reduce compact letter displays while preserving pairwise statistical relationships"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+  { name = "Aigora" },
+]
+keywords = [
+  "compact-letter-display",
+  "post-hoc",
+  "statistics",
+  "sensometrics",
+  "mixed-integer-programming",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+]
+dependencies = [
+  "networkx>=3.0",
+  "numpy>=1.24",
+  "pandas>=2.0",
+  "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.2",
+  "pytest>=8.0",
+  "ruff>=0.8",
+]
+
+[project.scripts]
+cld-reduce = "cld_reducer.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/aigorahub/cld-reducer"
+Repository = "https://github.com/aigorahub/cld-reducer"
+Issues = "https://github.com/aigorahub/cld-reducer/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cld_reducer"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
