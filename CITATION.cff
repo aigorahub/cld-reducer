@@ -1,5 +1,9 @@
 cff-version: 1.2.0
-message: "If you use cld-reducer, please cite the repository and the associated CLD reduction work."
+message: >-
+  If you use cld-reducer, please cite the foundational 2012 paper that
+  introduced the assignment-minimum clique covering problem (Ennis, Fayle, &
+  Ennis 2012). You may additionally reference the related talks listed under
+  `references` (CSP 2019, Sensometrics 2026).
 title: "cld-reducer"
 version: 0.1.0
 date-released: 2026-05-09
@@ -19,22 +23,53 @@ authors:
 repository-code: "https://github.com/aigorahub/cld-reducer"
 license: MIT
 preferred-citation:
-  type: conference-paper
-  title: "Too many letters? Cutting through the sensory clutter with letter reduction algorithms"
-  year: 2026
-  conference:
-    name: "Sensometrics 2026"
-    location: "Valencia, Spain"
+  type: article
+  title: "Assignment-Minimum Clique Coverings"
   authors:
     - family-names: Ennis
-      given-names: John
-    - family-names: Graham
-      given-names: Carl
-    - family-names: Castro
-      given-names: Luciana
-    - family-names: Lampert
-      given-names: Rachel
-    - family-names: Jordan
-      given-names: Ryan
-    - family-names: Rios de Souza
-      given-names: Vanessa
+      given-names: John M.
+    - family-names: Fayle
+      given-names: Charles M.
+    - family-names: Ennis
+      given-names: Daniel M.
+  year: 2012
+  month: 7
+  date-published: "2012-07-19"
+  journal: "ACM Journal of Experimental Algorithmics"
+  volume: 17
+  number: "1.5"
+  doi: "10.1145/2133803.2275596"
+  url: "https://doi.org/10.1145/2133803.2275596"
+references:
+  - type: conference-paper
+    title: "Computational Advances in the Production of Compact Letter Displays"
+    year: 2019
+    month: 2
+    conference:
+      name: "Conference on Statistical Practice (CSP 2019), American Statistical Association"
+      location: "New Orleans, LA, USA"
+      date-start: "2019-02-14"
+      date-end: "2019-02-16"
+    authors:
+      - family-names: Ennis
+        given-names: John M.
+    url: "https://ww2.amstat.org/meetings/csp/2019/onlineprogram/Program.cfm?date=02-15-19"
+  - type: conference-paper
+    title: "Too many letters? Cutting through the sensory clutter with letter reduction algorithms"
+    year: 2026
+    conference:
+      name: "Sensometrics 2026"
+      location: "Valencia, Spain"
+    authors:
+      - family-names: Ennis
+        given-names: John
+      - family-names: Graham
+        given-names: Carl
+      - family-names: Castro
+        given-names: Luciana
+      - family-names: Lampert
+        given-names: Rachel
+      - family-names: Jordan
+        given-names: Ryan
+      - family-names: Rios de Souza
+        given-names: Vanessa
