@@ -4,10 +4,13 @@
 (CLDs) while preserving the pairwise statistical relationships encoded by the
 display.
 
-The first implementation formulates CLD reduction as an
-assignment-minimum clique-covering problem and solves it with SciPy's HiGHS
-mixed-integer programming backend. It is intended as a reference implementation
-for the CLD letter-reduction work presented at Sensometrics 2026.
+It implements the **assignment-minimum clique covering** problem introduced by
+Ennis, Fayle, and Ennis (2012) — the problem of finding a CLD that uses the
+fewest possible individual letter-to-group assignments. The 2012 paper solves
+this problem with a backtracking algorithm (FIND-AM); this package solves the
+same problem with a binary mixed-integer program via SciPy's HiGHS backend, and
+is the implementation behind the CLD letter-reduction work presented at
+Sensometrics 2026.
 
 ## Why reduce CLDs?
 
@@ -136,12 +139,20 @@ The output CSV contains the reduced letters plus summary statistics.
 
 ## Method
 
-The current method is `assignment_minimum`.
+The current method is `assignment_minimum`. It solves the assignment-minimum
+clique covering problem defined in Ennis, Fayle, & Ennis (2012). The paper
+shows that searching among clique-minimum coverings is *not* sufficient — there
+are graphs whose unique assignment-minimum covering uses more cliques than the
+clique-minimum covering — so a dedicated algorithm is needed.
 
 1. Build the non-significance graph from pairwise post-hoc results.
-2. Generate maximal cliques, equivalent to a conventional CLD starting point.
+2. Generate the maximal cover, the starting point used by the 2012 paper
+   (every assignment-minimum covering is a subcovering of the maximal cover).
 3. Solve a binary mixed-integer program that selects group-letter assignments
-   with the smallest total assignment count.
+   with the smallest total assignment count. This replaces the `FIND-AM`
+   backtracking algorithm of the 2012 paper with a MILP formulation solved by
+   HiGHS, which lets us reuse a mature, presolve-equipped solver instead of a
+   custom search.
 4. Reconstruct the pairwise relationship matrix from the reduced assignments.
 5. Return the result only if every original relationship is preserved.
 
@@ -165,11 +176,18 @@ python examples/simple_abc_to_ac.py
 
 ## Citation
 
-If you use this package, please cite the repository and the associated
-Sensometrics 2026 work:
+If you use this package, please cite the foundational paper that introduced
+the assignment-minimum clique covering problem:
 
-> Ennis, J., Graham, C., Castro, L., Lampert, R., Jordan, R., & Rios de
-> Souza, V. (2026). Too many letters? Cutting through the sensory clutter with
-> letter reduction algorithms. Sensometrics 2026.
+> Ennis, J. M., Fayle, C. M., & Ennis, D. M. (2012). Assignment-Minimum Clique
+> Coverings. *ACM Journal of Experimental Algorithmics*, 17, Article 1.5.
+> https://doi.org/10.1145/2133803.2275596
+
+You may additionally reference the Sensometrics 2026 talk that presents this
+MILP-based implementation:
+
+> Ennis, J., Graham, C., Castro, L., Lampert, R., Jordan, R., & Rios de Souza,
+> V. (2026). Too many letters? Cutting through the sensory clutter with letter
+> reduction algorithms. *Sensometrics 2026*, Valencia, Spain.
 
 See `CITATION.cff` for machine-readable citation metadata.
