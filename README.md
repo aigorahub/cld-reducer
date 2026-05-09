@@ -194,8 +194,11 @@ the assignment-minimum clique covering problem:
 > Coverings. *ACM Journal of Experimental Algorithmics*, 17, Article 1.5.
 > https://doi.org/10.1145/2133803.2275596
 
-You may additionally reference the Sensometrics 2026 talk that presents this
-MILP-based implementation:
+You may additionally reference the talks that present this implementation:
+
+> Ennis, J. M. (2019). Computational Advances in the Production of Compact
+> Letter Displays. *Conference on Statistical Practice (CSP 2019)*, American
+> Statistical Association, New Orleans, LA, February 14–16.
 
 > Ennis, J., Graham, C., Castro, L., Lampert, R., Jordan, R., & Rios de Souza,
 > V. (2026). Too many letters? Cutting through the sensory clutter with letter
