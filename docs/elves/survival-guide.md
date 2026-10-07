@@ -95,9 +95,9 @@ ends at a green, reviewed, draft PR. No merge, tag, release, CRAN submission, or
 ## Stop Gate
 
 - **Planned batches remaining:** 6
-- **Stop allowed right now:** no
-- **Why:** Mason chose guide effort high; the relaunch and all six batches remain.
-- **Next required action:** relaunch the worker with required prewalk and park on the follow stream.
+- **Stop allowed right now:** yes
+- **Why:** the second qualification failed because the WSL Claude Code OAuth session expired; a login is Mason's.
+- **Next required action:** wait for Mason's Claude Code login in WSL, then relaunch with the same routes.
 
 After `EXECUTE APPROVED`, set `Stop allowed right now: no` until the stop point.
 
@@ -183,13 +183,13 @@ If one of these happens after `EXECUTE APPROVED`, update the docs, commit, push,
 
 ## Current Phase
 
-**Status:** Launching (route a, WSL)
+**Status:** Blocked (Claude Code login in WSL)
 
 **Active batch:** none
 
-**What was just finished:** Mason's guide route decision recorded.
+**What was just finished:** relaunch with guide effort high; qualification failed on Claude authentication.
 
-**Single next action:** relaunch the worker.
+**Single next action:** wait for Mason's login, then relaunch.
 
 ---
 

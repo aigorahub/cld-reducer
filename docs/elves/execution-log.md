@@ -5,7 +5,7 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 ## Run digest
 
 - **Last updated:** 2026-10-07 ET, route (a) setup
-- **Current phase:** Launching (route a, guide effort high)
+- **Current phase:** Blocked (Claude Code login in WSL)
 - **Active batch:** none
 - **Last completed batch:** none yet
 - **Next exact batch:** B1: Layout move and specification
@@ -15,6 +15,15 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 - **Latest Elves Report:** not generated yet
 - **Progress commits:** `[feat/r-js-packages · Batch N/6 · Contract|Implement|Validate|Review|Close] <outcome>`; the worker pushes only `feat/r-js-packages`; PR actions, run memory, final review stay with the driver.
 - **Handoff standard:** packet `.elves/runtime/worker-packet.md` has the eight handoff parts.
+
+---
+
+## 2026-10-07 ET: relaunch, qualification failed on Claude authentication
+
+- Relaunch at launch head `597d487` with guide claude-opus-5-5 at `high`, execution claude-sonnet-5-5 at `high`, `--prewalk required`: exit 1, `prewalk_live_qualification_failed`.
+- Evidence (same attempt file, overwritten): `model_calls_made: true`, `create_exit_zero: false`, `same_session_id: true`, `stream_identity_verified: true`, session `7c647bb5-bc2b-4ff6-9a28-efac8ad1b8d5`, about 3 seconds from start to end; no diagnostic text (Elves does not keep the canary stderr).
+- Diagnosis: the driver ran the same Claude flags (`--safe-mode --print --verbose --output-format stream-json --input-format text --effort high --permission-mode auto --model claude-opus-5-5 --session-id <uuid>`) once with a one-line prompt in a temporary repository. System init showed model claude-opus-5-5 and permission mode `auto`; the result was `Failed to authenticate: OAuth session expired and could not be refreshed`. The earlier `claude auth status` (`loggedIn: true`) did not show the expired session.
+- Stopped; a Claude Code login in WSL is Mason's.
 
 ---
 

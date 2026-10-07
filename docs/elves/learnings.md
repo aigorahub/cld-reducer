@@ -24,6 +24,8 @@ Durable lessons for this repository and this machine. Run status goes in the exe
 
 - [L15] [2026-10-07] Elves 2.39.0 accepts only `low`, `medium`, `high` as Claude worker efforts (no Claude model catalog), so a Claude guide or execution route at `xhigh` or `max` fails qualification before any model call, although Claude Code accepts those levels. (evidence: execution-log 2026-10-07 launch attempt)
 
+- [L16] [2026-10-07] `claude auth status` can report `loggedIn: true` while the OAuth session is expired; one real `claude --print` call is the reliable login check before a qualification canary. The canary does not keep Claude's error text. (evidence: execution-log 2026-10-07 relaunch)
+
 ## Retired learnings
 
 None.
