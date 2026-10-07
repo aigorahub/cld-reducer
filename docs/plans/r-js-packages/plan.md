@@ -436,11 +436,11 @@ format of the Elves skill. No AI attribution lines in commits or PR text.
 
 **Acceptance criteria:**
 
-- [ ] B1-A1: `git log --follow --oneline python/src/cld_reducer/api.py` lists commit `f877505`, and `git log --follow --oneline conformance/data/piepho2004_wheat_pairs.csv` lists commit `ce9c54e`.
-- [ ] B1-A2: In `python/`, after `pip install -e ".[dev]"`, `ruff check .`, `ruff format --check .`, and `pytest` pass, with the same 25 tests as `main` passing and no test file changed.
-- [ ] B1-A3: `python python/examples/simple_abc_to_ac.py` prints group 3 with letters `AC`, and `python python/examples/piepho2004_wheat.py` prints 56 assignments before and 44 after.
-- [ ] B1-A4: `docs/algorithm.md` covers all 11 items of the plan section "Specification content", including the canonical tie-break order and procedure, the stable error message prefixes, and the API of all three languages.
-- [ ] B1-A5: The repository root has no `pyproject.toml`, `src/`, `tests/`, or `examples/`, and `git ls-files -s` shows the same blob id for each of the three CSV files in `python/examples/` and in `conformance/data/`.
+- [x] B1-A1: `git log --follow --oneline python/src/cld_reducer/api.py` lists commit `f877505`, and `git log --follow --oneline conformance/data/piepho2004_wheat_pairs.csv` lists commit `ce9c54e`.
+- [x] B1-A2: In `python/`, after `pip install -e ".[dev]"`, `ruff check .`, `ruff format --check .`, and `pytest` pass, with the same 25 tests as `main` passing and no test file changed.
+- [x] B1-A3: `python python/examples/simple_abc_to_ac.py` prints group 3 with letters `AC`, and `python python/examples/piepho2004_wheat.py` prints 56 assignments before and 44 after.
+- [x] B1-A4: `docs/algorithm.md` covers all 11 items of the plan section "Specification content", including the canonical tie-break order and procedure, the stable error message prefixes, and the API of all three languages.
+- [x] B1-A5: The repository root has no `pyproject.toml`, `src/`, `tests/`, or `examples/`, and `git ls-files -s` shows the same blob id for each of the three CSV files in `python/examples/` and in `conformance/data/`.
 
 **Docs likely touched:** `python/README.md`, `docs/algorithm.md`.
 **Risk:** `low`: a move plus a document.
@@ -487,11 +487,11 @@ the repository root and from `python/`.
 
 **Acceptance criteria:**
 
-- [ ] B2-A1: `python conformance/generate.py --check` exits 0 on the execution host, and the same command exits 0 in both `conformance-r.yaml` generator jobs (Ubuntu, and Windows with `core.autocrlf true`) on the PR head that closes B2.
-- [ ] B2-A2: `python conformance/test_generate.py` exits 0, and its cross check compares the exact search with plain enumeration on every graph with up to 6 groups.
-- [ ] B2-A3: The fixtures contain every labeled graph with 1 to 5 groups, at least 200 seeded random graphs with 6 to 12 groups, the wheat and simple ABC examples, the D4 letter renaming example, a 28 group star (labels after Z), the complete and the empty graph, `max_cliques` cases, and error cases for every input rule of the spec; `conformance/README.md` states the case counts.
-- [ ] B2-A4: The wheat fixture expects 56 assignments before, 44 after, 4 letters after, and the canonical display; the simple ABC fixture expects `{"1": "A", "2": "AB", "3": "AC", "4": "BC", "5": "C"}`.
-- [ ] B2-A5: `generate.py` and `test_generate.py` import only the Python standard library (checked by a grep of their import lines).
+- [x] B2-A1: `python conformance/generate.py --check` exits 0 on the execution host, and the same command exits 0 in both `conformance-r.yaml` generator jobs (Ubuntu, and Windows with `core.autocrlf true`) on the PR head that closes B2.
+- [x] B2-A2: `python conformance/test_generate.py` exits 0, and its cross check compares the exact search with plain enumeration on every graph with up to 6 groups.
+- [x] B2-A3: The fixtures contain every labeled graph with 1 to 5 groups, at least 200 seeded random graphs with 6 to 12 groups, the wheat and simple ABC examples, the D4 letter renaming example, a 28 group star (labels after Z), the complete and the empty graph, `max_cliques` cases, and error cases for every input rule of the spec; `conformance/README.md` states the case counts.
+- [x] B2-A4: The wheat fixture expects 56 assignments before, 44 after, 4 letters after, and the canonical display; the simple ABC fixture expects `{"1": "A", "2": "AB", "3": "AC", "4": "BC", "5": "C"}`.
+- [x] B2-A5: `generate.py` and `test_generate.py` import only the Python standard library (checked by a grep of their import lines).
 
 **Docs likely touched:** `conformance/README.md`.
 **Risk:** `standard`: the generator is the referee; a bug here passes into all three languages.
@@ -533,12 +533,12 @@ the repository root and from `python/`.
 
 **Acceptance criteria:**
 
-- [ ] B3-A1: In `python/`, `pytest` passes, including every conformance fixture with presolve on and with presolve off.
-- [ ] B3-A2: The 25 tests from `main` pass with no change to their files.
-- [ ] B3-A3: `python/pyproject.toml` depends on exactly `highspy>=1.15.1,<1.16`, `numpy>=1.24`, and `pandas>=2.0`, and `grep -rE "scipy|networkx" python/src` finds nothing.
-- [ ] B3-A4: A test reads the HiGHS options back after a solve and finds presolve as set, both gaps 0, both feasibility tolerances 1e-9, and threads 1.
-- [ ] B3-A5: Tests prove the failure paths: a time budget shared across solves raises the time limit error, a non optimal status raises `SolverError`, and a scripted invalid solution raises the "HiGHS returned an invalid solution" error.
-- [ ] B3-A6: The `python.yaml` jobs test, minimum, and package pass in CI on the PR head that closes B3.
+- [x] B3-A1: In `python/`, `pytest` passes, including every conformance fixture with presolve on and with presolve off.
+- [x] B3-A2: The 25 tests from `main` pass with no change to their files.
+- [x] B3-A3: `python/pyproject.toml` depends on exactly `highspy>=1.15.1,<1.16`, `numpy>=1.24`, and `pandas>=2.0`, and `grep -rE "scipy|networkx" python/src` finds nothing.
+- [x] B3-A4: A test reads the HiGHS options back after a solve and finds presolve as set, both gaps 0, both feasibility tolerances 1e-9, and threads 1.
+- [x] B3-A5: Tests prove the failure paths: a time budget shared across solves raises the time limit error, a non optimal status raises `SolverError`, and a scripted invalid solution raises the "HiGHS returned an invalid solution" error.
+- [x] B3-A6: The `python.yaml` jobs test, minimum, and package pass in CI on the PR head that closes B3.
 
 **Docs likely touched:** `python/README.md`, `docs/algorithm.md` (only if a spec gap is found;
 record it in the Close commit).
@@ -576,11 +576,11 @@ in "Notes".
 
 **Acceptance criteria:**
 
-- [ ] B4-A1: In `js/`, `npm ci`, `npm run typecheck`, `npm run build`, `npm test`, and `npm run test:conformance` pass, and the conformance script runs every fixture with presolve on and with presolve off.
-- [ ] B4-A2: `npm pack --dry-run --json` lists only `package.json`, `README.md`, `LICENSE`, and files under `dist/`, and `dist/index.d.ts` declares `reduceLetters`, `reduceFromAdjacency`, `loadSolver`, and the three error classes.
-- [ ] B4-A3: The packed tarball installs in an empty temporary folder, and a Node script there imports `cld-reducer` and prints the simple ABC display `{"1":"A","2":"AB","3":"AC","4":"BC","5":"C"}`.
-- [ ] B4-A4: Tests prove the solver settings read back from HiGHS, the failure paths of B3-A5, loading from `wasmBinary` and from `wasmModule` without reading `highs.wasm` from disk, disposal of every model, and rejection of a plain object for `means`.
-- [ ] B4-A5: The `js.yaml` jobs pass in CI on the PR head that closes B4.
+- [x] B4-A1: In `js/`, `npm ci`, `npm run typecheck`, `npm run build`, `npm test`, and `npm run test:conformance` pass, and the conformance script runs every fixture with presolve on and with presolve off.
+- [x] B4-A2: `npm pack --dry-run --json` lists only `package.json`, `README.md`, `LICENSE`, and files under `dist/`, and `dist/index.d.ts` declares `reduceLetters`, `reduceFromAdjacency`, `loadSolver`, and the three error classes.
+- [x] B4-A3: The packed tarball installs in an empty temporary folder, and a Node script there imports `cld-reducer` and prints the simple ABC display `{"1":"A","2":"AB","3":"AC","4":"BC","5":"C"}`.
+- [x] B4-A4: Tests prove the solver settings read back from HiGHS, the failure paths of B3-A5, loading from `wasmBinary` and from `wasmModule` without reading `highs.wasm` from disk, disposal of every model, and rejection of a plain object for `means`.
+- [x] B4-A5: The `js.yaml` jobs pass in CI on the PR head that closes B4.
 
 **Docs likely touched:** `js/README.md`.
 **Risk:** `standard`: new package, known solver pattern.
@@ -627,13 +627,13 @@ in "Notes".
 
 **Acceptance criteria:**
 
-- [ ] B5-A1: The CI as-cran job (`R CMD check --as-cran` with the PDF manual) ends with 0 errors and 0 warnings, and every NOTE it reports is listed and explained in `cran-comments.md`.
-- [ ] B5-A2: The five R-CMD-check matrix jobs (macOS release, Windows release, Ubuntu devel, release, oldrel-1) end with 0 errors and 0 warnings, and any NOTE is listed and explained in `cran-comments.md`.
-- [ ] B5-A3: `conformance-r.yaml` passes, and `run_r.R` reports every fixture in `reduce.json`, `errors.json`, and `labels.json` as checked and passed.
-- [ ] B5-A4: The generated-files job follows the six steps of the plan section "Generated-files job" and passes on the PR head that closes B5. Its failure path is shown once: either a failing run that still produced a downloadable `generated-files` artifact (the Option B bootstrap run), or, under Option A, a local run of the same commands on a tree with one deleted help page, one stale help page, one new undocumented export, and no `data/` folder, which exits non-zero for each case.
-- [ ] B5-A5: The check timings show every example under 2 s, and the testthat run takes under 60 s on Ubuntu release.
-- [ ] B5-A6: `R CMD build` output contains no file from `python/`, `js/`, `conformance/`, `docs/`, `data-raw/`, `.github/`, or the run docs (checked with `tar tzf` on the built tarball).
-- [ ] B5-A7: The as-cran job checks the built tarball in a check directory under `runner.temp`, outside the checkout, so the tests cannot reach repository files; `grep -rnE "\.\./|read\.csv|readLines|jsonlite|file\.path" tests/` finds nothing (a comment may still name a fixture id); and `run_r.R` compares each R data set with its CSV in `conformance/data/`.
+- [x] B5-A1: The CI as-cran job (`R CMD check --as-cran` with the PDF manual) ends with 0 errors and 0 warnings, and every NOTE it reports is listed and explained in `cran-comments.md`.
+- [x] B5-A2: The five R-CMD-check matrix jobs (macOS release, Windows release, Ubuntu devel, release, oldrel-1) end with 0 errors and 0 warnings, and any NOTE is listed and explained in `cran-comments.md`.
+- [x] B5-A3: `conformance-r.yaml` passes, and `run_r.R` reports every fixture in `reduce.json`, `errors.json`, and `labels.json` as checked and passed.
+- [x] B5-A4: The generated-files job follows the six steps of the plan section "Generated-files job" and passes on the PR head that closes B5. Its failure path is shown once: either a failing run that still produced a downloadable `generated-files` artifact (the Option B bootstrap run), or, under Option A, a local run of the same commands on a tree with one deleted help page, one stale help page, one new undocumented export, and no `data/` folder, which exits non-zero for each case.
+- [x] B5-A5: The check timings show every example under 2 s, and the testthat run takes under 60 s on Ubuntu release.
+- [x] B5-A6: `R CMD build` output contains no file from `python/`, `js/`, `conformance/`, `docs/`, `data-raw/`, `.github/`, or the run docs (checked with `tar tzf` on the built tarball).
+- [x] B5-A7: The as-cran job checks the built tarball in a check directory under `runner.temp`, outside the checkout, so the tests cannot reach repository files; `grep -rnE "\.\./|read\.csv|readLines|jsonlite|file\.path" tests/` finds nothing (a comment may still name a fixture id); and `run_r.R` compares each R data set with its CSV in `conformance/data/`.
 
 **Docs likely touched:** `man/`, `NEWS.md`, `cran-comments.md`.
 **Risk:** `high`: CRAN rules, and a CI-gated loop under Option B (the default).
@@ -673,11 +673,11 @@ tarball), spec parity, data documentation.
 
 **Acceptance criteria:**
 
-- [ ] B6-A1: `DESCRIPTION`, `python/pyproject.toml`, `python/src/cld_reducer/__init__.py`, `js/package.json`, and `CITATION.cff` all state version 0.2.0.
-- [ ] B6-A2: Every code example in `README.md`, `python/README.md`, and `js/README.md` was run on the final code (R examples in CI or local R), and its printed output in the README matches the run.
-- [ ] B6-A3: `cffconvert --validate` passes on `CITATION.cff`.
-- [ ] B6-A4: `publish-npm.yaml` and `publish-python.yaml` check that the release tag equals `v` plus the package version and use trusted publishing with no stored token; no workflow publishes on push or pull_request.
-- [ ] B6-A5: `NEWS.md` 0.2.0 lists the R and JavaScript packages, the Python layout move and git URL change, the move to `highspy`, the canonical tie-break, the canonical clique order that can rename letters for inputs with one optimal covering (with the D4 example), the unrounded `reduction_pct`, the `solver_status` text "Optimal", `time_limit` as one budget for all solves, and the new finite means check.
+- [x] B6-A1: `DESCRIPTION`, `python/pyproject.toml`, `python/src/cld_reducer/__init__.py`, `js/package.json`, and `CITATION.cff` all state version 0.2.0.
+- [x] B6-A2: Every code example in `README.md`, `python/README.md`, and `js/README.md` was run on the final code (R examples in CI or local R), and its printed output in the README matches the run.
+- [x] B6-A3: `cffconvert --validate` passes on `CITATION.cff`.
+- [x] B6-A4: `publish-npm.yaml` and `publish-python.yaml` check that the release tag equals `v` plus the package version and use trusted publishing with no stored token; no workflow publishes on push or pull_request.
+- [x] B6-A5: `NEWS.md` 0.2.0 lists the R and JavaScript packages, the Python layout move and git URL change, the move to `highspy`, the canonical tie-break, the canonical clique order that can rename letters for inputs with one optimal covering (with the D4 example), the unrounded `reduction_pct`, the `solver_status` text "Optimal", `time_limit` as one budget for all solves, and the new finite means check.
 
 **Docs likely touched:** all READMEs, NEWS.md, CITATION.cff.
 **Risk:** `low`.
@@ -691,11 +691,11 @@ CRAN, npm, or PyPI yet).
 
 ## Master Acceptance
 
-- [ ] M-A1: At the final head, the Python, JavaScript, and R runners each pass every fixture in `conformance/fixtures/`, so the three languages return the same groups, assignments, letters, and integer stats for every case.
-- [ ] M-A2: At the final head, every job of `R-CMD-check.yaml`, `conformance-r.yaml`, `python.yaml`, and `js.yaml` succeeds on the PR, and the as-cran job shows 0 errors and 0 warnings.
-- [ ] M-A3: The npm package is ready to publish: B4-A2 and B4-A3 hold at the final head, `publish-npm.yaml` is in place, and nothing was published.
-- [ ] M-A4: Existing Python users keep the import name `cld_reducer`, the public names and exceptions, the CLI `cld-reduce` with its flags, and all 25 tests from `main`; the git URL change and the behavior changes are in NEWS.md.
-- [ ] M-A5: The PR body lists every human open item of this plan (H1 to H13), and nothing was merged, tagged, released, submitted to CRAN, or published to npm or PyPI.
+- [x] M-A1: At the final head, the Python, JavaScript, and R runners each pass every fixture in `conformance/fixtures/`, so the three languages return the same groups, assignments, letters, and integer stats for every case.
+- [x] M-A2: At the final head, every job of `R-CMD-check.yaml`, `conformance-r.yaml`, `python.yaml`, and `js.yaml` succeeds on the PR, and the as-cran job shows 0 errors and 0 warnings.
+- [x] M-A3: The npm package is ready to publish: B4-A2 and B4-A3 hold at the final head, `publish-npm.yaml` is in place, and nothing was published.
+- [x] M-A4: Existing Python users keep the import name `cld_reducer`, the public names and exceptions, the CLI `cld-reduce` with its flags, and all 25 tests from `main`; the git URL change and the behavior changes are in NEWS.md.
+- [x] M-A5: The PR body lists every human open item of this plan (H1 to H13), and nothing was merged, tagged, released, submitted to CRAN, or published to npm or PyPI.
 - [ ] M-A6: Astra and a fresh Opus 5.5 review report no open finding at the exact final head, and a `Local tests passed on <head SHA>` PR comment lists the local commands and results.
 
 ## Definition of green
