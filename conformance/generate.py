@@ -803,6 +803,15 @@ def hand_cases():
     # The empty string is a valid label.
     add("empty-string-label", "pairs",
         {"pairs": pairs_rows(["", "b", "c"], [(0, 1), (1, 2)]), "means": None})
+    # Text that names a missing value is an ordinary label (review round 2): only a missing
+    # value itself (R NA or NaN, Python None or NaN, JavaScript null or NaN) is rejected.
+    words = ["NaN", "NA", "null", "None"]
+    word_means = [{"group": w, "mean": float(4 - k)} for k, w in enumerate(words)]
+    add("missing-value-words-as-labels", "pairs",
+        {"pairs": pairs_rows(words, [(0, 1), (1, 2)]), "means": word_means})
+    add("missing-value-words-as-groups", "adjacency",
+        {"adjacency": adjacency_rows(4, [(0, 3), (2, 3)]), "groups": words,
+         "means": list(reversed(word_means))})
     # Zero rows: a plain empty list is a table with no comparisons; means give one group.
     add("single-group-zero-rows", "pairs",
         {"pairs": [], "means": [{"group": "a", "mean": 1.0}]})

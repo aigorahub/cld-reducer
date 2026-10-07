@@ -63,6 +63,33 @@ test_that("missing labels are invalid input", {
                "group labels must not be missing", class = "cldreducer_invalid_input")
 })
 
+test_that("a numeric NaN label is missing, and the text NaN is a label", {
+  missing <- "group labels must not be missing"
+  expect_error(reduce_from_adjacency(diag(TRUE, 2L), c(1, NaN)), missing,
+               class = "cldreducer_invalid_input")
+  pairs <- data.frame(group1 = c(1, 1, 2), group2 = c(2, NaN, 3), significant = TRUE)
+  expect_error(reduce_letters(pairs), missing, class = "cldreducer_invalid_input")
+  pairs$significant <- "maybe"
+  expect_error(reduce_letters(pairs), missing, class = "cldreducer_invalid_input")
+  expect_error(reduce_from_adjacency(diag(TRUE, 2L), c("1", "2"),
+                                     data.frame(group = c(1, NaN), mean = c(1, 2))),
+               missing, class = "cldreducer_invalid_input")
+  expect_error(reduce_letters(all_pairs(c("1", "2")), data.frame(group = c(1, NaN), mean = 1:2)),
+               missing, class = "cldreducer_invalid_input")
+  expect_error(reduce_from_adjacency(diag(TRUE, 2L), c("a", "b"), stats::setNames(1:2, c("a", NA))),
+               missing, class = "cldreducer_invalid_input")
+  expect_error(reduce_from_adjacency(diag(TRUE, 2L), factor(c("a", NA))), missing,
+               class = "cldreducer_invalid_input")
+
+  text <- c("NaN", "NA", "null")
+  result <- reduce_from_adjacency(diag(TRUE, 3L), text, stats::setNames(c(3, 2, 1), text))
+  expect_identical(result$groups, text)
+  expect_identical(unname(result$letters), c("A", "B", "C"))
+  result <- reduce_letters(all_pairs(text, "1 2"), data.frame(group = text, mean = c(3, 2, 1)))
+  expect_identical(result$groups, text)
+  expect_identical(unname(result$letters), c("A", "A", "B"))
+})
+
 test_that("duplicate mean labels are invalid input for adjacency input", {
   path3 <- matrix(c(TRUE, TRUE, FALSE, TRUE, TRUE, TRUE, FALSE, TRUE, TRUE), 3L)
   expect_error(

@@ -18,6 +18,15 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 
 ---
 
+## 2026-10-07 ET: final review round 2 fix
+
+- Reviews at `bc98be7`: both reviewers confirm every round 1 finding is fixed. Both found one new issue: R checked missing labels after `as.character()`, which turns a numeric NaN into the text "NaN". Driver repro at `bc98be7`: `reduce_from_adjacency(diag(TRUE, 2), c(1, NaN))` returned the groups "1" and "NaN"; a NaN mean label did the same; a NaN pair label gave the wrong message (missing pairs).
+- Fix: `R/input.R` `label_text()` checks `anyNA()` on the given values before the conversion, for groups, pair labels, and mean labels (data frame columns and vector names). The separate check after conversion is gone. Spec section 1 now names R `NaN` and says that text such as "NaN" is a label.
+- Tests: R unit test for numeric NaN in groups, pair labels (also before significance), mean labels, NA names, a factor with NA, and the text labels "NaN", "NA", "null". Two new shared fixtures (`hand/missing-value-words-as-labels`, `hand/missing-value-words-as-groups`) with the labels "NaN", "NA", "null", "None"; now 1422 reduce, 65 errors, 18 labels.
+- Local checks (WSL, uncommitted tree on `bc98be7`): generate.py --check, test_generate.py (24), ruff, pytest (2996), both examples, npm ci, typecheck, build, test, test:conformance, run_r.R (1505 cases), R CMD check --as-cran --no-manual (testthat 298 passed; 2 NOTEs: New submission, no pandoc locally). All exit 0.
+
+---
+
 ## 2026-10-07 ET: final review round 1 fixes
 
 - Reviews at `f6b2a65`: Astra (A1 to A6) and a fresh Opus 5.5 session (P2-1, P3-1 to P3-4, four concerns). The overlaps (duplicate means, `max_cliques`) are fixed once.

@@ -8,18 +8,15 @@ format_list <- function(x) {
   paste0("[", paste0("'", x, "'", collapse = ", "), "]")
 }
 
-# Group labels are strings (docs/algorithm.md section 1).
+# Group labels are strings (docs/algorithm.md section 1). A missing label (NA or NaN) is invalid
+# input, wherever labels are given. The check runs on the given values, because as.character()
+# turns NaN into the text "NaN"; the text "NaN" itself is a valid label.
 label_text <- function(x) {
-  if (is.factor(x)) x <- as.character(x)
-  as.character(x)
-}
-
-# A missing label (NA) is invalid input, wherever labels are given.
-check_labels_present <- function(labels) {
-  if (anyNA(labels)) {
+  if (anyNA(x)) {
     invalid_input("group labels must not be missing")
   }
-  invisible(labels)
+  if (is.factor(x)) x <- as.character(x)
+  as.character(x)
 }
 
 coerce_significance <- function(x) {
@@ -47,7 +44,7 @@ coerce_significance <- function(x) {
 }
 
 check_groups <- function(groups) {
-  labels <- check_labels_present(label_text(groups))
+  labels <- label_text(groups)
   if (anyDuplicated(labels) > 0L) {
     invalid_input("group labels must be unique after string conversion")
   }
@@ -74,7 +71,7 @@ parse_means <- function(means) {
     )
   }
   if (is.atomic(means) && !is.null(names(means))) {
-    return(list(group = names(means), mean = unname(means)))
+    return(list(group = label_text(names(means)), mean = unname(means)))
   }
   invalid_input(
     "means must be a named numeric vector or a data frame with group and mean columns"
@@ -86,7 +83,6 @@ match_means <- function(table, groups) {
   if (is.null(table)) {
     return(NULL)
   }
-  check_labels_present(table$group)
   repeated <- unique(table$group[duplicated(table$group)])
   if (length(repeated) > 0L) {
     invalid_input("means contain duplicate groups: ", format_list(repeated))
@@ -113,7 +109,6 @@ pairs_to_graph <- function(pairs, means, group1, group2, significant) {
   }
   first <- label_text(pairs[[group1]])
   second <- label_text(pairs[[group2]])
-  check_labels_present(c(first, second))
   not_significant <- !coerce_significance(pairs[[significant]])
   if (any(first == second)) {
     invalid_input("post_hoc_results must not contain self-comparisons")

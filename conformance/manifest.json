@@ -92,11 +92,11 @@
   }
  },
  "counts": {
-  "reduce": 1420,
+  "reduce": 1422,
   "reduce_exhaustive_1_to_5_groups": 1099,
   "reduce_random_6_to_12_groups": 264,
   "reduce_structured": 24,
-  "reduce_hand": 33,
+  "reduce_hand": 35,
   "errors": 65,
   "labels": 18,
   "checker_bad_results": 3
