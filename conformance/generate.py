@@ -283,7 +283,8 @@ def coerce_significance(value):
     if is_number(value) and value in (0, 1):
         return bool(value)
     if isinstance(value, str):
-        text = value.strip().lower()
+        # Trim spaces, tabs, carriage returns, and line feeds only (section 1).
+        text = value.strip(" \t\r\n").lower()
         if text in TRUE_WORDS:
             return True
         if text in FALSE_WORDS:
@@ -293,6 +294,8 @@ def coerce_significance(value):
 
 def label_text(value):
     """String conversion of a group label (JSON numbers and strings only)."""
+    if value is None:
+        raise invalid("group labels must not be missing")
     if isinstance(value, str):
         return value
     if isinstance(value, bool):
@@ -315,9 +318,14 @@ def match_means(means, groups):
     """Means by group label for `groups` (section 1); None when no means are given."""
     if means is None:
         return None
-    table = {}
-    for entry in means:
-        table[label_text(entry["group"])] = entry.get("mean")
+    labels = [label_text(entry.get("group")) for entry in means]
+    repeated = []
+    for i, label in enumerate(labels):
+        if label in labels[:i] and label not in repeated:
+            repeated.append(label)
+    if repeated:
+        raise invalid("means contain duplicate groups: %r" % (repeated,))
+    table = {label: entry.get("mean") for label, entry in zip(labels, means)}
     missing = [g for g in groups if g not in table]
     if missing:
         raise invalid("means are missing values for groups: %r" % (missing,))
@@ -354,16 +362,16 @@ def pairs_to_graph(case):
     col1 = options.get("group1", "group1")
     col2 = options.get("group2", "group2")
     cols = options.get("significant", "significant")
-    present = set()
-    for row in rows:
-        present.update(row)
-    missing = sorted({col1, col2, cols} - present)
-    if missing:
-        raise invalid("post_hoc_results missing required columns: %r" % (missing,))
-    pairs = []
-    for row in rows:
-        pairs.append((label_text(row[col1]), label_text(row[col2]),
-                      coerce_significance(row[cols])))
+    if rows:  # an empty list of rows has no column names to check (section 1, zero rows)
+        present = set()
+        for row in rows:
+            present.update(row)
+        missing = sorted({col1, col2, cols} - present)
+        if missing:
+            raise invalid("post_hoc_results missing required columns: %r" % (missing,))
+    # The labels of all rows first, then the significance of all rows (section 1, checks 2, 3).
+    labels = [(label_text(row.get(col1)), label_text(row.get(col2))) for row in rows]
+    pairs = [(a, b, coerce_significance(row.get(cols))) for (a, b), row in zip(labels, rows)]
     if any(a == b for a, b, _ in pairs):
         raise invalid("post_hoc_results must not contain self-comparisons")
     seen, dup = set(), set()
@@ -787,6 +795,20 @@ def hand_cases():
     add("adjacency-booleans", "adjacency",
         {"adjacency": [[True, False, True], [False, True, False], [True, False, True]],
          "groups": ["a", "b", "c"], "means": None})
+    # Labels with a carriage return: joined pair keys such as "a\rb\rc" would collide (review
+    # round 1); the pairs (a, b\rc) and (a\rb, c) are different pairs.
+    add("labels-with-carriage-returns", "pairs",
+        {"pairs": pairs_rows(["a", "b\rc", "a\rb", "c"], [(0, 1), (1, 2), (2, 3)]),
+         "means": None})
+    # The empty string is a valid label.
+    add("empty-string-label", "pairs",
+        {"pairs": pairs_rows(["", "b", "c"], [(0, 1), (1, 2)]), "means": None})
+    # Zero rows: a plain empty list is a table with no comparisons; means give one group.
+    add("single-group-zero-rows", "pairs",
+        {"pairs": [], "means": [{"group": "a", "mean": 1.0}]})
+    # A finite cap of 2^31 or more is valid (R must not narrow it to an integer).
+    add("max-cliques-large", "adjacency",
+        {"adjacency": ident, "groups": None, "means": None}, {"max_cliques": 3000000000})
     return cases
 
 
@@ -917,6 +939,29 @@ def error_cases():
     adj("max-cliques-exceeded-by-one", adjacency_rows(5, [(0, 1)]),
         "maximal clique enumeration exceeded max_cliques=", options={"max_cliques": 3},
         kind=sol)
+    # Review round 1: missing labels, duplicate mean labels, ASCII-only trimming, label-exact
+    # pair identity, and zero rows.
+    pre_missing = "group labels must not be missing"
+    pairs("pairs-missing-label", [abc, dict(ac, group2=None), bc], pre_missing)
+    pairs("order-missing-label-before-coercion",
+          [dict(abc, significant="maybe"), dict(ac, group1=None), bc], pre_missing)
+    pairs("pairs-means-missing-label", triple, pre_missing,
+          means=[{"group": "a", "mean": 1.0}, {"group": None, "mean": 2.0},
+                 {"group": "c", "mean": 3.0}])
+    pairs("pairs-significance-nbsp", [dict(abc, significant="ns "), ac, bc], pre_coerce)
+    cr_rows = pairs_rows(["a", "b\rc", "a\rb", "c"], [(0, 1), (1, 2), (2, 3)])
+    pairs("pairs-missing-pair-carriage-return-labels",
+          [r for r in cr_rows if not (r["group1"] == "a" and r["group2"] == "b\rc")],
+          "post_hoc_results missing unordered pairwise comparisons: ")
+    pairs("pairs-zero-rows-no-means", [], "at least one group is required")
+    path3 = adjacency_rows(3, [(0, 1), (1, 2)])
+    adj("adjacency-means-duplicate-group", path3, "means contain duplicate groups: ",
+        groups=["a", "b", "c"],
+        means=[{"group": "a", "mean": 1.0}, {"group": "b", "mean": 2.0},
+               {"group": "c", "mean": 3.0}, {"group": "a", "mean": 9.0}])
+    adj("adjacency-groups-missing-label", ident2, pre_missing, groups=["a", None])
+    adj("adjacency-means-missing-label", ident2, pre_missing, groups=["a", "b"],
+        means=[{"group": "a", "mean": 1.0}, {"group": None, "mean": 2.0}])
     return cases
 
 

@@ -23,3 +23,8 @@ First release of the R package. The repository now holds three packages that fol
 - `stats["solver_status"]` is the text `Optimal`, and `stats["objective"]` is a whole number.
 - `time_limit` is one time budget for all solves of a call. Each solve gets the time that is left.
 - Group means must be finite numbers; a missing, infinite, or non-numeric mean is an `InvalidInputError`.
+- A missing group label (`None`, `NaN`, `pd.NA`, or `pd.NaT`) is an `InvalidInputError`, in the comparisons, the groups, and the means.
+- Means with a repeated group label are an `InvalidInputError` for `reduce_from_adjacency()` too.
+- Significance text is trimmed of spaces, tabs, carriage returns, and line feeds only. Other white space, such as a no-break space, makes the value invalid.
+- An empty list of comparisons is a table with zero rows, so the groups come from the means.
+- A solver value that is not within 1e-6 of 0 or 1 is a `SolverError`, also when the value is a whole number.

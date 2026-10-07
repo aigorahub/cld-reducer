@@ -120,7 +120,7 @@ The method is `assignment_minimum`.
 
 Exact assignment minimization can become expensive for dense or highly structured graphs. All three packages offer a time limit and a cap on the number of maximal cliques (10,000 by default); the call stops with a clear error beyond the cap.
 
-[docs/algorithm.md](docs/algorithm.md) is the normative specification: input rules, error messages, the canonical order, the solver settings, and the API of all three languages. The shared conformance suite in [conformance/](conformance/) has 1,416 reduce cases (plus 56 error cases and 18 label cases) with expected displays that come from an exact search in a standard-library Python script, not from a solver. R, Python, and JavaScript run all of them in CI. The Python and JavaScript runs repeat with HiGHS presolve off.
+[docs/algorithm.md](docs/algorithm.md) is the normative specification: input rules, error messages, the canonical order, the solver settings, and the API of all three languages. The shared conformance suite in [conformance/](conformance/) has 1,420 reduce cases (plus 65 error cases and 18 label cases) with expected displays that come from an exact search in a standard-library Python script, not from a solver. R, Python, and JavaScript run all of them in CI. The Python and JavaScript runs repeat with HiGHS presolve off.
 
 ## Repository layout
 

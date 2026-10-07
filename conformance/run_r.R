@@ -19,17 +19,27 @@ fail <- function(id, ...) failures <<- c(failures, paste0(id, ": ", ...))
 # A JSON array of scalars as an atomic vector; null becomes NA.
 column <- function(values) unlist(lapply(values, function(v) if (is.null(v)) NA else v))
 
-# Fixture rows as a data frame with one column for every key that occurs.
-rows_to_frame <- function(rows) {
+# Fixture rows as a data frame with one column for every key that occurs. An R data
+# frame always has column names, so zero rows become typed empty columns with the
+# names the call uses (docs/algorithm.md section 1, zero rows).
+rows_to_frame <- function(rows, columns) {
+  if (length(rows) == 0L) {
+    frame <- list(character(0), character(0), logical(0))
+    names(frame) <- columns
+    return(as.data.frame(frame, stringsAsFactors = FALSE))
+  }
   keys <- unique(unlist(lapply(rows, names)))
   frame <- lapply(keys, function(key) column(lapply(rows, function(r) r[[key]])))
   names(frame) <- keys
   as.data.frame(frame, stringsAsFactors = FALSE)
 }
 
+# One element of a named list by position: `[[` cannot select the empty-string name.
+pick <- function(x, name) x[[match(name, names(x))]]
+
 means_of <- function(means) {
   if (is.null(means)) NULL else data.frame(
-    group = unlist(lapply(means, `[[`, "group")),
+    group = column(lapply(means, function(m) m[["group"]])),
     mean = column(lapply(means, function(m) m[["mean"]])),
     stringsAsFactors = FALSE
   )
@@ -53,8 +63,11 @@ call_case <- function(case) {
   }
   means <- means_of(case$input$means)
   if (identical(case$call, "pairs")) {
-    do.call(reduce_letters, c(list(pairs = rows_to_frame(case$input$pairs), means = means),
-                              options))
+    columns <- vapply(c("group1", "group2", "significant"), function(key) {
+      if (is.null(options[[key]])) key else options[[key]]
+    }, character(1))
+    do.call(reduce_letters, c(list(pairs = rows_to_frame(case$input$pairs, columns),
+                                   means = means), options))
   } else {
     groups <- case$input$groups
     if (!is.null(groups)) groups <- as.character(column(groups))[seq_along(groups)]
@@ -80,12 +93,13 @@ mismatches <- function(actual, expected) {
   bad <- character(0)
   groups <- as.character(unlist(expected$groups))
   if (!identical(actual$groups, groups)) bad <- c(bad, "groups")
-  tokens <- function(x) lapply(groups, function(g) as.character(unlist(x[[g]])))
-  if (!identical(unname(lapply(groups, function(g) actual$assignments[[g]])), tokens(expected$assignments))) {
+  tokens <- function(x) lapply(groups, function(g) as.character(unlist(pick(x, g))))
+  if (!identical(unname(lapply(groups, function(g) pick(actual$assignments, g))),
+                 tokens(expected$assignments))) {
     bad <- c(bad, "assignments")
   }
-  if (!identical(unname(vapply(groups, function(g) actual$letters[[g]], character(1))),
-                 unname(vapply(groups, function(g) expected$letters[[g]], character(1))))) {
+  if (!identical(unname(vapply(groups, function(g) pick(actual$letters, g), character(1))),
+                 unname(vapply(groups, function(g) pick(expected$letters, g), character(1))))) {
     bad <- c(bad, "letters")
   }
   stat_names <- names(expected$stats)
@@ -107,8 +121,11 @@ as_actual <- function(result) {
   groups <- as.character(unlist(result$groups))
   list(
     groups = groups,
-    assignments = stats::setNames(lapply(groups, function(g) as.character(unlist(result$assignments[[g]]))), groups),
-    letters = stats::setNames(vapply(groups, function(g) result$letters[[g]], character(1)), groups),
+    assignments = stats::setNames(lapply(groups, function(g) {
+      as.character(unlist(pick(result$assignments, g)))
+    }), groups),
+    letters = stats::setNames(vapply(groups, function(g) pick(result$letters, g), character(1)),
+                              groups),
     stats = lapply(result$stats, identity),
     solver_status = result$solver_status, objective = result$objective,
     reduction_pct = percent(result$reduction_pct), method = result$method,

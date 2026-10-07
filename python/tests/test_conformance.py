@@ -31,8 +31,9 @@ def run_case(case: dict[str, Any]):
     means = case["input"].get("means")
     means_frame = pd.DataFrame(means) if means is not None else None
     if case["call"] == "pairs":
-        pairs = pd.DataFrame(case["input"]["pairs"])
-        return reduce_letters(pairs, means_frame, **options)
+        # The rows as a plain list of mappings, as JSON gives them; an empty list is a table
+        # with zero rows (docs/algorithm.md section 1).
+        return reduce_letters(list(case["input"]["pairs"]), means_frame, **options)
     matrix = np.array(case["input"]["adjacency"], dtype=object)
     return reduce_from_adjacency(matrix, case["input"].get("groups"), means_frame, **options)
 

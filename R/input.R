@@ -14,6 +14,14 @@ label_text <- function(x) {
   as.character(x)
 }
 
+# A missing label (NA) is invalid input, wherever labels are given.
+check_labels_present <- function(labels) {
+  if (anyNA(labels)) {
+    invalid_input("group labels must not be missing")
+  }
+  invisible(labels)
+}
+
 coerce_significance <- function(x) {
   if (is.factor(x)) x <- as.character(x)
   out <- rep(NA, length(x))
@@ -23,7 +31,8 @@ coerce_significance <- function(x) {
     out[!is.na(x) & x == 1] <- TRUE
     out[!is.na(x) & x == 0] <- FALSE
   } else if (is.character(x)) {
-    words <- tolower(trimws(x))
+    # Trim spaces, tabs, carriage returns, and line feeds only (section 1).
+    words <- tolower(trimws(x, whitespace = "[ \t\r\n]"))
     out[words %in% true_words] <- TRUE
     out[words %in% false_words] <- FALSE
   }
@@ -38,7 +47,7 @@ coerce_significance <- function(x) {
 }
 
 check_groups <- function(groups) {
-  labels <- label_text(groups)
+  labels <- check_labels_present(label_text(groups))
   if (anyDuplicated(labels) > 0L) {
     invalid_input("group labels must be unique after string conversion")
   }
@@ -77,6 +86,11 @@ match_means <- function(table, groups) {
   if (is.null(table)) {
     return(NULL)
   }
+  check_labels_present(table$group)
+  repeated <- unique(table$group[duplicated(table$group)])
+  if (length(repeated) > 0L) {
+    invalid_input("means contain duplicate groups: ", format_list(repeated))
+  }
   index <- match(groups, table$group)
   if (anyNA(index)) {
     invalid_input("means are missing values for groups: ", format_list(groups[is.na(index)]))
@@ -99,16 +113,26 @@ pairs_to_graph <- function(pairs, means, group1, group2, significant) {
   }
   first <- label_text(pairs[[group1]])
   second <- label_text(pairs[[group2]])
+  check_labels_present(c(first, second))
   not_significant <- !coerce_significance(pairs[[significant]])
   if (any(first == second)) {
     invalid_input("post_hoc_results must not contain self-comparisons")
   }
-  key <- function(a, b) ifelse(a <= b, paste(a, b, sep = "\r"), paste(b, a, sep = "\r"))
+  # Pair keys use the positions of exact labels, not joined text: no delimiter can make two
+  # pairs share a key, and no locale collation decides the order.
+  universe <- unique(c(first, second))
+  key <- function(a, b) {
+    i <- match(a, universe)
+    j <- match(b, universe)
+    ifelse(is.na(i) | is.na(j), NA_character_, paste(pmin(i, j), pmax(i, j)))
+  }
+  shown <- function(a, b) paste(pmin(a, b), pmax(a, b), sep = "|")
   keys <- key(first, second)
   if (anyDuplicated(keys) > 0L) {
+    twice <- duplicated(keys)
     invalid_input(
       "post_hoc_results contains duplicate unordered pairs: ",
-      format_list(gsub("\r", "|", unique(keys[duplicated(keys)])))
+      format_list(unique(shown(first[twice], second[twice])))
     )
   }
 
@@ -125,12 +149,14 @@ pairs_to_graph <- function(pairs, means, group1, group2, significant) {
   size <- length(groups)
   if (size > 1L) {
     pair_index <- which(upper.tri(diag(size)), arr.ind = TRUE)
-    expected <- key(groups[pair_index[, 1L]], groups[pair_index[, 2L]])
-    absent <- setdiff(expected, keys)
-    if (length(absent) > 0L) {
+    a <- groups[pair_index[, 1L]]
+    b <- groups[pair_index[, 2L]]
+    expected <- key(a, b)
+    absent <- is.na(expected) | !expected %in% keys
+    if (any(absent)) {
       invalid_input(
         "post_hoc_results missing unordered pairwise comparisons: ",
-        format_list(gsub("\r", "|", sort(absent)))
+        format_list(sort(shown(a[absent], b[absent])))
       )
     }
   }
@@ -199,13 +225,15 @@ check_controls <- function(time_limit, max_cliques) {
        time_limit <= 0)) {
     solver_error("time_limit must be positive when provided")
   }
+  # A finite whole number of any size; it stays a double, so a cap of 2^31 or more is not
+  # narrowed to an integer.
   if (!is.null(max_cliques) &&
-      (!is.numeric(max_cliques) || length(max_cliques) != 1L || is.na(max_cliques) ||
+      (!is.numeric(max_cliques) || length(max_cliques) != 1L || !is.finite(max_cliques) ||
        max_cliques < 1 || max_cliques != round(max_cliques))) {
     solver_error("max_cliques must be a positive integer or NULL")
   }
   list(
     time_limit = if (is.null(time_limit)) NULL else as.numeric(time_limit),
-    max_cliques = if (is.null(max_cliques)) NULL else as.integer(max_cliques)
+    max_cliques = if (is.null(max_cliques)) NULL else as.numeric(max_cliques)
   )
 }

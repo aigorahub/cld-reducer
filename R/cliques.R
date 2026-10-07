@@ -15,7 +15,8 @@ maximal_cliques <- function(adjacency, max_cliques) {
       count <<- count + 1L
       if (!is.null(max_cliques) && count > max_cliques) {
         solver_error(
-          "maximal clique enumeration exceeded max_cliques=", max_cliques,
+          "maximal clique enumeration exceeded max_cliques=",
+          format(max_cliques, scientific = FALSE, trim = TRUE),
           "; increase max_cliques or pass NULL to disable the cap"
         )
       }

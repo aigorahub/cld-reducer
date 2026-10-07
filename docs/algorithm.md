@@ -19,29 +19,32 @@ Used by `reduce_letters` (R and Python) and `reduceLetters` (TypeScript). The in
 
 **Columns.** Three columns identify the group of each side and the significance. The default names are `group1`, `group2`, `significant`, and the caller can pass other names. A missing column is an invalid input error with the prefix `post_hoc_results missing required columns: ` followed by the sorted list of missing names. Extra columns are ignored.
 
-**Labels.** Group labels are converted to strings with the language's string conversion (Python `str`, R `as.character`, JavaScript `String`). Two labels that give the same string are the same group. Fixtures use string labels only.
+**Zero rows.** A table with zero rows is valid input: it has no comparisons. A data frame (R, pandas) still needs the named columns. A plain list of rows (a Python list or tuple of mappings, a JavaScript array) has no column names to check, so an empty list counts as a table with the named columns and zero rows. With means for one group, zero rows give a one-group result.
+
+**Labels.** Group labels are converted to strings with the language's string conversion (Python `str`, R `as.character`, JavaScript `String`). Two labels that give the same string are the same group. A missing label (R `NA`, Python `None`, a float NaN, or pandas `NA`, JavaScript `null`, `undefined`, or `NaN`) is an invalid input error with the message `group labels must not be missing`, wherever labels are given: in the table, in `groups`, or in the means. Fixtures use string labels only. Two pairs are the same pair only when their exact label strings are the same: an implementation must not build pair keys by joining labels with a delimiter that a label can contain, and must not order labels by a locale collation.
 
 **Significance.** Each value converts to a boolean "significant". Accepted values:
 
 - Booleans.
 - The numbers 0 and 1. Python accepts `int` and NumPy integers (not floats, as in 0.1.0). R and JavaScript accept any number equal to 0 or 1.
-- Strings, after trimming and lower casing: `true`, `t`, `yes`, `y`, `1`, `significant` mean significant; `false`, `f`, `no`, `n`, `0`, `not significant`, `ns` mean not significant.
+- Strings, after trimming and lower casing: `true`, `t`, `yes`, `y`, `1`, `significant` mean significant; `false`, `f`, `no`, `n`, `0`, `not significant`, `ns` mean not significant. Trimming removes leading and trailing spaces, tabs, carriage returns, and line feeds only (the R `trimws` default). Other white space, such as a non-breaking space, stays, so `"ns "` is not accepted.
 
 Anything else (including a missing value) is an invalid input error with the prefix `cannot coerce significance value to bool: `.
 
 **Checks, in this order**, each an invalid input error:
 
-1. Required columns (above).
-2. Every significance value converts (above), row by row.
-3. No self comparison (`group1` equals `group2` after conversion): `post_hoc_results must not contain self-comparisons`.
-4. No duplicate unordered pair: prefix `post_hoc_results contains duplicate unordered pairs: `.
-5. Group order and means (below), including the unique and non-empty group checks.
-6. Unknown groups: when the group order comes from the means, every label in the table must be in it. Prefix `post_hoc_results contains groups not present in means/groups: `.
-7. Missing pairs: every unordered pair of groups must have a row. Prefix `post_hoc_results missing unordered pairwise comparisons: `.
+1. Required columns (above). A plain empty list skips this check (see "Zero rows").
+2. No missing group label in the two group columns, all rows: `group labels must not be missing`.
+3. Every significance value converts (above), row by row.
+4. No self comparison (`group1` equals `group2` after conversion): `post_hoc_results must not contain self-comparisons`.
+5. No duplicate unordered pair: prefix `post_hoc_results contains duplicate unordered pairs: `.
+6. Group order and means (below), including the missing, unique, and non-empty group checks.
+7. Unknown groups: when the group order comes from the means, every label in the table must be in it. Prefix `post_hoc_results contains groups not present in means/groups: `.
+8. Missing pairs: every unordered pair of groups must have a row. Prefix `post_hoc_results missing unordered pairwise comparisons: `.
 
-A table with no rows and no means has no groups and fails check 5.
+A table with no rows and no means has no groups and fails check 6.
 
-**Group order.** When means are given, the group order is the order of the means. Otherwise it is the order of first appearance in the `group1` column read top to bottom, followed by the labels of the `group2` column read top to bottom that did not appear yet. The group order decides the canonical order of section 3 and the tie-break of section 5. Labels must be unique after conversion and there must be at least one group: prefixes `group labels must be unique after string conversion` and `at least one group is required`.
+**Group order.** When means are given, the group order is the order of the means. Otherwise it is the order of first appearance in the `group1` column read top to bottom, followed by the labels of the `group2` column read top to bottom that did not appear yet. The group order decides the canonical order of section 3 and the tie-break of section 5. Labels must not be missing, must be unique after conversion, and there must be at least one group, checked in that order: `group labels must not be missing`, `group labels must be unique after string conversion`, and `at least one group is required`.
 
 **Means.** Means are optional. They set the group order (below) and the order of the letters (section 7), and nothing else. When given, every group needs a mean, every mean must be a finite number, and the order of the means is the group order. Accepted forms:
 
@@ -51,7 +54,7 @@ A table with no rows and no means has no groups and fails check 5.
 | Python | mapping, `pandas.Series`, or `pandas.DataFrame` with columns `group` and `mean` (else its first two columns) |
 | JavaScript | `Map<string, number>`, or an array of `{ group, mean }`. A plain object is rejected, because integer-like keys reorder and the order decides ties |
 
-Invalid input errors for means: `means must be a mapping, pandas Series, pandas DataFrame, or None` (Python wording; R and JavaScript use their own words after the same meaning), `means DataFrame must have at least two columns or columns named group and mean`, `means are missing values for groups: `, and the new check `means must be finite numbers`. The finite check runs after the missing check, on the means of all groups.
+Invalid input errors for means: `means must be a mapping, pandas Series, pandas DataFrame, or None` (Python wording; R and JavaScript use their own words after the same meaning), `means DataFrame must have at least two columns or columns named group and mean`, `group labels must not be missing`, `means contain duplicate groups: `, `means are missing values for groups: `, and `means must be finite numbers`. They run in that order. A mean label may appear only once after string conversion; for pairwise input the means set the group order, so a repeated label fails there first with `group labels must be unique after string conversion`, and for adjacency input it fails with `means contain duplicate groups: `. The finite check runs after the missing check, on the means of all groups.
 
 From the validated table, the adjacency matrix has `adjacency[i][j]` true when the pair `{i, j}` is not significant, and `adjacency[i][i]` true. Section 2 then applies.
 
@@ -69,7 +72,7 @@ Used by `reduce_from_adjacency` and `reduceFromAdjacency`. The input is a square
 4. At least one group: `adjacency must contain at least one group`.
 5. Symmetric: `adjacency must be symmetric`.
 6. Diagonal true: `adjacency diagonal must be True`. (R and JavaScript may say `TRUE` or `true`; the prefix `adjacency diagonal must be ` is stable.)
-7. Groups: when given, they are converted and checked as in section 1 (unique, at least one), then their count must equal the matrix size: `number of groups must match adjacency dimensions`.
+7. Groups: when given, they are converted and checked as in section 1 (not missing, unique, at least one), then their count must equal the matrix size: `number of groups must match adjacency dimensions`.
 
 **Default groups** are `"1"` to `"n"` (strings, 1-based).
 
@@ -147,14 +150,14 @@ R keeps presolve off because the CRAN `highs` package bundles HiGHS 1.14, where 
 **Controls.** Both checks are solver errors, run after the method check of section 2 and before the cliques of section 3, `time_limit` first:
 
 - `time_limit` is absent or a finite number greater than 0 (seconds; a boolean or a string is not a number): otherwise `time_limit must be positive when provided`.
-- `max_cliques` is absent or a whole number of 1 or more (a boolean is not a number): otherwise the message starts with `max_cliques must be a positive integer or ` and ends with `None` (Python), `NULL` (R), or `null` (JavaScript).
+- `max_cliques` is absent or a finite whole number of 1 or more, of any size (a boolean is not a number; infinity is not finite; R keeps the value as a double, so a cap of 2^31 or more works): otherwise the message starts with `max_cliques must be a positive integer or ` and ends with `None` (Python), `NULL` (R), or `null` (JavaScript).
 
 **One budget.** `time_limit` is one budget for all solves in a call, measured from just before the first solve with a monotonic clock (R `proc.time()[["elapsed"]]`, Python `time.monotonic()`, JavaScript `performance.now() / 1000`). Each solve gets the time left as its HiGHS time limit. When no time is left before a solve starts, or HiGHS stops on the time limit, the call raises a solver error with the prefix `assignment-minimum MILP failed: ` and the text `Time limit reached`. The clique enumeration is not part of the budget.
 
 **Checks after each solve.**
 
 1. The model status must be optimal. For the re-solves of section 5, infeasible is also allowed and means "cannot set this variable to 1". With presolve on, HiGHS can report "unbounded or infeasible" for an infeasible model; no model here is unbounded, so that status counts as infeasible in the re-solves only. Any other status is a solver error with the prefix `assignment-minimum MILP failed: ` followed by the HiGHS status text. In the first solve, infeasible is also an error with that prefix.
-2. Every `x` must be within 1e-6 of 0 or 1. Then `x` is rounded.
+2. Every `x` must be finite and within 1e-6 of 0 or within 1e-6 of 1. Being integral is not enough: a value such as 2 or -1 is invalid. Then `x` is read as 1 when it is above 0.5.
 3. The rounded `x` must agree with the fixings made so far (fixed to 1 are 1, fixed to 0 are 0).
 4. The rounded `x` must give every group a membership and cover every edge (some clique has both ends set to 1).
 5. `sum(x)` must equal the rounded objective value on the first solve, and `z` on every later solve.
@@ -231,6 +234,8 @@ Invalid input error prefixes and messages, in one list:
 - `at least one group is required`
 - `means must be a mapping, pandas Series, pandas DataFrame, or None` (meaning, not exact words, in R and JavaScript)
 - `means DataFrame must have at least two columns or columns named group and mean` (meaning, not exact words, in R and JavaScript)
+- `group labels must not be missing`
+- `means contain duplicate groups: `
 - `means are missing values for groups: `
 - `means must be finite numbers`
 - `adjacency must not contain missing values`

@@ -236,10 +236,10 @@ function checkSolution(
   const rounded: boolean[] = [];
   for (let k = 0; k < numX; k++) {
     const x = values[k];
-    if (!Number.isFinite(x) || Math.abs(x - Math.round(x)) > INTEGRALITY_TOLERANCE) {
-      throw new SolverError(INVALID_SOLUTION);
-    }
-    const on = Math.round(x) > 0.5;
+    // Each membership must be 0 or 1 within the tolerance; an integral 2 or -1 is invalid too.
+    const binary = Math.abs(x) <= INTEGRALITY_TOLERANCE || Math.abs(x - 1) <= INTEGRALITY_TOLERANCE;
+    if (!Number.isFinite(x) || !binary) throw new SolverError(INVALID_SOLUTION);
+    const on = x > 0.5;
     if ((on && colUpper[k] < 0.5) || (!on && colLower[k] > 0.5)) throw new SolverError(INVALID_SOLUTION);
     rounded.push(on);
   }

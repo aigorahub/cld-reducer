@@ -12,9 +12,25 @@ import pandas as pd
 
 from .exceptions import InvalidInputError
 
+_MISSING_LABEL = "group labels must not be missing"
+_SIGNIFICANCE_WHITESPACE = " \t\r\n"
+
+
+def _is_missing_label(value: Any) -> bool:
+    """True for None, pandas NA or NaT, and a float NaN (docs/algorithm.md section 1)."""
+    if value is None or value is pd.NA or value is pd.NaT:
+        return True
+    return isinstance(value, (float, np.floating)) and math.isnan(value)
+
+
+def _check_labels_present(labels: Sequence[Any]) -> None:
+    if any(_is_missing_label(label) for label in labels):
+        raise InvalidInputError(_MISSING_LABEL)
+
 
 def normalize_groups(groups: Sequence[Any]) -> list[str]:
     """Normalize group labels to unique strings while preserving order."""
+    _check_labels_present(list(groups))
     normalized = [str(group) for group in groups]
     if len(set(normalized)) != len(normalized):
         msg = "group labels must be unique after string conversion"
@@ -49,7 +65,12 @@ def normalize_means(
         msg = "means must be a mapping, pandas Series, pandas DataFrame, or None"
         raise InvalidInputError(msg)
 
+    _check_labels_present(list(series.index))
     series.index = series.index.map(str)
+    repeated = list(dict.fromkeys(series.index[series.index.duplicated()]))
+    if repeated:
+        msg = f"means contain duplicate groups: {repeated}"
+        raise InvalidInputError(msg)
     missing = [group for group in groups if group not in series.index]
     if missing:
         msg = f"means are missing values for groups: {missing}"
@@ -76,13 +97,18 @@ def normalize_pairwise_frame(
     significant: str = "significant",
 ) -> pd.DataFrame:
     """Normalize pairwise post-hoc data to group1/group2/significant columns."""
-    frame = pd.DataFrame(post_hoc_results).copy()
+    if isinstance(post_hoc_results, (list, tuple)) and len(post_hoc_results) == 0:
+        # A plain empty list has no column names to check: it is a table with zero rows.
+        frame = pd.DataFrame(columns=list(dict.fromkeys([group1, group2, significant])))
+    else:
+        frame = pd.DataFrame(post_hoc_results).copy()
     required = {group1, group2, significant}
     missing = sorted(required.difference(frame.columns))
     if missing:
         msg = f"post_hoc_results missing required columns: {missing}"
         raise InvalidInputError(msg)
 
+    _check_labels_present(frame[group1].tolist() + frame[group2].tolist())
     normalized = frame[[group1, group2, significant]].rename(
         columns={group1: "group1", group2: "group2", significant: "significant"}
     )
@@ -245,7 +271,7 @@ def _coerce_bool(value: Any) -> bool:
     if isinstance(value, (int, np.integer)) and value in {0, 1}:
         return bool(value)
     if isinstance(value, str):
-        normalized = value.strip().lower()
+        normalized = value.strip(_SIGNIFICANCE_WHITESPACE).lower()
         if normalized in {"true", "t", "yes", "y", "1", "significant"}:
             return True
         if normalized in {"false", "f", "no", "n", "0", "not significant", "ns"}:

@@ -318,6 +318,26 @@ class InputRuleTest(unittest.TestCase):
         self.assertEqual(groups, ["b", "c", "a"])
         self.assertEqual(edges, [(0, 1), (0, 2)])
 
+    def test_rules_added_in_review_round_1(self):
+        # Missing labels, ASCII-only trimming, duplicate mean labels, zero rows, exact labels.
+        with self.assertRaises(g.SpecError) as ctx:
+            g.label_text(None)
+        self.assertEqual(ctx.exception.message, "group labels must not be missing")
+        self.assertFalse(g.coerce_significance(" ns\t\r\n"))
+        with self.assertRaises(g.SpecError):
+            g.coerce_significance("ns ")
+        with self.assertRaises(g.SpecError) as ctx:
+            g.match_means([{"group": "a", "mean": 1.0}, {"group": "a", "mean": 2.0}], ["a"])
+        self.assertTrue(ctx.exception.message.startswith("means contain duplicate groups: "))
+        zero = {"id": "t", "call": "pairs", "options": {},
+                "input": {"pairs": [], "means": [{"group": "a", "mean": 1.0}]}}
+        self.assertEqual(g.pairs_to_graph(zero), (["a"], [], [1.0]))
+        labels = ["a", "b\rc", "a\rb", "c"]
+        exact = {"id": "t", "call": "pairs", "options": {},
+                 "input": {"pairs": g.pairs_rows(labels, [(0, 1)]), "means": None}}
+        groups, edges, _ = g.pairs_to_graph(exact)
+        self.assertEqual((groups, edges), (labels, [(0, 1)]))
+
     def test_every_error_case_is_rejected_with_its_prefix(self):
         for case in g.error_cases():
             with self.assertRaises(g.SpecError, msg=case["id"]) as ctx:

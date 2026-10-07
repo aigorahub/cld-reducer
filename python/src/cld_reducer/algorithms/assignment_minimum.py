@@ -286,9 +286,12 @@ def _check_solution(
     if values is None or len(values) != model.problem.num_cols:
         raise SolverError(_INVALID_SOLUTION)
     x = np.asarray(values[:num_x], dtype=np.float64)
-    if not np.all(np.isfinite(x)) or np.any(np.abs(x - np.round(x)) > _INTEGRALITY_TOLERANCE):
+    # Each membership must be 0 or 1 within the tolerance; an integral 2 or -1 is invalid too.
+    near_zero = np.abs(x) <= _INTEGRALITY_TOLERANCE
+    near_one = np.abs(x - 1.0) <= _INTEGRALITY_TOLERANCE
+    if not np.all(np.isfinite(x) & (near_zero | near_one)):
         raise SolverError(_INVALID_SOLUTION)
-    rounded = np.round(x) > 0.5
+    rounded = x > 0.5
     if np.any(rounded & (col_upper[:num_x] < 0.5)) or np.any(~rounded & (col_lower[:num_x] > 0.5)):
         raise SolverError(_INVALID_SOLUTION)
     for columns in model.group_columns:

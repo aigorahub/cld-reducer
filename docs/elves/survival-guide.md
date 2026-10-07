@@ -187,9 +187,9 @@ If one of these happens after `EXECUTE APPROVED`, update the docs, commit, push,
 
 **Active batch:** none
 
-**What was just finished:** all six batches closed by the worker (session complete); driver reconciliation: cran-comments.md CI NOTE fix (2cc2ffa), full local record at 2cc2ffa green, acceptance evidence written.
+**What was just finished:** final review round 1 (Astra A1 to A6, Opus P2-1 and P3-1 to P3-4, Opus concerns) fixed by the driver in one commit, with shared fixtures and unit tests in all three languages; local checks green on the uncommitted tree.
 
-**Single next action:** hand the evidence head to Lantern for review.
+**Single next action:** wait for CI on the round 1 head, then print REVIEW READY with that head for both reviewers.
 
 ---
 

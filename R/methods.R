@@ -13,10 +13,14 @@ print.cld_reduction <- function(x, ...) {
 
 #' @export
 as.data.frame.cld_reduction <- function(x, row.names = NULL, optional = FALSE, ...) {
+  # Match positions, not names: `[` cannot select the empty-string name.
+  at_letters <- match(x$groups, names(x$letters))
+  at_tokens <- match(x$groups, names(x$assignments))
   data.frame(
     group = x$groups,
-    letters = unname(x$letters[x$groups]),
-    assignments = unname(vapply(x$assignments[x$groups], paste, character(1), collapse = " ")),
+    letters = unname(x$letters[at_letters]),
+    assignments = vapply(at_tokens, function(i) paste(x$assignments[[i]], collapse = " "),
+                         character(1)),
     row.names = row.names,
     stringsAsFactors = FALSE
   )

@@ -4,7 +4,7 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 
 ## Run digest
 
-- **Last updated:** 2026-10-07 ET, route (a) setup
+- **Last updated:** 2026-10-07 ET, final review round 1
 - **Current phase:** Terminal readiness (final review)
 - **Active batch:** none
 - **Last completed batch:** B6
@@ -15,6 +15,17 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 - **Latest Elves Report:** not generated yet
 - **Progress commits:** `[feat/r-js-packages · Batch N/6 · Contract|Implement|Validate|Review|Close] <outcome>`; the worker pushes only `feat/r-js-packages`; PR actions, run memory, final review stay with the driver.
 - **Handoff standard:** packet `.elves/runtime/worker-packet.md` has the eight handoff parts.
+
+---
+
+## 2026-10-07 ET: final review round 1 fixes
+
+- Reviews at `f6b2a65`: Astra (A1 to A6) and a fresh Opus 5.5 session (P2-1, P3-1 to P3-4, four concerns). The overlaps (duplicate means, `max_cliques`) are fixed once.
+- Spec (`docs/algorithm.md`): missing labels are invalid input, checked before significance; pairs are identified by exact labels (no delimiter join, no locale collation); significance trimming is ASCII only (space, tab, CR, LF); a table with zero rows has no comparisons; duplicate mean labels are rejected on both routes; `max_cliques` is any finite whole number; a solver value must be within 1e-6 of 0 or 1.
+- Code: R (`input.R`, `model.R`, `methods.R`, `cliques.R`), Python (`validation.py`, `assignment_minimum.py`), JavaScript (`input.ts`, `reduce.ts`). R pair keys use label indices; the R table method matches by name, so the empty-string label keeps its letters.
+- Fixtures: 4 new reduce cases (labels with CR, empty-string label, one group from zero rows, `max_cliques` 3,000,000,000) and 9 new error cases; now 1420 reduce, 65 errors, 18 labels. New unit tests: `tests/testthat/test-rules.R`, `python/tests/test_input_rules.py`, `js/test/rules.test.ts`, and a generator test.
+- Opus concerns: manual publish dispatch skips the tag check by design (D3, turfLP); the GitHub environment rules protect it (H8), so no change. R non-finite solver values, R locale collation, and Unicode trimming are fixed by the items above.
+- Local checks (WSL, uncommitted tree on `f6b2a65`): generate.py --check, test_generate.py (24), ruff check and format, pytest (2992), both examples, npm ci, typecheck, build, test (88), test:conformance, check:package, run_r.R (1503 cases), R CMD check --as-cran --no-manual (testthat 287 passed; 2 NOTEs: New submission, no pandoc locally). All exit 0.
 
 ---
 

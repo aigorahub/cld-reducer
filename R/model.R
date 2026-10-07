@@ -104,8 +104,10 @@ check_solution <- function(model, outcome, col_lower, col_upper, expected_sum) {
   values <- outcome$values
   if (length(values) != problem$num_cols || anyNA(values)) invalid()
   x <- values[seq_len(problem$num_x)]
-  if (any(abs(x - round(x)) > 1e-6)) invalid()
-  selected <- round(x) > 0.5
+  # Each membership must be 0 or 1 within the tolerance; an integral 2 or -1 is invalid too.
+  binary <- is.finite(x) & (abs(x) <= 1e-6 | abs(x - 1) <= 1e-6)
+  if (!all(binary)) invalid()
+  selected <- x > 0.5
   if (any(selected & col_upper[seq_len(problem$num_x)] < 0.5) ||
       any(!selected & col_lower[seq_len(problem$num_x)] > 0.5)) {
     invalid()
