@@ -328,6 +328,12 @@ class InputRuleTest(unittest.TestCase):
 
 
 class CheckerAndSetupTest(unittest.TestCase):
+    def test_error_prefixes_are_language_neutral(self):
+        # Python says None, R says NULL, JavaScript says null: a prefix must stop before it.
+        for case in g.error_cases():
+            prefix = case["expected"]["message_prefix"]
+            self.assertNotRegex(prefix, r"\b(None|NULL|null)\b", case["id"])
+
     def test_bad_results_differ_from_the_wheat_result(self):
         fixtures = HERE / "fixtures"
         checker = json.loads((fixtures / "checker.json").read_text(encoding="utf-8"))

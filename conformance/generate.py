@@ -677,12 +677,6 @@ def adjacency_rows(n, edges):
             for i in range(n)]
 
 
-def sig_rows(labels, nonsig_pairs):
-    nonsig = set(nonsig_pairs)
-    return [{"group1": labels[i], "group2": labels[j], "significant": (i, j) not in nonsig}
-            for i in range(len(labels)) for j in range(i + 1, len(labels))]
-
-
 def hand_cases():
     """Hand-built valid cases. Returns a list of cases (ids start with 'hand/')."""
     cases = []
@@ -793,19 +787,6 @@ def hand_cases():
     add("adjacency-booleans", "adjacency",
         {"adjacency": [[True, False, True], [False, True, False], [True, False, True]],
          "groups": ["a", "b", "c"], "means": None})
-    return cases
-
-
-def reduce_fixture_cases():
-    files, _ = all_input_files()
-    cases = []
-    for name, (_, records) in sorted(files.items()):
-        for rec in records:
-            if name.startswith("exhaustive"):
-                cases.append(exhaustive_case(rec))
-            else:
-                cases.append(case_from_record(rec))
-    cases.extend(hand_cases())
     return cases
 
 
@@ -925,7 +906,7 @@ def error_cases():
     pre_time = "time_limit must be positive when provided"
     for name, value in (("zero", 0), ("negative", -1), ("string", "30"), ("boolean", True)):
         adj("time-limit-" + name, ident2, pre_time, options={"time_limit": value}, kind=sol)
-    pre_cap = "max_cliques must be a positive integer or None"
+    pre_cap = "max_cliques must be a positive integer or "
     for name, value in (("zero", 0), ("negative", -3), ("fraction", 1.5), ("string", "10"),
                         ("boolean", True)):
         adj("max-cliques-" + name, ident2, pre_cap, options={"max_cliques": value}, kind=sol)
