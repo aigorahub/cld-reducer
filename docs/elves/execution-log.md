@@ -5,7 +5,7 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 ## Run digest
 
 - **Last updated:** 2026-10-07 ET, route (a) setup
-- **Current phase:** Launch preparation (route a, WSL)
+- **Current phase:** Blocked (prewalk qualification failed; waiting for Mason)
 - **Active batch:** none
 - **Last completed batch:** none yet
 - **Next exact batch:** B1: Layout move and specification
@@ -15,6 +15,17 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 - **Latest Elves Report:** not generated yet
 - **Progress commits:** `[feat/r-js-packages · Batch N/6 · Contract|Implement|Validate|Review|Close] <outcome>`; the worker pushes only `feat/r-js-packages`; PR actions, run memory, final review stay with the driver.
 - **Handoff standard:** packet `.elves/runtime/worker-packet.md` has the eight handoff parts.
+
+---
+
+## 2026-10-07 ET: launch attempt, required prewalk qualification failed
+
+- Keep-alive: a background `wsl.exe -d Ubuntu -- sleep infinity` from the Windows driver.
+- Launch (WSL, launch head `284906b`): `cobbler_agents.py native-worker launch --json --host claude --worktree /home/mason/src/cld-reducer-r-js-packages --run-id cld-reducer-r-js-packages-2026-10-07 --packet .elves/runtime/worker-packet.md --prewalk required --guide-model claude-opus-5-5 --guide-effort xhigh --execution-model claude-sonnet-5-5 --execution-effort high --forbidden-path docs/elves/survival-guide.md --forbidden-path docs/elves/execution-log.md`. Exit 1: `prewalk_live_qualification_failed`.
+- Evidence `/home/mason/.cache/elves/prewalk/claude-ec786e41cd02516dee2126a8f40bbc5a.attempt.json`: `diagnostic: ValidationIssue: Invalid worker effort 'xhigh'`, `model_calls_made: false`, `create_exit_zero: false`, `session_id: null`, `packet_sent_count: 1` (counted, never delivered to a model).
+- Cause: Elves 2.39.0 `host_profiles.py` gives the `claude` profile `supported_efforts = {low, medium, high}` (line 367) and no live model catalog, so `supported_efforts_for_route("claude", "claude-opus-5-5")` rejects `xhigh` in `build_native_worker_spec` (`native_worker.py` line 377). Claude Code 2.1.246 itself lists `--effort` levels low, medium, high, xhigh, max.
+- Per the brief (stop and report on qualification failure; no cold substitute; no silent model change): stopped. No worker session exists. The branch and draft PR #3 are unchanged at `284906b` plus this record.
+- Options for Mason: (1) guide route claude-opus-5-5 at `high` with the execution route unchanged (one canary per execution route covers any guide route, so qualification would run again for claude-sonnet-5-5 at high); (2) an Elves change that lets Claude routes use `xhigh`, then retry.
 
 ---
 

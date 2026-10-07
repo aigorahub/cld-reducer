@@ -22,6 +22,8 @@ Durable lessons for this repository and this machine. Run status goes in the exe
 - [L13] [2026-10-07] In WSL, Claude Code lives in `~/.local/bin` (not on the default login `PATH`) and was already logged in; check `claude auth status` before asking for a login. (evidence: execution-log 2026-10-07 route (a) setup)
 - [L14] [2026-10-07] PowerShell mangles `|` and `$` inside `wsl.exe -- bash -c '...'`; write a script to a Windows folder and run it as `wsl.exe -d Ubuntu -- bash /mnt/c/.../script.sh`. Git Bash also rewrites `/mnt/...` arguments. (evidence: execution-log 2026-10-07 route (a) setup)
 
+- [L15] [2026-10-07] Elves 2.39.0 accepts only `low`, `medium`, `high` as Claude worker efforts (no Claude model catalog), so a Claude guide or execution route at `xhigh` or `max` fails qualification before any model call, although Claude Code accepts those levels. (evidence: execution-log 2026-10-07 launch attempt)
+
 ## Retired learnings
 
 None.

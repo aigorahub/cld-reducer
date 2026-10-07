@@ -241,8 +241,8 @@
     "default_for_session": true
   },
   "continuation_guard": {
-    "reason": "EXECUTE APPROVED (route a). Work remains until the draft PR meets the plan's Definition of green.",
-    "stop_allowed": false
+    "stop_allowed": true,
+    "reason": "Required prewalk qualification failed before any model call (Elves rejects guide effort xhigh for Claude). Brief: stop and report; route change needs Mason."
   },
   "elves_report_path": "/tmp/elves-report-cld-reducer-2026-10-07.html",
   "elves_version": "2.39.0",
@@ -337,7 +337,7 @@
       "model": "claude-opus-5-5"
     }
   },
-  "phase": "launching",
+  "phase": "blocked_prewalk_qualification",
   "plan_path": "docs/plans/r-js-packages/plan.md",
   "pr": {
     "status": "open_draft",
@@ -360,7 +360,15 @@
     },
     "host_cli": "Claude Code 2.1.246 in WSL",
     "requested": "required",
-    "status": "pending_qualification"
+    "status": "qualification_failed",
+    "failure": {
+      "code": "prewalk_live_qualification_failed",
+      "diagnostic": "ValidationIssue: Invalid worker effort `xhigh`",
+      "evidence": "/home/mason/.cache/elves/prewalk/claude-ec786e41cd02516dee2126a8f40bbc5a.attempt.json",
+      "model_calls_made": false,
+      "cause": "Elves 2.39.0 host_profiles.py: the claude profile supported_efforts is {low, medium, high} and the claude host has no live model catalog, so supported_efforts_for_route() rejects xhigh; Claude Code 2.1.246 itself accepts --effort xhigh.",
+      "at": "2026-10-07T19:00:32Z"
+    }
   },
   "repository": "aigorahub/cld-reducer",
   "run_control": {

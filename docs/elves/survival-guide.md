@@ -95,9 +95,9 @@ ends at a green, reviewed, draft PR. No merge, tag, release, CRAN submission, or
 ## Stop Gate
 
 - **Planned batches remaining:** 6
-- **Stop allowed right now:** no
-- **Why:** EXECUTE APPROVED; all six batches remain.
-- **Next required action:** finish the WSL setup, get `gh` auth from Mason, push, open the draft PR, then launch the qualified prewalk worker.
+- **Stop allowed right now:** yes
+- **Why:** required prewalk qualification failed before any model call: Elves 2.39.0 rejects guide effort `xhigh` for Claude. The brief says stop and report; a route change needs Mason.
+- **Next required action:** wait for Mason's decision relayed by Lantern (guide effort `high`, or an Elves fix that adds `xhigh` for Claude).
 
 After `EXECUTE APPROVED`, set `Stop allowed right now: no` until the stop point.
 
@@ -183,13 +183,13 @@ If one of these happens after `EXECUTE APPROVED`, update the docs, commit, push,
 
 ## Current Phase
 
-**Status:** Launch preparation (route a, WSL)
+**Status:** Blocked (prewalk qualification)
 
 **Active batch:** none
 
-**What was just finished:** WSL host setup (packages, Node, uv, Elves 2.39.0), the registered WSL worktree, and the commit transfer.
+**What was just finished:** preflight, push, draft PR #3, rollback ref b0, and the launch attempt, which failed at qualification.
 
-**Single next action:** commit the re-homed run docs, install R packages, then ask Mason for `gh` auth in WSL.
+**Single next action:** wait for Mason's route decision.
 
 ---
 
