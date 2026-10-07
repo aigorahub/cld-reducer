@@ -190,8 +190,30 @@ def test_wheat_needs_several_solves_and_matches_the_paper(
     assert len(seen) > 12
 
 
-def test_scripted_invalid_later_solution_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+def first_solve_off_canonical(monkeypatch: pytest.MonkeyPatch):
+    """Make the first solve return a minimal display other than the canonical one.
+
+    HiGHS may return the canonical optimum of the wheat example at once, which would leave
+    no feasible re-solve to test. A tiny extra cost on the early memberships moves the first
+    solution away from it; the later solves are unchanged. Returns the solver function that
+    was in place, for the test to wrap.
+    """
     real = _solver.run
+
+    def perturbed(problem, col_lower, col_upper, *, sum_limit=None, time_limit=None):
+        if sum_limit is None:
+            k = np.arange(problem.num_x)
+            cost = problem.cost.copy()
+            cost[: problem.num_x] = 1 + 1e-3 * (problem.num_x - k) / problem.num_x
+            problem = dataclasses.replace(problem, cost=cost)
+        return real(problem, col_lower, col_upper, sum_limit=sum_limit, time_limit=time_limit)
+
+    monkeypatch.setattr(_solver, "run", perturbed)
+    return perturbed
+
+
+def test_scripted_invalid_later_solution_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    real = first_solve_off_canonical(monkeypatch)
     calls = {"optimal_after_first": 0}
 
     def wrapper(*args, **kwargs):
@@ -210,7 +232,7 @@ def test_scripted_invalid_later_solution_raises(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_solution_violating_a_fixing_is_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
-    real = _solver.run
+    real = first_solve_off_canonical(monkeypatch)
 
     def wrapper(problem, col_lower, col_upper, **kwargs):
         outcome = real(problem, col_lower, col_upper, **kwargs)
