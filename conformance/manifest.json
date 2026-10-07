@@ -1,0 +1,174 @@
+{
+ "schema_version": 1,
+ "data": {
+  "piepho2004_wheat_pairs.csv": {
+   "sha256": "abb7173f23c1ffbc8b95eb6e62c2464510c3f8e27949d3596e9839420d23ff1b"
+  },
+  "simple_abc_to_ac_pairs.csv": {
+   "sha256": "77e6e5e6e7e0d651f87eb27074ac6561281a175afd3f18983896d39dce6a51b0"
+  },
+  "simple_abc_to_ac_means.csv": {
+   "sha256": "e8701851a94095fc7c8bae0f2282c806dedffbb1dc50d4d13640cd27a6d42aa0"
+  }
+ },
+ "inputs": {
+  "exhaustive-n1": {
+   "sha256": "2cebfc05ec59493573bd602a6ac7ffa902e645ef1519956f7c05fe717185e81f",
+   "graphs": 1,
+   "origin": "generate.py",
+   "source": "every labeled graph on 1 groups (edge subset number in the id)"
+  },
+  "exhaustive-n2": {
+   "sha256": "30db9d0e1014bd2cead8abd07db68f93770e1a13941f6ef27630f6344db52c8f",
+   "graphs": 2,
+   "origin": "generate.py",
+   "source": "every labeled graph on 2 groups (edge subset number in the id)"
+  },
+  "exhaustive-n3": {
+   "sha256": "fd7b94865bfa7b600334adc93274d822697abc3feb4f8b51a70e38461ca0206d",
+   "graphs": 8,
+   "origin": "generate.py",
+   "source": "every labeled graph on 3 groups (edge subset number in the id)"
+  },
+  "exhaustive-n4": {
+   "sha256": "547a767bd1daa41f60f3189a34cf420741194f8f4a18c6e4f7d70457dcb19991",
+   "graphs": 64,
+   "origin": "generate.py",
+   "source": "every labeled graph on 4 groups (edge subset number in the id)"
+  },
+  "exhaustive-n5": {
+   "sha256": "7cc323b5e9ec9bf777894db572b1bfe75f31bfb5229fb423ae5c93cb0bf1e9d4",
+   "graphs": 1024,
+   "origin": "generate.py",
+   "source": "every labeled graph on 5 groups (edge subset number in the id)"
+  },
+  "random-n06": {
+   "sha256": "7d5e2fce85326eb940370aa259cd17afab983da85016b029da96e6c0d38a5a19",
+   "graphs": 40,
+   "origin": "generate.py",
+   "source": "seeded random graphs on 6 groups (splitmix64; seed and edge probability per graph)"
+  },
+  "random-n07": {
+   "sha256": "538562d3acb7ec2996e4ca05d9443dd3265f99354ec1d462117a9810d938eaee",
+   "graphs": 40,
+   "origin": "generate.py",
+   "source": "seeded random graphs on 7 groups (splitmix64; seed and edge probability per graph)"
+  },
+  "random-n08": {
+   "sha256": "df99b1c2c2dcbcc92054b4ee589eb990503bb0aec65c84a20b250ee0fc961d1b",
+   "graphs": 40,
+   "origin": "generate.py",
+   "source": "seeded random graphs on 8 groups (splitmix64; seed and edge probability per graph)"
+  },
+  "random-n09": {
+   "sha256": "e05467f64f9ed8c24b5656136bdd6953cc06ac0b0fe07e5699513d662260be98",
+   "graphs": 40,
+   "origin": "generate.py",
+   "source": "seeded random graphs on 9 groups (splitmix64; seed and edge probability per graph)"
+  },
+  "random-n10": {
+   "sha256": "c64e5c6a40fe2e7daf2c14b9a0e9152dfa2bb35af7a317b7413778861f7f6abb",
+   "graphs": 39,
+   "origin": "generate.py",
+   "source": "seeded random graphs on 10 groups (splitmix64; seed and edge probability per graph)"
+  },
+  "random-n11": {
+   "sha256": "8a89c1f9f87e5adfb24ea83918f0d5dbd8921d4b14bfe6bd7f4d531f0561cac3",
+   "graphs": 36,
+   "origin": "generate.py",
+   "source": "seeded random graphs on 11 groups (splitmix64; seed and edge probability per graph)"
+  },
+  "random-n12": {
+   "sha256": "fe849b51675ac04c395018837e7d6f00314843906cabd7ddce3b44ea0cd69d9f",
+   "graphs": 29,
+   "origin": "generate.py",
+   "source": "seeded random graphs on 12 groups (splitmix64; seed and edge probability per graph)"
+  },
+  "structured": {
+   "sha256": "2d875776a703ec5fbbe12158b62f2ea0234776089f2cdd4b6fe9fefc3b2444c5",
+   "graphs": 24,
+   "origin": "generate.py",
+   "source": "means 10 down in steps of 0.5, not significant when the means differ by at most the threshold; 'perm' lists the groups in a shuffled mean order"
+  }
+ },
+ "counts": {
+  "reduce": 1416,
+  "reduce_exhaustive_1_to_5_groups": 1099,
+  "reduce_random_6_to_12_groups": 264,
+  "reduce_structured": 24,
+  "reduce_hand": 29,
+  "errors": 56,
+  "labels": 18,
+  "checker_bad_results": 3
+ },
+ "excluded": [
+  {
+   "id": "r10-34",
+   "reason": "76 membership variables, more than 70: the pure Python exact search is too slow"
+  },
+  {
+   "id": "r11-32",
+   "reason": "79 membership variables, more than 70: the pure Python exact search is too slow"
+  },
+  {
+   "id": "r11-34",
+   "reason": "78 membership variables, more than 70: the pure Python exact search is too slow"
+  },
+  {
+   "id": "r11-36",
+   "reason": "84 membership variables, more than 70: the pure Python exact search is too slow"
+  },
+  {
+   "id": "r11-39",
+   "reason": "80 membership variables, more than 70: the pure Python exact search is too slow"
+  },
+  {
+   "id": "r12-25",
+   "reason": "88 membership variables, more than 70: the pure Python exact search is too slow"
+  },
+  {
+   "id": "r12-26",
+   "reason": "99 membership variables, more than 70: the pure Python exact search is too slow"
+  },
+  {
+   "id": "r12-27",
+   "reason": "72 membership variables, more than 70: the pure Python exact search is too slow"
+  },
+  {
+   "id": "r12-28",
+   "reason": "122 membership variables, more than 70: the pure Python exact search is too slow"
+  },
+  {
+   "id": "r12-30",
+   "reason": "111 membership variables, more than 70: the pure Python exact search is too slow"
+  },
+  {
+   "id": "r12-31",
+   "reason": "74 membership variables, more than 70: the pure Python exact search is too slow"
+  },
+  {
+   "id": "r12-32",
+   "reason": "93 membership variables, more than 70: the pure Python exact search is too slow"
+  },
+  {
+   "id": "r12-33",
+   "reason": "115 membership variables, more than 70: the pure Python exact search is too slow"
+  },
+  {
+   "id": "r12-35",
+   "reason": "72 membership variables, more than 70: the pure Python exact search is too slow"
+  },
+  {
+   "id": "r12-36",
+   "reason": "87 membership variables, more than 70: the pure Python exact search is too slow"
+  },
+  {
+   "id": "r12-38",
+   "reason": "118 membership variables, more than 70: the pure Python exact search is too slow"
+  },
+  {
+   "id": "exhaustive graphs with 6 or more groups",
+   "reason": "2^15 graphs on 6 groups and 2^21 on 7 are too many fixtures; test_generate.py checks the search against plain enumeration on all graphs with up to 6 groups"
+  }
+ ]
+}
