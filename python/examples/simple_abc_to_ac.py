@@ -19,7 +19,7 @@ def main() -> None:
     print()
     print(f"Assignments before: {result.stats['assignments_before']}")
     print(f"Assignments after:  {result.stats['assignments_after']}")
-    print(f"Reduction:          {result.stats['reduction_pct']}%")
+    print(f"Reduction:          {result.stats['reduction_pct']:.1f}%")
     print(f"Preserved:          {result.relationship_preserved}")
 
 

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
+from numbers import Real
 from typing import Any
 
 import numpy as np
@@ -52,7 +54,18 @@ def normalize_means(
     if missing:
         msg = f"means are missing values for groups: {missing}"
         raise InvalidInputError(msg)
-    return pd.to_numeric(series.loc[list(groups)], errors="raise")
+    ordered = series.loc[list(groups)]
+    values = []
+    for value in ordered.tolist():
+        if (
+            isinstance(value, (bool, np.bool_))
+            or not isinstance(value, Real)
+            or not math.isfinite(float(value))
+        ):
+            msg = "means must be finite numbers"
+            raise InvalidInputError(msg)
+        values.append(float(value))
+    return pd.Series(values, index=ordered.index, dtype=float)
 
 
 def normalize_pairwise_frame(
