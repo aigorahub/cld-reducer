@@ -18,6 +18,44 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 
 ---
 
+## 2026-10-07 ET: plan review round 3 (Astra, routed by Lantern)
+
+**Input:** Astra reviewed staging commit `2147009`: CHANGES NEEDED, two findings; round 2
+findings 1, 3, 4, 5 fixed, finding 2 partly fixed. Lantern: fix both, correct the H13 detection
+claim, extend R0.
+
+**Verification and fixes:**
+
+1. P1 audit rejects authorized progress: confirmed. `git worktree list --porcelain` prints each
+   worktree's `HEAD` (the feature worktree showed `2147009`), so an unchanged-output rule fails
+   on the first worker commit; the "owned paths" rule on all commits rejected the driver's own
+   evidence commits. Fixed: authorized changes A to F (feature branch forward only, recorded
+   driver commits limited to run-doc paths, worker commits limited to owned surfaces of started
+   batches, driver rollback refs, fetch-only remote-tracking updates, changes by other accounts
+   per GitHub events); check 3 compares worktree topology and the heads of the other worktrees
+   only; check 6 splits driver and worker commits.
+2. P2 remote audit misses moved and deleted refs: confirmed (only new refs and `main` were
+   checked). Fixed: check 8 compares the full ref name and object id map of `git ls-remote
+   origin` (new, deleted, or moved fails, except A and F; `refs/pull/*` excluded; tags
+   included); check 7 adds the turfLP remote ref map.
+
+**Also changed:** driver-private route (c) state (audit script, baseline, driver-commit record,
+phase record, audit logs) moves outside the worktree to
+`C:\Users\Megan\AppData\Local\elves-runs\cld-reducer-r-js-packages-2026-10-07\route-c\`, and
+the packet forbids that folder and any GitHub write. The audit section states its threat model
+(cooperative worker, same Windows user) and what it does not cover. H13 item (2) now lists
+exactly the checked changes and the limits. R0 adds: a disposable bare remote; authorized worker
+commit, driver evidence commit, and rollback ref passing; and failing cases for a moved local
+`main`, a worker edit to a run doc (committed and uncommitted), origin URL change, a new hook, a
+new worktree, a template edit, moved and deleted remote branch and tag, a new remote branch, and
+an attribution line. Plan version 4; packet version 4. Acceptance rows unchanged (39);
+`validate` OK; survival guide OK.
+
+**Note:** the round 2 entry below names `.elves/runtime/route-c/phase.json`; that path is
+superseded by the driver-private folder above.
+
+---
+
 ## 2026-10-07 ET: plan review round 2 (Astra, routed by Lantern)
 
 **Input:** Astra reviewed staging commit `328f902`: CHANGES NEEDED, five findings; round 1

@@ -241,7 +241,7 @@
     "default_for_session": true
   },
   "continuation_guard": {
-    "reason": "Phase 1 plan review gate (round 3): wait for Lantern routing, Mason's route decision (H13), and EXECUTE APPROVED.",
+    "reason": "Phase 1 plan review gate (round 4): wait for Lantern routing, Mason's route decision (H13), and EXECUTE APPROVED.",
     "stop_allowed": true
   },
   "elves_version": "2.39.0",
@@ -253,9 +253,11 @@
     },
     "proposed": "c",
     "route_c": {
-      "authority_audit": ".elves/runtime/route-c/audit.py (detects, does not prevent)",
+      "authority_audit": "C:\\Users\\Megan\\AppData\\Local\\elves-runs\\cld-reducer-r-js-packages-2026-10-07\\route-c\\audit.py (detects, does not prevent; cooperative-worker threat model)",
+      "driver_commit_record": "C:\\Users\\Megan\\AppData\\Local\\elves-runs\\cld-reducer-r-js-packages-2026-10-07\\route-c\\driver-commits.json",
+      "driver_private_dir": "C:\\Users\\Megan\\AppData\\Local\\elves-runs\\cld-reducer-r-js-packages-2026-10-07\\route-c",
       "herdr_identity": "driver runs herdr pane report-agent-session after each start",
-      "phase_record": ".elves/runtime/route-c/phase.json",
+      "phase_record": "C:\\Users\\Megan\\AppData\\Local\\elves-runs\\cld-reducer-r-js-packages-2026-10-07\\route-c\\phase.json",
       "recovery": "phase-specific: guide failure resumes the guide route with prewalk.recovery_prompt(); execution failure resumes the execution route with Continue.",
       "rehearsal_r0": "pending",
       "worker_launch_flags": "--safe-mode --permission-mode auto; guide: --session-id S --model claude-opus-5-5 --effort xhigh; execution: --resume S --model claude-sonnet-5-5 --effort high"

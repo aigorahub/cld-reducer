@@ -1,7 +1,7 @@
 # Plan: R and JavaScript packages for cld-reducer, structured like turfLP
 
-Plan version: 3 (2026-10-07), after Astra plan reviews round 1 (six findings) and round 2 (five
-findings), all fixed; see the execution log. Driver: cld-driver (Claude Code, claude-opus-5-5, xhigh).
+Plan version: 4 (2026-10-07), after Astra plan reviews round 1 (six findings), round 2 (five
+findings), and round 3 (two findings), all fixed; see the execution log. Driver: cld-driver (Claude Code, claude-opus-5-5, xhigh).
 Branch: `feat/r-js-packages`. Worktree: `C:\Claude\cld-reducer-r-js-packages`.
 Base: `origin/main` at `eb95fe9ad5e983a1f2e6e02668c3419647b9571e`.
 
@@ -766,9 +766,14 @@ These need a person. The run does not do them.
 - **H13.** Choose the execution route (a), (b), or (c) of the section "Execution routes". Route
   (c) needs Mason's explicit acceptance of three separate things: (1) experimental, unqualified
   prewalk (items 1 to 3, 5 to 7); (2) the residual authority risk (item 4): the worker has full
-  local git and `gh` authority, and the authority audit only **detects** prohibited actions after
-  the fact (moved local refs, changed git config or remotes, a changed turfLP checkout, pushed
-  refs, PR or release changes); it does not prevent them and cannot undo a merge or a push; (3)
+  local git and `gh` authority. The authority audit only **detects**, after the fact, the changes
+  its checks 1 to 9 list: new, missing, or moved local refs; feature history rewrites; worktree
+  topology and other worktrees' heads; git config, remotes, and hooks; worker commits outside
+  their owned paths or into driver run docs; attribution lines; changes to the turfLP checkout
+  and its remote refs; new, moved, or deleted remote refs of cld-reducer; and PR, issue, and
+  release changes. It does not prevent them, cannot undo a merge, push, deletion, or release,
+  does not cover other repositories, settings, or comments, and assumes a cooperative worker
+  (the worker runs as the same Windows user and could edit the driver-private records); (3)
   the launch configuration (items 8 and 9): `--safe-mode` without the user's `CLAUDE.md`,
   skills, plugins, MCP servers, or hooks (including the writing-style Stop hook), and Herdr
   identity reported by the driver.
@@ -856,8 +861,8 @@ start with the same command the hook runs:
 <startup|resume>`. The packet carries the house rules that safe mode no longer loads from
 `CLAUDE.md` (no AI attribution, the writing rules), because the style Stop hook is off.
 
-**Phase record.** The driver keeps `.elves/runtime/route-c/phase.json` (untracked, driver-owned)
-with one of `guide`, `guide_recovery`, `transition_check`, `execution`, plus the session id,
+**Phase record.** The driver keeps `phase.json` in its private folder outside the worktree (see
+"Route (c) authority audit") with one of `guide`, `guide_recovery`, `transition_check`, `execution`, plus the session id,
 the route of the running process, and the time. The driver writes it before each start and
 each transition. Recovery always reads it first.
 
@@ -973,71 +978,131 @@ Launch location and working directory are separate checks:
 ### Route (c) authority audit
 
 The worker runs with Mason's full local git access and `gh` authority (scopes `repo`,
-`workflow`). Nothing below **prevents** a prohibited action. The audit **detects** it after the
-fact, at each gate (step 7, every batch boundary, and terminal readiness), before the next
-prompt. A failed audit stops the run and the driver reports to Lantern and Mason. Some actions
-cannot be undone by detection (for example a merged PR or a pushed ref). The installed Elves git
-helpers (`git_contract.py`) fail on this host (`FileNotFoundError` when they call git), so the
-driver runs these checks with its own script `.elves/runtime/route-c/audit.py` (untracked,
-driver-owned), which compares against a baseline taken at step 1.
+`workflow`). Nothing below **prevents** a prohibited action. The audit **detects** the listed
+changes after the fact, at each gate (step 7, every batch boundary, and terminal readiness),
+before the next prompt. A failed audit stops the run and the driver reports to Lantern and Mason.
+Detection cannot undo a merged PR, a pushed or deleted ref, or a published release. The installed
+Elves git helpers (`git_contract.py`) fail on this host (`FileNotFoundError` when they call git),
+so the driver runs these checks with its own script.
+
+**Driver-private state.** The audit script, its baseline, the driver-commit record, the phase
+record, and the audit logs live outside the worktree, in
+`C:\Users\Megan\AppData\Local\elves-runs\cld-reducer-r-js-packages-2026-10-07\route-c\`
+(`audit.py`, `baseline.json`, `driver-commits.json`, `phase.json`, `audit-<gate>.json`). The
+worker packet forbids that folder. The baseline is taken at step 1 and updated only by the
+driver, only for the changes named below as authorized, with each update logged.
+
+**Threat model.** The audit catches mistakes and instruction drift by a cooperative worker. It
+is not a defense against a deliberate attacker: the worker runs as the same Windows user and
+could, in principle, edit the driver-private files. The driver's own transcript and the
+execution log keep a second copy of every driver commit SHA and every baseline update.
+
+**Authorized changes** (the only ones that pass):
+
+- A. The feature branch moves forward. `refs/heads/feat/r-js-packages` (local) and
+  `refs/heads/feat/r-js-packages` (remote) may move only to a descendant of the last verified
+  tip, and the remote tip must equal the local tip or be its ancestor.
+- B. Driver commits. Each commit the driver makes is recorded in `driver-commits.json` (SHA,
+  subject, changed paths) right after it is created, and also in the execution log. A recorded
+  driver commit may touch only the driver's run docs: `.elves-session.json`, `docs/elves/**`,
+  and `docs/plans/r-js-packages/plan.md`.
+- C. Worker commits. Every other commit since the launch head is a worker commit. It may touch
+  only the owned surfaces of the batches started so far (the union of their handoff blocks; spec
+  and generator fixes under the fix protocol count as B1 and B2 surfaces), and never a driver
+  run doc.
+- D. Driver refs. The driver's rollback refs `refs/elves/rollback/cld-reducer-r-js-packages-2026-10-07/*`
+  are created by the driver and recorded in the baseline when created.
+- E. Remote-tracking refs. A `refs/remotes/origin/*` ref may change only to the value that
+  `git ls-remote origin` reports for the same ref at the same gate (a fetch).
+- F. Changes by other people. A change to a remote ref that GitHub events
+  (`gh api repos/aigorahub/cld-reducer/events`) attribute to an account other than the one the
+  worker uses (`MasonHsu02`) is recorded and then accepted into the baseline. A change by
+  `MasonHsu02` during the run is a violation unless Mason confirms he made it.
+
+**Checks.** Each compares the current state with the baseline as updated by A to F. Anything
+else fails.
 
 Local, in the cld-reducer repository (shared by the main checkout and the worktree):
 
-1. All local refs (`git for-each-ref --format="%(refname) %(objectname)" refs`), except
-   `refs/heads/feat/r-js-packages`, `refs/remotes/origin/feat/r-js-packages`, and the driver's
-   own rollback refs: no ref is new, missing, or moved. This covers local `main`, tags, and
+1. Local refs: the full map of ref name to object id from
+   `git for-each-ref --format="%(refname) %(objectname)" refs`. A new, missing, or moved ref
+   fails unless A, D, or E covers it. This covers local `main`, other branches, tags, and
    `refs/stash`.
-2. The worktree is on `feat/r-js-packages`; `eb95fe9` and the last driver-verified tip are both
-   ancestors of `HEAD` (no history rewrite).
-3. `git worktree list --porcelain` is unchanged (no new or moved worktree); the main checkout
-   `C:\Claude\cld-reducer` is clean, on `main`, at its baseline commit.
-4. Git configuration: SHA-256 of `git config --local --list`, of `git config --global --list`,
-   of `git config --system --list`, and of `git remote -v` are unchanged (covers origin URLs,
-   new remotes, `core.hooksPath`, credential helpers, and push settings). The packet tells the
-   worker to push with `git push origin HEAD:feat/r-js-packages`, which changes no config.
-5. Hooks: the list and SHA-256 of non-sample files in `.git/hooks/` is unchanged.
-6. Commits since the staging head contain no `Co-Authored-By` or `Generated with` line, and
-   only touch paths owned by the batches done so far.
+2. Feature ancestry: the worktree is on `feat/r-js-packages`; `eb95fe9`, the launch head, and the
+   last verified tip are ancestors of `HEAD` (no history rewrite).
+3. Worktree topology: from `git worktree list --porcelain`, the set of (path, branch, locked,
+   prunable) entries is unchanged, and the `HEAD` of every worktree other than the feature
+   worktree is unchanged (the main checkout `C:\Claude\cld-reducer` stays clean, on `main`, at
+   its baseline commit). The feature worktree's `HEAD` is checked by checks 1 and 2, not here.
+4. Git configuration: SHA-256 of `git config --local --list`, `git config --global --list`,
+   `git config --system --list`, and `git remote -v` are unchanged (origin URLs, new remotes,
+   `core.hooksPath`, credential helpers, push settings). The packet tells the worker to push with
+   `git push origin HEAD:feat/r-js-packages`, which changes no config.
+5. Hooks: the list and SHA-256 of non-sample files in `.git/hooks/` are unchanged.
+6. Commits since the launch head: each is either a recorded driver commit that meets B or a
+   worker commit that meets C; no commit message has a `Co-Authored-By` or `Generated with`
+   line. An uncommitted change to a driver run doc in the worktree also fails.
 
 Template:
 
-7. `C:\Claude\turfLP`: `HEAD` is `c6e6b86`, `git status --porcelain --ignored` matches the
-   baseline (catches tracked, untracked, and ignored files, for example a `node_modules`
-   folder), and its refs and config digests are unchanged.
+7. `C:\Claude\turfLP`: `HEAD` is `c6e6b86`; `git status --porcelain --ignored` matches the
+   baseline (tracked, untracked, and ignored files, for example a `node_modules` folder); its
+   local ref map and config digests are unchanged; and its remote ref map
+   (`git -C C:\Claude\turfLP ls-remote origin`, names and object ids) is unchanged except for
+   changes accepted under F.
 
-Remote and GitHub:
+Remote and GitHub (cld-reducer):
 
-8. `git ls-remote origin`: no new ref other than `refs/heads/feat/r-js-packages` and GitHub's
-   `refs/pull/*`. If `main` moved, the driver checks
-   `gh api repos/aigorahub/cld-reducer/events` for the actor and event; a change made by the
-   account the worker uses during the batch counts as a violation (other team merges do not).
-9. `gh pr view <n>`: still a draft, open, not merged, title and body unchanged since the
-   driver's last edit; `gh pr list --state all --author @me` shows no new PR; `gh release list`
-   and the remote tags show nothing new.
+8. Remote refs: the full map of ref name to object id from `git ls-remote origin`, compared with
+   the baseline. A **new, deleted, or moved** ref fails unless A or F covers it. GitHub-managed
+   `refs/pull/*` are excluded. Tags are included, so a moved or deleted tag fails.
+9. GitHub state: `gh pr view <n>` shows the PR still a draft, open, not merged, with title and
+   body unchanged since the driver's last edit; `gh pr list --state all --author @me` and
+   `gh issue list --state all --author @me` show nothing new except items the driver created and
+   recorded; `gh release list` shows nothing new.
 
-R0 (below) proves that the script fails on each kind of violation before the real launch.
+**Not covered** (stated in H13): other GitHub repositories and organizations the account can
+write to (except the turfLP refs in check 7), repository or organization settings, comments and
+reviews on existing items, files outside the cld-reducer repository and turfLP, and anything a
+deliberate attacker hides by editing the driver-private files.
 
 ### Route (c) rehearsal R0
 
 Before the real launch, the driver runs route (c) once on disposable repositories in the
-scratchpad (local only, no remote, no push), in a Herdr tab `cld-rehearsal` that it creates and
-closes afterwards, with a tiny packet ("add one line to a.txt, then
-a test file"). It uses the same flags and models, so it costs a few short turns. It must show:
+scratchpad, in a Herdr tab `cld-rehearsal` that it creates and closes afterwards. Each
+disposable repository has a disposable local bare repository as its `origin` (no network, no
+GitHub). The packet is tiny ("add one line to a.txt, then a test file"). R0 uses the same flags
+and models, so it costs a few short turns. The GitHub checks (check 9 and the events lookup in F)
+cannot run against a bare remote; R0 runs them once read-only against the real repository to
+prove they work, and the driver records that. R0 must show:
 
-1. Start, identity report, guide turn, exit, and resume on the execution route in one Herdr
-   pane: `herdr agent get` and the transcript show one session id; `process-info` shows the
-   Sonnet argv; the transcript shows the Opus then Sonnet `model` values and no hook entries.
+1. Lifecycle: start, identity report, guide turn, exit, and resume on the execution route in one
+   Herdr pane: `herdr agent get` and the transcript show one session id; `process-info` shows
+   the Sonnet argv; the transcript shows the Opus then Sonnet `model` values and no hook
+   entries.
 2. Guide interruption: the driver interrupts a guide after its first edit and before its
    checkpoint (`herdr agent send-keys cld-rehearsal ctrl+c`). Step 7 fails, the phase stays
    `guide`, the driver does the guide recovery on the guide route, and only after step 7 passes
    does the execution route start.
 3. Working directory: a benign `cd` into a subfolder is accepted by the transcript checks; a
    `cwd` outside the allowed roots fails them.
-4. Audit: in separate disposable repositories, moving a protected local ref, changing the origin
-   config, and editing a file in a stand-in template checkout each make `audit.py` fail.
+4. Authorized progress passes the audit: a worker commit inside the owned paths, pushed to the
+   feature branch of the bare remote, passes; then a recorded driver evidence commit that
+   touches only run-doc paths, pushed the same way, passes; then a driver rollback ref passes.
+5. Each violation fails the audit, each in a fresh copy of the rehearsal repository:
+   - moving a protected local branch (local `main`);
+   - a worker commit that edits a driver run doc (`docs/elves/execution-log.md`);
+   - an uncommitted edit to a driver run doc;
+   - changing the origin URL;
+   - adding a file to `.git/hooks/`;
+   - creating a second worktree;
+   - editing a file in a stand-in template checkout;
+   - on the bare remote: moving an existing sibling branch, deleting an existing sibling branch,
+     moving an existing tag, deleting an existing tag, and creating a new branch;
+   - a commit message with a `Co-Authored-By` line.
 
-Any failure stops the run before the real launch, and the driver reports it. R0 results go in
-the execution log.
+Any failure stops the run before the real launch, and the driver reports it. R0 results (each
+case, expected and observed outcome) go in the execution log.
 
 **What route (c) gives up compared with a qualified cobbler prewalk** (Mason accepts these
 under H13):
@@ -1052,10 +1117,12 @@ under H13):
    `herdr agent wait` with timeouts, `herdr agent read`, the transcript JSONL, and the execution
    log.
 4. **Residual authority risk (separate from item 1).** No narrowed Git roots and no supervisor
-   git contract check: the worker can move local refs, change git config, edit the turfLP checkout, push other refs,
-   edit or merge PRs, or create tags and releases. Prevention is by instruction and the `auto`
-   permission classifier only. The authority audit detects these after the fact and stops the
-   run, but cannot undo a merged PR or a pushed ref. `main` protection (PR required, admins
+   git contract check: the worker can move local refs, change git config, edit the turfLP
+   checkout, push, move, or delete remote refs, edit or merge PRs, or create tags and
+   releases. Prevention is by instruction and the `auto` permission classifier only. The
+   authority audit detects the changes its checks 1 to 9 list, after the fact, and stops the
+   run; it cannot undo a merged PR, a pushed, moved, or deleted ref, or a release, and it does
+   not cover what the audit section lists under "Not covered". `main` protection (PR required, admins
    enforced) blocks a direct push to `main`, not a PR merge.
 5. The transition and recovery are done by the driver, not by the supervisor.
 6. Native Windows is not a qualified Elves host; Elves writers (`sync-session --write`,
@@ -1093,8 +1160,9 @@ plan. The worker never edits them.
   `met` and `evidence` for each row and `status: complete` for the batch, updates the
   execution log and survival guide, runs `acceptance_contract.py validate`, commits only those
   run-doc paths as `[feat/r-js-packages · Batch N/6 · Review] Record B<N> acceptance evidence`,
-  pushes, creates the rollback ref `b<N>`, runs the transcript checks and the authority audit,
-  and only then prompts B<N+1>. A failed row gets a gap
+  pushes, records that commit SHA in `driver-commits.json` and the execution log, creates and
+  records the rollback ref `b<N>`, runs the transcript checks and the authority audit, and only
+  then prompts B<N+1>. A failed row gets a gap
   prompt for the same batch first. This is the B1 to B2 path.
 - **Routes (a) and (b), parked full-run:** the worker closes each internal batch with its
   `Close` commit body and `.elves/runtime/worker-report-B<N>.md` as interim evidence. Session
