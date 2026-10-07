@@ -1,0 +1,32 @@
+bibentry(
+  bibtype = "Manual",
+  header = "To cite cldreducer in publications, use:",
+  title = "{cldreducer}: Reduce Compact Letter Displays",
+  author = c(
+    person("John", "Ennis"),
+    person("Carl", "Graham"),
+    person("Luciana", "Castro"),
+    person("Rachel", "Lampert"),
+    person("Ryan", "Jordan"),
+    person("Vanessa", "Rios de Souza")
+  ),
+  year = "2026",
+  note = paste("R package version", meta$Version),
+  url = "https://github.com/aigorahub/cld-reducer"
+)
+
+bibentry(
+  bibtype = "Article",
+  header = "cldreducer solves the assignment-minimum clique covering problem of:",
+  title = "Assignment-Minimum Clique Coverings",
+  author = c(
+    person(c("John", "M."), "Ennis"),
+    person(c("Charles", "M."), "Fayle"),
+    person(c("Daniel", "M."), "Ennis")
+  ),
+  journal = "ACM Journal of Experimental Algorithmics",
+  volume = "17",
+  note = "Article 1.5",
+  year = "2012",
+  doi = "10.1145/2133803.2275596"
+)
