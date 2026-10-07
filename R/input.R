@@ -10,13 +10,15 @@ format_list <- function(x) {
 
 # Group labels are strings (docs/algorithm.md section 1). A missing label (NA or NaN) is invalid
 # input, wherever labels are given. The check runs on the given values, because as.character()
-# turns NaN into the text "NaN"; the text "NaN" itself is a valid label.
+# turns NaN into the text "NaN", and on the converted text, because a factor with an explicit NA
+# level (addNA(), exclude = NULL) has no NA code but converts to NA. The text "NaN" or "NA" is a
+# valid label.
 label_text <- function(x) {
-  if (anyNA(x)) {
+  labels <- as.character(x)
+  if (anyNA(x) || anyNA(labels)) {
     invalid_input("group labels must not be missing")
   }
-  if (is.factor(x)) x <- as.character(x)
-  as.character(x)
+  labels
 }
 
 coerce_significance <- function(x) {

@@ -18,6 +18,15 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 
 ---
 
+## 2026-10-07 ET: final review round 3 fix
+
+- Reviews at `31145a6`: both reviewers confirm the NaN finding is fixed. Both found one regression: an R factor with an explicit NA level (`addNA()`, `exclude = NULL`) has no NA code, so `anyNA()` on the given values is FALSE, while `as.character()` gives NA. `bc98be7` caught it with the check after conversion that `31145a6` removed. Driver repro at `31145a6`: the groups path returned an NA group; the pairs path stopped with the unclassed error "missing value where TRUE/FALSE needed".
+- Fix: `label_text()` checks both the given values and the converted strings. Spec section 1 names both checks.
+- Tests: R unit test with `addNA()` and `exclude = NULL` factors in groups, pair labels (also before significance), and mean labels on both routes; a factor with the text levels "NaN" and "NA" stays valid.
+- Local checks (WSL, R-only change on `31145a6`): repro (all 5 missing cases raise `group labels must not be missing`, text labels accepted), generate.py --check, run_r.R (1505 cases), R CMD check --as-cran --no-manual (testthat 310 passed; 2 NOTEs: New submission, no pandoc locally). All exit 0.
+
+---
+
 ## 2026-10-07 ET: final review round 2 fix
 
 - Reviews at `bc98be7`: both reviewers confirm every round 1 finding is fixed. Both found one new issue: R checked missing labels after `as.character()`, which turns a numeric NaN into the text "NaN". Driver repro at `bc98be7`: `reduce_from_adjacency(diag(TRUE, 2), c(1, NaN))` returned the groups "1" and "NaN"; a NaN mean label did the same; a NaN pair label gave the wrong message (missing pairs).

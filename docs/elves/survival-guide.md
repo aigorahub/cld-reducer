@@ -187,9 +187,9 @@ If one of these happens after `EXECUTE APPROVED`, update the docs, commit, push,
 
 **Active batch:** none
 
-**What was just finished:** final review round 1 fixed (`75e01c9`, `bc98be7`); both reviewers confirmed it. Round 2 (one finding from both: R numeric NaN labels) fixed by the driver with an R unit test and two shared fixtures; local checks green on the uncommitted tree.
+**What was just finished:** final review round 1 fixed (`75e01c9`, `bc98be7`); both reviewers confirmed it. Round 2 (R numeric NaN labels) fixed in `31145a6`; both reviewers confirmed it. Round 3 (one regression from both: R factor with an explicit NA level) fixed by the driver with an R unit test; local checks green on the uncommitted tree.
 
-**Single next action:** wait for CI on the round 2 head, then print REVIEW READY with that head for both reviewers.
+**Single next action:** wait for CI on the round 3 head, then print REVIEW READY with that head for both reviewers.
 
 ---
 

@@ -90,6 +90,33 @@ test_that("a numeric NaN label is missing, and the text NaN is a label", {
   expect_identical(unname(result$letters), c("A", "A", "B"))
 })
 
+test_that("a factor with an explicit NA level has a missing label", {
+  missing <- "group labels must not be missing"
+  with_na_level <- list(addNA(factor(c("a", NA))), factor(c("a", NA), exclude = NULL))
+  for (groups in with_na_level) {
+    expect_false(anyNA(groups))
+    expect_error(reduce_from_adjacency(diag(TRUE, 2L), groups), missing,
+                 class = "cldreducer_invalid_input")
+    expect_error(reduce_from_adjacency(diag(TRUE, 2L), c("a", "b"),
+                                       data.frame(group = groups, mean = 1:2)),
+                 missing, class = "cldreducer_invalid_input")
+    expect_error(reduce_letters(all_pairs(c("a", "b")), data.frame(group = groups, mean = 1:2)),
+                 missing, class = "cldreducer_invalid_input")
+  }
+  pairs <- data.frame(group1 = factor(c("a", "a", "b")),
+                      group2 = factor(c("b", NA, NA), exclude = NULL), significant = FALSE)
+  expect_error(reduce_letters(pairs), missing, class = "cldreducer_invalid_input")
+  pairs$significant <- "maybe"
+  expect_error(reduce_letters(pairs), missing, class = "cldreducer_invalid_input")
+  pairs <- data.frame(group1 = addNA(factor(c("a", NA, "b"))), group2 = c("b", "c", "c"),
+                      significant = FALSE)
+  expect_error(reduce_letters(pairs), missing, class = "cldreducer_invalid_input")
+
+  text <- factor(c("NaN", "NA"))
+  result <- reduce_from_adjacency(diag(TRUE, 2L), text)
+  expect_identical(result$groups, c("NaN", "NA"))
+})
+
 test_that("duplicate mean labels are invalid input for adjacency input", {
   path3 <- matrix(c(TRUE, TRUE, FALSE, TRUE, TRUE, TRUE, FALSE, TRUE, TRUE), 3L)
   expect_error(
