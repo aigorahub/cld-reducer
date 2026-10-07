@@ -63,7 +63,7 @@ ends at a green, reviewed, draft PR. No merge, tag, release, CRAN submission, or
 - **GitHub push auth route:** `gh` in WSL, logged in by Mason (pending); never Windows credentials or Windows binaries.
 - **Re-drive budget:** 2 substantive re-drives. Transient provider errors retry the same worker with 5m, 10m, 20m backoff and do not use this budget.
 - **Continuation harness:** none
-- **Routes:** guide phase claude-opus-5-5 at xhigh, execution phase claude-sonnet-5-5 at high, `--prewalk required` through `cobbler_agents.py native-worker launch` in WSL. Qualification failure stops the run; no cold substitute and no silent model change.
+- **Routes:** guide phase claude-opus-5-5 at high (changed from xhigh by Mason on 2026-10-07, because Elves 2.39.0 allows only low, medium, high for Claude), execution phase claude-sonnet-5-5 at high, `--prewalk required` through `cobbler_agents.py native-worker launch` in WSL. Qualification failure stops the run; no cold substitute and no silent model change.
 - **Continuation rule:** after `EXECUTE APPROVED`, if work remains and the actual stop conditions are not met, continue without waiting for acknowledgment.
 
 ---
@@ -95,9 +95,9 @@ ends at a green, reviewed, draft PR. No merge, tag, release, CRAN submission, or
 ## Stop Gate
 
 - **Planned batches remaining:** 6
-- **Stop allowed right now:** yes
-- **Why:** required prewalk qualification failed before any model call: Elves 2.39.0 rejects guide effort `xhigh` for Claude. The brief says stop and report; a route change needs Mason.
-- **Next required action:** wait for Mason's decision relayed by Lantern (guide effort `high`, or an Elves fix that adds `xhigh` for Claude).
+- **Stop allowed right now:** no
+- **Why:** Mason chose guide effort high; the relaunch and all six batches remain.
+- **Next required action:** relaunch the worker with required prewalk and park on the follow stream.
 
 After `EXECUTE APPROVED`, set `Stop allowed right now: no` until the stop point.
 
@@ -183,13 +183,13 @@ If one of these happens after `EXECUTE APPROVED`, update the docs, commit, push,
 
 ## Current Phase
 
-**Status:** Blocked (prewalk qualification)
+**Status:** Launching (route a, WSL)
 
 **Active batch:** none
 
-**What was just finished:** preflight, push, draft PR #3, rollback ref b0, and the launch attempt, which failed at qualification.
+**What was just finished:** Mason's guide route decision recorded.
 
-**Single next action:** wait for Mason's route decision.
+**Single next action:** relaunch the worker.
 
 ---
 

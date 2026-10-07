@@ -5,7 +5,7 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 ## Run digest
 
 - **Last updated:** 2026-10-07 ET, route (a) setup
-- **Current phase:** Blocked (prewalk qualification failed; waiting for Mason)
+- **Current phase:** Launching (route a, guide effort high)
 - **Active batch:** none
 - **Last completed batch:** none yet
 - **Next exact batch:** B1: Layout move and specification
@@ -15,6 +15,13 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 - **Latest Elves Report:** not generated yet
 - **Progress commits:** `[feat/r-js-packages · Batch N/6 · Contract|Implement|Validate|Review|Close] <outcome>`; the worker pushes only `feat/r-js-packages`; PR actions, run memory, final review stay with the driver.
 - **Handoff standard:** packet `.elves/runtime/worker-packet.md` has the eight handoff parts.
+
+---
+
+## 2026-10-07 ET: Mason's route decision, relaunch
+
+- Lantern relayed Mason's choice (Lantern chat, 2026-10-07): option 1. Guide route claude-opus-5-5 at `high` (was `xhigh`); execution route claude-sonnet-5-5 at `high`, unchanged; prewalk stays `required`. The driver session stays as it is.
+- Recorded in the session (`model_routes.worker_guide`, `prewalk.route_change`, previous attempt kept), the survival guide Routes line, a dated amendment in the plan's run control summary, and packet version 7.
 
 ---
 

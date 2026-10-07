@@ -1206,7 +1206,8 @@ Windows coverage it used to give comes from the Windows generator job in CI on e
 ### Run control summary
 
 - **Models:** guide claude-opus-5-5 at xhigh; execution claude-sonnet-5-5 at high, on every
-  route. Plan and final reviewer: Codex gpt-6-astra at high in tab `cld-review` (seated by
+  route. Amended 2026-10-07 by Mason: guide claude-opus-5-5 at high, because Elves 2.39.0 allows
+  only low, medium, and high for Claude routes (see the execution log). Plan and final reviewer: Codex gpt-6-astra at high in tab `cld-review` (seated by
   Lantern). Second final reviewer: a fresh Opus 5.5 session that is not the driver or the
   worker. No silent model change; a route change needs Mason.
 - **Git:** the worker commits and pushes only `feat/r-js-packages`. PR actions, run memory,
