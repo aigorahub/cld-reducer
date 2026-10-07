@@ -1,0 +1,52 @@
+# JavaScript package: type check, build, and tests (including the shared conformance
+# suite) on three platforms, plus a check of the package contents and a clean install
+# of the packed tarball.
+on:
+  push:
+  pull_request:
+
+name: js.yaml
+
+permissions: read-all
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }} (Node.js ${{ matrix.node }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [22, 24]
+    defaults:
+      run:
+        working-directory: js
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+      - run: npm run test:conformance
+
+  pack:
+    runs-on: ubuntu-latest
+    name: package contents and clean install
+    defaults:
+      run:
+        working-directory: js
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm run check:package
