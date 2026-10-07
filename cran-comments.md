@@ -15,7 +15,11 @@ This is a new package, not yet on CRAN.
   - CRAN incoming feasibility: "New submission". This is expected for a new package.
   - "Files 'README.md' or 'NEWS.md' cannot be checked without 'pandoc' being installed". This machine has no pandoc; the GitHub Actions jobs install it, so the note does not appear there.
   - Every example runs in under 2 s (the slowest, `reduce_letters`, takes about 1.5 s, most of it loading the Matrix package). The tests take about 6 s.
-- GitHub Actions, macOS, Windows, and Ubuntu matrix, and Ubuntu (release) `--as-cran` with the PDF manual: 0 errors | 0 warnings. These jobs fail on a warning. The jobs check the built tarball; the `--as-cran` job runs it in a folder under `RUNNER_TEMP`, outside the checkout.
+- GitHub Actions, macOS (release), Windows (release), and Ubuntu (devel, release, oldrel-1): 0 errors | 0 warnings | 0 notes.
+- GitHub Actions, Ubuntu 24.04 (release), `R CMD check --as-cran` with the PDF manual, on the built tarball in a folder under `RUNNER_TEMP`, outside the checkout: 0 errors | 0 warnings | 1 note.
+  - "checking HTML version of manual ... NOTE: Skipping checking HTML validation: no command 'tidy' found." The runner has no HTML Tidy, so R skips the HTML validation. The PDF manual builds without problems.
+  - The tests take about 3 s and the slowest example, `reduce_letters`, about 0.8 s.
+- All GitHub Actions jobs fail on a warning.
 - win-builder (R-devel and R-release): to be run by the maintainer before submission; the results go here.
 
 ## Notes for the reviewer
