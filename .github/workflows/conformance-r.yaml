@@ -1,0 +1,33 @@
+# Shared conformance suite. The generator jobs check that the fixtures are current
+# and run the generator self-test, on Linux and on Windows with CRLF line endings.
+on:
+  push:
+  pull_request:
+
+name: conformance-r.yaml
+
+permissions: read-all
+
+jobs:
+  generator-ubuntu:
+    runs-on: ubuntu-latest
+    name: generator (ubuntu-latest)
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python conformance/generate.py --check
+      - run: python conformance/test_generate.py
+
+  generator-windows:
+    runs-on: windows-latest
+    name: generator (windows-latest, core.autocrlf true)
+    steps:
+      - run: git config --global core.autocrlf true
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python conformance/generate.py --check
+      - run: python conformance/test_generate.py
