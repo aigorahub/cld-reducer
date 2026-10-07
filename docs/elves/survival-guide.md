@@ -22,19 +22,19 @@ ends at a green, reviewed, draft PR. No merge, tag, release, CRAN submission, or
 ## Run Control
 
 - **Run mode:** finite
-- **Stop policy:** blocker-only after `EXECUTE APPROVED`; before it, the plan review gate applies
+- **Stop policy:** blocker-only
 - **User intent:** John Ennis (2026-10-07 11:15 ET): "take the repo cld-reducer and structure it like turfLP so that it covers R and JavaScript ... The goal is to get it submitted to CRAN and npm for R and javascript ... plan very carefully with robust review then do it as an elves run." Lantern brief: Phase 1 is plan only; wait for `EXECUTE APPROVED`; stop point is a landable, green, reviewed draft PR.
 - **Checkpoint due by:** none
 - **Checkpoint semantics:** none
 - **May continue after checkpoint:** yes
-- **Actual stop conditions:** Phase 1: plan printed as `PLAN READY FOR REVIEW` and waiting for Lantern. Execution: draft PR green per the plan section "Definition of green", or a true blocker.
-- **Workspace ownership:** dedicated worktree `C:\Claude\cld-reducer-r-js-packages` on branch `feat/r-js-packages`, created with the Elves `preflight_worktree.py --create-worktree feat/r-js-packages --base origin/main` (dry run first). No other agent shares it. The main checkout `C:\Claude\cld-reducer` stays on `main` and is not used for edits. Route dependent: routes (b) and (c) keep this worktree; route (a) re-registers a worktree in WSL.
+- **Actual stop conditions:** the draft PR meets the plan section "Definition of green" with both final reviews clean at the exact head, or a true blocker.
+- **Workspace ownership:** dedicated WSL worktree `/home/mason/src/cld-reducer-r-js-packages` on branch `feat/r-js-packages`, created in the WSL clone `/home/mason/src/cld-reducer` with the Elves `preflight_worktree.py --create-worktree feat/r-js-packages --base origin/main` (dry run first); the staging commits came across with a git bundle (tip `acb144e`). No other agent shares it. The Windows worktree `C:\Claude\cld-reducer-r-js-packages` is kept, unused, until Mason agrees to remove it.
 - **Branch tip at start (collision tripwire):** `eb95fe9ad5e983a1f2e6e02668c3419647b9571e` (origin/main at staging). Upstream tracking was removed so a bare `git push` cannot target `main`.
 - **Merge policy:** user-merges (default). The driver never merges. No merge-on-green opt-in and no landing command in this run.
-- **Final-response policy:** allowed in Phase 1 after the `PLAN READY FOR REVIEW` line; after `EXECUTE APPROVED`, disallowed until the Stop Gate allows it.
+- **Final-response policy:** disallowed until the Stop Gate allows it.
 - **Coordination mode:** Cobbler-first (default).
-- **Execution route:** pending Mason (H13). Proposed: route (c), manual experimental prewalk in Herdr tab `cld-worker`, driver-supervised batches. Route (c) worker starts always use `--safe-mode`; the driver reports the Herdr session identity; driver-private state (phase record, audit script, baseline, driver-commit record, audit logs) lives outside the worktree in `C:\Users\Megan\AppData\Local\elves-runs\cld-reducer-r-js-packages-2026-10-07\route-c`; recovery is phase-specific (guide failures resume the guide route only); the authority audit and the transcript checks run at every gate and detect, not prevent; every driver commit SHA goes in `driver-commits.json` and the driver transcript at once, and into the execution log with the next driver evidence commit (no commit records its own SHA). Values below marked (c) change for routes (a) and (b); see the plan section "Route-dependent content".
-- **Batch completion rule:** route (c): the worker pushes the batch `Close` commit and writes `.elves/runtime/worker-report-B<N>.md`; the driver verifies each row, writes the session rows, commits and pushes the run docs (`Batch N/6 · Review`), then prompts the next batch. Routes (a) and (b): the worker closes internal batches with the Close commit body and report file as interim evidence; the parked driver writes session rows once at a safety, blocked, or terminal wake. Every completed batch must end with a commit and push.
+- **Execution route:** route (a), chosen by Mason (plan page, 2026-10-07T18:04:37Z). The Elves supervisor, the guide route, and the execution route run in WSL Ubuntu 26.04; the driver stays in this Windows session and runs every WSL step through `wsl.exe`. R Option A: local R 4.6 on the WSL host plus CI.
+- **Batch completion rule:** the worker closes each internal batch with its `Close` commit (acceptance ids and evidence in the body) and `.elves/runtime/worker-report-B<N>.md`; the parked driver writes session rows once at a safety, blocked, or terminal wake. Every completed batch must end with a commit and push.
 - **Progress visibility rule:** commit subjects `[feat/r-js-packages · Batch N/6 · Contract|Implement|Validate|Review|Close] <concrete outcome>`. No vague subjects. `Close` needs acceptance evidence and a Confidence trailer in the Elves format. No AI attribution lines.
 - **Coordinator-to-implementer handoff:** the plan has a handoff block per batch; the consolidated packet is `.elves/runtime/worker-packet.md`. Each batch completion reports confidence (high, medium, or low) and unsure areas; an empty list is a valid answer.
 - **Worker packet:** `.elves/runtime/worker-packet.md` (also `worker_packet_path` in `.elves-session.json`; `.elves/` is ignored through `.git/info/exclude`).
@@ -44,13 +44,13 @@ ends at a green, reviewed, draft PR. No merge, tag, release, CRAN submission, or
 - **E2E mode:** chat-to-work (landable PR only).
 - **Work driver:** host-native (a separate native Claude Code worker session with exact-session prewalk, not in-session execution).
 - **Implementation lane:** fast
-- **Delegation scope:** batch for route (c) (one packet at the guide turn, then one prompt per batch that points to the batch handoff block); full_run for routes (a) and (b)
+- **Delegation scope:** full_run (B1 to B6 in one packet)
 - **Git mode:** branch_progress (the worker commits and pushes only `feat/r-js-packages`)
-- **Driver monitor mode:** interactive for route (c) (`herdr agent wait` with timeouts as watchdog); parked_monitor for routes (a) and (b)
-- **Driver update policy:** route (c): progress lines in the driver pane at batch boundaries; routes (a) and (b): sanitized follow stream, material wakes only.
-- **Driver poll policy:** route (c): `herdr agent wait cld-worker` with a timeout, then `herdr agent get` and `git log`; routes (a) and (b): host wait primitive with a fallback watchdog.
-- **Driver review policy:** route (c): per-batch contract walk of the acceptance rows by the driver; all routes: final independent review (Astra plus a fresh Opus 5.5 session), then delta re-review until clean.
-- **Follow mode:** route (c): `herdr agent read` and the worker transcript; routes (a) and (b): default sanitized stream.
+- **Driver monitor mode:** parked_monitor (`native-worker follow` and `status` through `wsl.exe`, with a fallback watchdog)
+- **Driver update policy:** sanitized follow stream; material wakes only.
+- **Driver poll policy:** host wait primitive with a fallback watchdog.
+- **Driver review policy:** final independent review (Astra in tab `cld-review` and a fresh Opus 5.5 session), then delta re-review until neither has an open finding.
+- **Follow mode:** default sanitized stream.
 - **Risk posture:** standard (B3 and B5 are high).
 - **Trust mode:** trusted
 - **Landing outcome:** landable_pr (draft PR, not merged)
@@ -58,12 +58,12 @@ ends at a green, reviewed, draft PR. No merge, tag, release, CRAN submission, or
 - **Worker merge authority:** false
 - **Stable plan IDs:** B1 to B6, `B#-A#`, `M-A1` to `M-A6`.
 - **Staging acceptance validation:** see Launch Readiness; command below.
-- **Staging acceptance command:** `python C:\Users\Megan\.claude\skills\elves\scripts\acceptance_contract.py validate --repo-root . --session .elves-session.json`
+- **Staging acceptance command:** `python3 ~/.claude/skills/elves/scripts/acceptance_contract.py validate --repo-root . --session .elves-session.json` in the WSL worktree
 - **High-risk checkpoints:** B3 Close (Python behavior change), B5 Close (R CRAN checks).
-- **GitHub push auth route:** host `gh` (account MasonHsu02, scopes repo and workflow).
+- **GitHub push auth route:** `gh` in WSL, logged in by Mason (pending); never Windows credentials or Windows binaries.
 - **Re-drive budget:** 2 substantive re-drives. Transient provider errors retry the same worker with 5m, 10m, 20m backoff and do not use this budget.
 - **Continuation harness:** none
-- **Routes:** guide phase claude-opus-5-5 at xhigh, execution phase claude-sonnet-5-5 at high. Prewalk: `required` (qualified) for route (a); experimental, manual, Mason-accepted for route (c). Qualification failure, or a failed route (c) transition check, stops the run; no cold substitute and no silent model change.
+- **Routes:** guide phase claude-opus-5-5 at xhigh, execution phase claude-sonnet-5-5 at high, `--prewalk required` through `cobbler_agents.py native-worker launch` in WSL. Qualification failure stops the run; no cold substitute and no silent model change.
 - **Continuation rule:** after `EXECUTE APPROVED`, if work remains and the actual stop conditions are not met, continue without waiting for acknowledgment.
 
 ---
@@ -95,9 +95,9 @@ ends at a green, reviewed, draft PR. No merge, tag, release, CRAN submission, or
 ## Stop Gate
 
 - **Planned batches remaining:** 6
-- **Stop allowed right now:** yes
-- **Why:** Phase 1 ends at the plan review gate; execution needs `EXECUTE APPROVED` from Lantern and Mason's route decision (H13).
-- **Next required action:** print `PLAN READY FOR REVIEW: C:\Claude\cld-reducer-r-js-packages\docs\plans\r-js-packages\plan.md` and wait for Lantern.
+- **Stop allowed right now:** no
+- **Why:** EXECUTE APPROVED; all six batches remain.
+- **Next required action:** finish the WSL setup, get `gh` auth from Mason, push, open the draft PR, then launch the qualified prewalk worker.
 
 After `EXECUTE APPROVED`, set `Stop allowed right now: no` until the stop point.
 
@@ -183,13 +183,13 @@ If one of these happens after `EXECUTE APPROVED`, update the docs, commit, push,
 
 ## Current Phase
 
-**Status:** Staging (Phase 1, plan review gate)
+**Status:** Launch preparation (route a, WSL)
 
 **Active batch:** none
 
-**What was just finished:** plan, run docs, session file, and worker packet written in the registered worktree.
+**What was just finished:** WSL host setup (packages, Node, uv, Elves 2.39.0), the registered WSL worktree, and the commit transfer.
 
-**Single next action:** print the plan-ready line and wait for Lantern.
+**Single next action:** commit the re-homed run docs, install R packages, then ask Mason for `gh` auth in WSL.
 
 ---
 
@@ -240,7 +240,7 @@ Every completed batch must end with a commit and push (by the worker on `branch_
 ## Elves Report
 
 - **Generate Elves Report:** yes, at terminal readiness.
-- **Default path:** `C:\Users\Megan\AppData\Local\Temp\elves-report-cld-reducer-2026-10-07.html` (the Windows temp folder stands in for `/tmp`).
+- **Default path:** `/tmp/elves-report-cld-reducer-2026-10-07.html` in WSL.
 - **Commit report:** no.
 
 ---

@@ -4,8 +4,8 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 
 ## Run digest
 
-- **Last updated:** 2026-10-07 ET, after plan review round 1
-- **Current phase:** Staging (Phase 1, plan review gate, round 2 pending)
+- **Last updated:** 2026-10-07 ET, route (a) setup
+- **Current phase:** Launch preparation (route a, WSL)
 - **Active batch:** none
 - **Last completed batch:** none yet
 - **Next exact batch:** B1: Layout move and specification
@@ -15,6 +15,28 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 - **Latest Elves Report:** not generated yet
 - **Progress commits:** `[feat/r-js-packages · Batch N/6 · Contract|Implement|Validate|Review|Close] <outcome>`; the worker pushes only `feat/r-js-packages`; PR actions, run memory, final review stay with the driver.
 - **Handoff standard:** packet `.elves/runtime/worker-packet.md` has the eight handoff parts.
+
+---
+
+## 2026-10-07 ET: EXECUTE APPROVED, route (a) setup on WSL
+
+**Input:** Lantern relayed `EXECUTE APPROVED`. Mason's saved decisions (plan page, 2026-10-07T18:04:37.795Z): route (a); R Option A (local R on the WSL host plus CI); H1, H10, D5, D6 confirmed. Lantern: the driver stays in the Windows session and runs WSL steps through `wsl.exe`; no credential or config file moves from Windows to WSL; logins are Mason's; keep the Windows worktree.
+
+**WSL host facts:** Ubuntu 26.04 (resolute), kernel 6.18 WSL2, systemd on, user `mason` (sudo group). WSL appends Windows folders to `PATH` (Windows `npm`, `gh.exe`, `git.exe` are reachable), so every run step uses a Linux-only `PATH`. Claude Code 2.1.246 was already installed in `~/.local/bin` and is logged in (`claude auth status`: claude.ai, Max plan, Mason's account); WSL Claude settings have no hooks and no plugins. A process started with `start_new_session=True` survives after the `wsl.exe` call that started it exits.
+
+**Installed (no login needed):**
+
+- Root (`wsl.exe -u root`): CRAN apt repository `resolute-cran40` (key fingerprint checked: E298A3A825C0D65DFD57CBB651716619E084DAB9), GitHub CLI apt repository (fingerprint checked: 2C6106201985B60E6C7AC87323F3D4EA75716059), build tools, cmake, gfortran, jq, qpdf, tidy, ghostscript, R 4.6.1 (`r-base-core`, `r-base-dev`, `r-recommended`), `gh`.
+- R packages (Posit Package Manager binaries for resolute, user library `~/R/x86_64-pc-linux-gnu-library/4.6`): highs 1.14.0.2, testthat 3.3.2, roxygen2 8.1.0, jsonlite 2.0.0, pkgload 1.5.3, rcmdcheck 1.4.0, spelling 2.3.2; Matrix 1.7.6 from `r-recommended`. A `highs_solve` smoke test returns "Optimal".
+- User: Node v24.21.0 (SHA-256 checked against `SHASUMS256.txt`) in `~/.local/opt`, uv 0.12.23, Elves 2.39.0 from `aigorahub/elves` tag `v2.39.0` (`3ee19ae`) via `sync_installed_skills.py --apply --target claude`, git identity (Mason Hsu), read-only turfLP clone `~/src/turfLP` at `c6e6b86`.
+
+**Worktree:** cloned `aigorahub/cld-reducer` to `~/src/cld-reducer`; `preflight_worktree.py --create-worktree feat/r-js-packages --base origin/main` (dry run, then real) made `/home/mason/src/cld-reducer-r-js-packages` (tripwire `eb95fe9`); upstream removed; the five staging commits came from a Windows `git bundle` and fast-forwarded the branch to `acb144e`; `.elves/` added to `.git/info/exclude`.
+
+**Elves in WSL:** `cobbler_agents.py` runs. `native-worker prewalk-capabilities --host claude`: advertised exact resume and route override true, not qualified yet (required mode runs the canary at launch). The supervisor is spawned with `start_new_session=True`; nothing found so far needs the driver itself inside WSL.
+
+**Run docs re-homed:** `worktree_path`, route (a) Run Control, Stop Gate (`Stop allowed right now: no`), packet version 6 with WSL paths (39 rows equal to the plan), `sync-session --write` and `validate` OK in WSL.
+
+**Next:** R packages, then `gh` login by Mason in WSL, push, draft PR, rollback ref, preflight, launch.
 
 ---
 

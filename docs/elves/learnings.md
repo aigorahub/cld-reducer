@@ -18,6 +18,10 @@ Durable lessons for this repository and this machine. Run status goes in the exe
 - [L10] [2026-10-07] The Elves git contract helpers (`cobbler_runtime/git_contract.py`) fail on this Windows host with `FileNotFoundError` when they call git; route (c) needs its own audit script. (evidence: execution-log 2026-10-07 plan review round 2)
 - [L11] [2026-10-07] User settings on this host run a Stop hook with plain `bash` and a Herdr SessionStart hook (`herdr-agent-state.ps1`, which calls `herdr pane report-agent-session`) and enable three plugins. `claude --safe-mode` turns all of them off; a supervisor must then report the Herdr session identity itself. Transcripts record a `stop_hook_summary` entry when a Stop hook runs. (evidence: execution-log 2026-10-07 plan review round 2)
 
+- [L12] [2026-10-07] WSL on this machine appends Windows folders to `PATH` (Windows `npm`, `gh.exe`, `git.exe`); a Linux run must set a Linux-only `PATH` (`$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin`). (evidence: execution-log 2026-10-07 route (a) setup)
+- [L13] [2026-10-07] In WSL, Claude Code lives in `~/.local/bin` (not on the default login `PATH`) and was already logged in; check `claude auth status` before asking for a login. (evidence: execution-log 2026-10-07 route (a) setup)
+- [L14] [2026-10-07] PowerShell mangles `|` and `$` inside `wsl.exe -- bash -c '...'`; write a script to a Windows folder and run it as `wsl.exe -d Ubuntu -- bash /mnt/c/.../script.sh`. Git Bash also rewrites `/mnt/...` arguments. (evidence: execution-log 2026-10-07 route (a) setup)
+
 ## Retired learnings
 
 None.
