@@ -26,6 +26,8 @@ Durable lessons for this repository and this machine. Run status goes in the exe
 
 - [L16] [2026-10-07] `claude auth status` can report `loggedIn: true` while the OAuth session is expired; one real `claude --print` call is the reliable login check before a qualification canary. The canary does not keep Claude's error text. (evidence: execution-log 2026-10-07 relaunch)
 
+- [L17] [2026-10-07] Claude Code before 2.1.280 rejects claude-opus-5-5 with an API 400; a confirmation call must use the exact guide model, not only the execution model. (evidence: execution-log 2026-10-07 login fixed)
+
 ## Retired learnings
 
 None.

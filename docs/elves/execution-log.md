@@ -5,7 +5,7 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 ## Run digest
 
 - **Last updated:** 2026-10-07 ET, route (a) setup
-- **Current phase:** Blocked (Claude Code login in WSL)
+- **Current phase:** Launching (route a, Claude Code 2.1.293)
 - **Active batch:** none
 - **Last completed batch:** none yet
 - **Next exact batch:** B1: Layout move and specification
@@ -15,6 +15,16 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 - **Latest Elves Report:** not generated yet
 - **Progress commits:** `[feat/r-js-packages · Batch N/6 · Contract|Implement|Validate|Review|Close] <outcome>`; the worker pushes only `feat/r-js-packages`; PR actions, run memory, final review stay with the driver.
 - **Handoff standard:** packet `.elves/runtime/worker-packet.md` has the eight handoff parts.
+
+---
+
+## 2026-10-07 ET: login fixed, Claude Code updated, confirmation call
+
+- Lantern: Mason ran `claude auth login` in WSL ("Login successful"); Lantern's check `claude -p ... --model claude-sonnet-5-5` returned "ok".
+- Driver confirmation with the exact canary flags and claude-opus-5-5 failed: `API Error: 400 Claude Code 2.1.246 does not support this model; version 2.1.280 or newer is required`.
+- `claude update` in WSL (no login needed): 2.1.246 to 2.1.293. The flags `--safe-mode`, `--session-id`, `--resume`, `--model`, `--effort`, `--permission-mode`, `--print` are present.
+- Confirmation call again (same flags, claude-opus-5-5, one-line prompt): exit 0, assistant model claude-opus-5-5, result "ok".
+- Next: relaunch with the same routes. The new CLI version needs a fresh qualification, which required mode runs at launch.
 
 ---
 
