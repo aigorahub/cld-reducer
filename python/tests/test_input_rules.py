@@ -96,7 +96,7 @@ def test_significance_trimming_is_ascii_only() -> None:
 
     assert reduce_letters(rows(" ns\t\r\n")).letters == {"a": "A", "b": "A"}
     with pytest.raises(InvalidInputError, match="cannot coerce significance value to bool: "):
-        reduce_letters(rows("ns "))
+        reduce_letters(rows("ns\u00a0"))
 
 
 @pytest.mark.parametrize("separator", ["\r", "\0", "|"])

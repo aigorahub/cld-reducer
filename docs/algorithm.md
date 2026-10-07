@@ -27,7 +27,7 @@ Used by `reduce_letters` (R and Python) and `reduceLetters` (TypeScript). The in
 
 - Booleans.
 - The numbers 0 and 1. Python accepts `int` and NumPy integers (not floats, as in 0.1.0). R and JavaScript accept any number equal to 0 or 1.
-- Strings, after trimming and lower casing: `true`, `t`, `yes`, `y`, `1`, `significant` mean significant; `false`, `f`, `no`, `n`, `0`, `not significant`, `ns` mean not significant. Trimming removes leading and trailing spaces, tabs, carriage returns, and line feeds only (the R `trimws` default). Other white space, such as a non-breaking space, stays, so `"ns "` is not accepted.
+- Strings, after trimming and lower casing: `true`, `t`, `yes`, `y`, `1`, `significant` mean significant; `false`, `f`, `no`, `n`, `0`, `not significant`, `ns` mean not significant. Trimming removes leading and trailing spaces, tabs, carriage returns, and line feeds only (the R `trimws` default). Other white space, such as a non-breaking space, stays, so `"ns\u00a0"` (`ns` and a non-breaking space) is not accepted.
 
 Anything else (including a missing value) is an invalid input error with the prefix `cannot coerce significance value to bool: `.
 

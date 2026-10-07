@@ -68,7 +68,7 @@ describe("input rules (sections 1 and 2)", () => {
   it("trims only spaces, tabs, carriage returns, and line feeds", async () => {
     const rows = (value: string) => [{ group1: "a", group2: "b", significant: value }];
     expect((await reduceLetters(rows(" ns\t\r\n"))).letters).toEqual({ a: "A", b: "A" });
-    await expect(reduceLetters(rows("ns "))).rejects.toThrow(/^cannot coerce significance value to bool: /);
+    await expect(reduceLetters(rows("ns\u00a0"))).rejects.toThrow(/^cannot coerce significance value to bool: /);
   });
 
   it.each(["\r", "\u0000", "|", ","])("identifies pairs by exact labels (separator %j)", async (sep) => {

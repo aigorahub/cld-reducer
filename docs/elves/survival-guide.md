@@ -187,7 +187,7 @@ If one of these happens after `EXECUTE APPROVED`, update the docs, commit, push,
 
 **Active batch:** none
 
-**What was just finished:** final review round 1 (Astra A1 to A6, Opus P2-1 and P3-1 to P3-4, Opus concerns) fixed by the driver in one commit, with shared fixtures and unit tests in all three languages; local checks green on the uncommitted tree.
+**What was just finished:** final review round 1 (Astra A1 to A6, Opus P2-1 and P3-1 to P3-4, Opus concerns) fixed by the driver (`75e01c9`, then a commit that writes the no-break space as a Unicode escape), with shared fixtures and unit tests in all three languages; local checks green on the uncommitted tree.
 
 **Single next action:** wait for CI on the round 1 head, then print REVIEW READY with that head for both reviewers.
 

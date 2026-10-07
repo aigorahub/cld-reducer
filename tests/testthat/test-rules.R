@@ -74,7 +74,7 @@ test_that("duplicate mean labels are invalid input for adjacency input", {
 test_that("significance trimming removes only spaces, tabs, and line breaks", {
   ok <- reduce_letters(data.frame(group1 = "a", group2 = "b", significant = " ns\t\r\n"))
   expect_identical(unname(ok$letters), c("A", "A"))
-  expect_error(reduce_letters(data.frame(group1 = "a", group2 = "b", significant = "ns ")),
+  expect_error(reduce_letters(data.frame(group1 = "a", group2 = "b", significant = "ns\u00a0")),
                "cannot coerce significance value to bool: ", class = "cldreducer_invalid_input")
 })
 

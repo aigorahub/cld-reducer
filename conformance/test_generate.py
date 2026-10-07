@@ -325,7 +325,7 @@ class InputRuleTest(unittest.TestCase):
         self.assertEqual(ctx.exception.message, "group labels must not be missing")
         self.assertFalse(g.coerce_significance(" ns\t\r\n"))
         with self.assertRaises(g.SpecError):
-            g.coerce_significance("ns ")
+            g.coerce_significance("ns\u00a0")
         with self.assertRaises(g.SpecError) as ctx:
             g.match_means([{"group": "a", "mean": 1.0}, {"group": "a", "mean": 2.0}], ["a"])
         self.assertTrue(ctx.exception.message.startswith("means contain duplicate groups: "))

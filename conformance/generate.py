@@ -948,7 +948,7 @@ def error_cases():
     pairs("pairs-means-missing-label", triple, pre_missing,
           means=[{"group": "a", "mean": 1.0}, {"group": None, "mean": 2.0},
                  {"group": "c", "mean": 3.0}])
-    pairs("pairs-significance-nbsp", [dict(abc, significant="ns "), ac, bc], pre_coerce)
+    pairs("pairs-significance-nbsp", [dict(abc, significant="ns\u00a0"), ac, bc], pre_coerce)
     cr_rows = pairs_rows(["a", "b\rc", "a\rb", "c"], [(0, 1), (1, 2), (2, 3)])
     pairs("pairs-missing-pair-carriage-return-labels",
           [r for r in cr_rows if not (r["group1"] == "a" and r["group2"] == "b\rc")],
