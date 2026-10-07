@@ -11,7 +11,12 @@ This is a new package, not yet on CRAN.
 
 ## R CMD check results
 
-To be filled in from the final CI runs (see below).
+- Local (Ubuntu 26.04 on WSL, R 4.6.1), `--as-cran --no-manual --timings` on the built tarball: 0 errors | 0 warnings | 2 notes.
+  - CRAN incoming feasibility: "New submission". This is expected for a new package.
+  - "Files 'README.md' or 'NEWS.md' cannot be checked without 'pandoc' being installed". This machine has no pandoc; the GitHub Actions jobs install it, so the note does not appear there.
+  - Every example runs in under 2 s (the slowest, `reduce_letters`, takes about 1.5 s, most of it loading the Matrix package). The tests take about 6 s.
+- GitHub Actions, macOS, Windows, and Ubuntu matrix, and Ubuntu (release) `--as-cran` with the PDF manual: 0 errors | 0 warnings. These jobs fail on a warning. The jobs check the built tarball; the `--as-cran` job runs it in a folder under `RUNNER_TEMP`, outside the checkout.
+- win-builder (R-devel and R-release): to be run by the maintainer before submission; the results go here.
 
 ## Notes for the reviewer
 
