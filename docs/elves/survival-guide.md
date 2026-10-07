@@ -94,10 +94,10 @@ ends at a green, reviewed, draft PR. No merge, tag, release, CRAN submission, or
 
 ## Stop Gate
 
-- **Planned batches remaining:** 6
+- **Planned batches remaining:** 0 (B1 to B6 closed); final reviews remain
 - **Stop allowed right now:** no
-- **Why:** B1 is implemented but not closed, and B2 to B6 remain; re-drive 1 of 2 runs.
-- **Next required action:** re-drive the same session with `.elves/runtime/gap-B1-r1.md`, then park on the watchdog.
+- **Why:** the final reviews (Astra and a fresh Opus 5.5 session) and M-A6 remain.
+- **Next required action:** print REVIEW READY with the evidence head and PR URL, fix every finding, and repeat until both reviewers are clean; then record M-A6, run the landing check, clean up run docs, and attest the final head.
 
 After `EXECUTE APPROVED`, set `Stop allowed right now: no` until the stop point.
 
@@ -183,13 +183,13 @@ If one of these happens after `EXECUTE APPROVED`, update the docs, commit, push,
 
 ## Current Phase
 
-**Status:** In progress (re-drive 1 of 2)
+**Status:** Terminal readiness (final review)
 
 **Active batch:** none
 
-**What was just finished:** B1 work (six commits, pushed by the driver; python.yaml green on 0ff9116); the worker stopped before its B1 Close because of a packet defect about pushes.
+**What was just finished:** all six batches closed by the worker (session complete); driver reconciliation: cran-comments.md CI NOTE fix (2cc2ffa), full local record at 2cc2ffa green, acceptance evidence written.
 
-**Single next action:** launch the re-drive.
+**Single next action:** hand the evidence head to Lantern for review.
 
 ---
 

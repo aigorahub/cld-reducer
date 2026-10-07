@@ -5,16 +5,27 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 ## Run digest
 
 - **Last updated:** 2026-10-07 ET, route (a) setup
-- **Current phase:** In progress (re-drive 1 of 2; B1 implemented, awaiting Close)
+- **Current phase:** Terminal readiness (final review)
 - **Active batch:** none
-- **Last completed batch:** none yet
-- **Next exact batch:** B1: Layout move and specification
+- **Last completed batch:** B6
+- **Next exact batch:** none (final review)
 - **Active PR:** #3 https://github.com/aigorahub/cld-reducer/pull/3 (draft)
 - **Docs promoted this run:** none yet
 - **Deferred hygiene:** none
 - **Latest Elves Report:** not generated yet
 - **Progress commits:** `[feat/r-js-packages · Batch N/6 · Contract|Implement|Validate|Review|Close] <outcome>`; the worker pushes only `feat/r-js-packages`; PR actions, run memory, final review stay with the driver.
 - **Handoff standard:** packet `.elves/runtime/worker-packet.md` has the eight handoff parts.
+
+---
+
+## 2026-10-07 ET: worker complete, terminal reconciliation
+
+- Re-drive 1 (native run `cld-reducer-r-js-packages-2026-10-07-r1`, same session `b312b3d9...`, execution route): B1 to B6 closed (`f49b043`, `61b4f2b`, `8a81037`, `d340988`, `96674b9`, `2d0e85f`); status `complete`, exit 0, final head `2d0e85f`. Fix protocol used once (`max_cliques` prefix: spec `a96234c`, generator `ffa4fe7`). Test-only perturbation commits `98636cf` and `d74bec0`. Watchdog stall wake at 21:45 UTC was a 45-minute CI poll inside the worker, not a hang (threshold raised to 50 minutes).
+- CI on `2d0e85f`: python.yaml, js.yaml, conformance-r.yaml, R-CMD-check.yaml all success. The worker could not read CI logs; the driver read them: as-cran job (run 37686074718) Status 1 NOTE (HTML Tidy missing), matrix jobs Status OK, testthat 258 passed in 3.2 s, slowest example 0.78 s, check folder outside the checkout.
+- Blocker fixed by the driver: `cran-comments.md` did not list the CI as-cran NOTE (B5-A1). Commit `2cc2ffa` (`Batch 5/6 · Review`).
+- Driver local record at `2cc2ffa` (WSL): generate.py --check, test_generate.py (23), ruff, pytest (2959), both examples, npm ci, typecheck, build, test (73), test:conformance, npm pack --dry-run (17 files), run_r.R (1490 cases, 3 data sets), R CMD build, R CMD check --as-cran --no-manual (0 errors, 0 warnings, 2 NOTEs: New submission, no pandoc locally). All exit 0.
+- Driver checks: the four original Python test files are byte identical to `eb95fe9:tests/`; npm, PyPI, and CRAN return 404 for the package names; no tags, no releases.
+- Acceptance: all 33 batch rows and M-A1 to M-A5 written with evidence; M-A6 waits for the final reviews. Deferred hygiene (advisory): two-line Confidence trailers; a wrong phrase in the body of `03cf023`; no error fixture for an empty adjacency matrix.
 
 ---
 
