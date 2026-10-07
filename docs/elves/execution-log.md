@@ -5,7 +5,7 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 ## Run digest
 
 - **Last updated:** 2026-10-07 ET, route (a) setup
-- **Current phase:** Launching (route a, Claude Code 2.1.293)
+- **Current phase:** In progress (re-drive 1 of 2; B1 implemented, awaiting Close)
 - **Active batch:** none
 - **Last completed batch:** none yet
 - **Next exact batch:** B1: Layout move and specification
@@ -15,6 +15,17 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 - **Latest Elves Report:** not generated yet
 - **Progress commits:** `[feat/r-js-packages · Batch N/6 · Contract|Implement|Validate|Review|Close] <outcome>`; the worker pushes only `feat/r-js-packages`; PR actions, run memory, final review stay with the driver.
 - **Handoff standard:** packet `.elves/runtime/worker-packet.md` has the eight handoff parts.
+
+---
+
+## 2026-10-07 ET: qualified launch, B1 work, packet defect, re-drive 1
+
+- Launch at `ed67075`: required prewalk qualified (Claude Code 2.1.293; guide claude-opus-5-5 at high, execution claude-sonnet-5-5 at high; instruction fidelity `retained_safe`; evidence `/home/mason/.cache/elves/prewalk/claude-b8e565561e278eb9f8d93efc8622ad14.json`). Session `b312b3d9-a26e-4fa5-9605-e89614784548`; packet sent once.
+- Guide turn (19:26 to 19:28 UTC): nine-item B1 TODO, first meaningful edit (staged `git mv` renames), `first_meaningful_edit` checkpoint. Transition `transition_ready`, then `executing` with `--resume b312b3d9... --model claude-sonnet-5-5 --effort high` (checked in `/proc/<pid>/cmdline`).
+- Execution: six B1 commits (`6196079` move, `7e0ebb4` and `e2f791e` licenses, `d4ec12e` packaging, `b48c738` CI and ignore, `0ff9116` spec). The driver watchdog pushed them (fast forward). `python.yaml` passed on `0ff9116` (push run 37675405283, pull_request run 37675416206).
+- The worker stopped at 19:34 UTC without a B1 `Close`: the Elves native transport disables git network access and gh auth for the worker (`GIT_ALLOW_PROTOCOL=file`, push URL `disabled://native-worker-no-push`, empty credential helper, empty `GH_CONFIG_DIR`), while the packet said to push and to wait for green CI before `Close`. Supervisor status `failed`, `prewalk_checkpoint_invalid` (no `task_complete` checkpoint). This is a coordinator packet defect; the worker's B1 report shows local evidence for B1-A1 to B1-A5 and did not work around the block.
+- Driver check of `docs/algorithm.md` sections 3 to 8: no defect found.
+- Re-drive 1 of 2 (`redrive record-failure --batch B1 --failure-class coordinator_packet_defect` recorded). Changes: the watchdog keeps pushing and also writes `.elves/runtime/ci-status.json` and failed-run logs in `.elves/runtime/ci-logs/` for the worker to read; gap message `.elves/runtime/gap-B1-r1.md` (pushes and CI are driver-owned, B1 CI evidence, close B1, continue to B6). The re-drive resumes the same session on the execution route (`native-worker launch --session-id b312b3d9... --model claude-sonnet-5-5 --effort high`), so there is no cold fallback.
 
 ---
 

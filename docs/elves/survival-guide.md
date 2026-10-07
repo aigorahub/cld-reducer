@@ -96,8 +96,8 @@ ends at a green, reviewed, draft PR. No merge, tag, release, CRAN submission, or
 
 - **Planned batches remaining:** 6
 - **Stop allowed right now:** no
-- **Why:** the WSL login works and Claude Code is 2.1.293; the relaunch and all six batches remain.
-- **Next required action:** relaunch the worker with required prewalk and park on the follow stream.
+- **Why:** B1 is implemented but not closed, and B2 to B6 remain; re-drive 1 of 2 runs.
+- **Next required action:** re-drive the same session with `.elves/runtime/gap-B1-r1.md`, then park on the watchdog.
 
 After `EXECUTE APPROVED`, set `Stop allowed right now: no` until the stop point.
 
@@ -183,13 +183,13 @@ If one of these happens after `EXECUTE APPROVED`, update the docs, commit, push,
 
 ## Current Phase
 
-**Status:** Launching (route a, WSL)
+**Status:** In progress (re-drive 1 of 2)
 
 **Active batch:** none
 
-**What was just finished:** Mason's Claude login in WSL, Claude Code update to 2.1.293, and a passing confirmation call.
+**What was just finished:** B1 work (six commits, pushed by the driver; python.yaml green on 0ff9116); the worker stopped before its B1 Close because of a packet defect about pushes.
 
-**Single next action:** relaunch the worker.
+**Single next action:** launch the re-drive.
 
 ---
 

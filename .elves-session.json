@@ -35,7 +35,7 @@
         }
       ],
       "id": "B1",
-      "status": "pending"
+      "status": "implemented_awaiting_close"
     },
     {
       "acceptance": [
@@ -242,7 +242,7 @@
   },
   "continuation_guard": {
     "stop_allowed": false,
-    "reason": "Claude login fixed and Claude Code updated to 2.1.293; relaunch with required prewalk. Work remains until the draft PR meets the plan's Definition of green."
+    "reason": "Re-drive 1 of 2 of the same worker session with a corrected packet; B1 to B6 remain."
   },
   "elves_report_path": "/tmp/elves-report-cld-reducer-2026-10-07.html",
   "elves_version": "2.39.0",
@@ -337,7 +337,7 @@
       "model": "claude-opus-5-5"
     }
   },
-  "phase": "launching",
+  "phase": "re_drive",
   "plan_path": "docs/plans/r-js-packages/plan.md",
   "pr": {
     "status": "open_draft",
@@ -349,7 +349,7 @@
     "bot_review_trigger": "none configured (no review bot on this repository)"
   },
   "prewalk": {
-    "actual": null,
+    "actual": "exact_session",
     "execution_route": {
       "effort": "high",
       "model": "claude-sonnet-5-5"
@@ -360,7 +360,7 @@
     },
     "host_cli": "Claude Code 2.1.293 in WSL",
     "requested": "required",
-    "status": "pending_qualification",
+    "status": "transition_passed",
     "previous_attempts": [
       {
         "code": "prewalk_live_qualification_failed",
@@ -388,6 +388,12 @@
       "guide_effort": "xhigh -> high",
       "execution_route": "unchanged (claude-sonnet-5-5 at high)",
       "reason": "Elves 2.39.0 allows only low, medium, high for Claude routes"
+    },
+    "qualification": {
+      "qualified": true,
+      "instruction_fidelity": "retained_safe",
+      "installed_version": "2.1.293",
+      "evidence": "/home/mason/.cache/elves/prewalk/claude-b8e565561e278eb9f8d93efc8622ad14.json"
     }
   },
   "repository": "aigorahub/cld-reducer",
@@ -421,5 +427,28 @@
       "ref": "refs/elves/rollback/cld-reducer-r-js-package/ef8e9e5c-0c89-4d/b0-44fef74d51ce",
       "head": "f534d856798920c4eb89c10f62eb8c40ab4f1692"
     }
+  },
+  "worker_runs": [
+    {
+      "native_run_id": "cld-reducer-r-js-packages-2026-10-07",
+      "session_id": "b312b3d9-a26e-4fa5-9605-e89614784548",
+      "launch_head": "ed6707594061562794fccb0d1d9d66c0933ea58d",
+      "final_head": "0ff911661c16335e8417419edf3e572258893b85",
+      "status": "failed",
+      "failure_reason": "prewalk_checkpoint_invalid",
+      "cause": "coordinator packet defect: the packet required worker pushes and CI before Close, but the Elves native transport disables git network access and gh auth for the worker; the worker stopped before the B1 Close as the packet required"
+    }
+  ],
+  "redrive": {
+    "budget": 2,
+    "used": 1,
+    "attempts": [
+      {
+        "batch": "B1",
+        "class": "coordinator_packet_defect",
+        "gap_packet": ".elves/runtime/gap-B1-r1.md",
+        "changed": "pushes and CI status relay are driver-owned; worker reads .elves/runtime/ci-status.json; B1 CI evidence supplied"
+      }
+    ]
   }
 }

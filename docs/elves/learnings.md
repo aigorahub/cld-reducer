@@ -28,6 +28,8 @@ Durable lessons for this repository and this machine. Run status goes in the exe
 
 - [L17] [2026-10-07] Claude Code before 2.1.280 rejects claude-opus-5-5 with an API 400; a confirmation call must use the exact guide model, not only the execution model. (evidence: execution-log 2026-10-07 login fixed)
 
+- [L18] [2026-10-07] Elves native workers (Claude transport) have no git network access and no gh auth (`GIT_ALLOW_PROTOCOL=file`, disabled push URL, empty credential helper, empty `GH_CONFIG_DIR`). Packets must make pushes and CI reads driver-owned, for example a driver-written CI status file the worker reads. (evidence: execution-log 2026-10-07 qualified launch)
+
 ## Retired learnings
 
 None.
