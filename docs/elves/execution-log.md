@@ -18,6 +18,31 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 
 ---
 
+## 2026-10-07 ET: plan review round 4 (Astra, routed by Lantern)
+
+**Input:** Astra reviewed staging commit `e08be53`: CHANGES NEEDED, two findings; round 3
+finding 2 fixed, finding 1 partly fixed. Lantern: smallest change that removes the sequencing
+defects.
+
+**Verification and fixes:**
+
+1. P1 driver SHA recording dirties the tree: confirmed. The batch completion bullet recorded
+   the new commit SHA in the tracked execution log after the commit, and check 6 fails on any
+   uncommitted run-doc change. Fixed: the SHA goes only into `driver-commits.json` and the
+   driver transcript at once; the next driver evidence commit lists earlier SHAs in the
+   execution log; no commit records its own SHA (rule B, threat model, batch completion,
+   survival guide). R0 item 4 now runs this full sequence with two evidence commits and a clean
+   tree.
+2. P1 R0 needs a PR that does not exist yet: confirmed (`gh pr list --head feat/r-js-packages
+   --state all` returns `[]`, and step 1 opens the PR after R0). Fixed: R0 no longer runs the
+   GitHub checks; step 1 adds a live GitHub gate after the draft PR exists and before step 2.
+   Order: R0, then step 1 (push, draft PR, rollback ref, baseline, live gate), then step 2.
+
+Plan version 5; packet version 5. Acceptance rows unchanged (39); `validate` OK; survival guide
+OK.
+
+---
+
 ## 2026-10-07 ET: plan review round 3 (Astra, routed by Lantern)
 
 **Input:** Astra reviewed staging commit `2147009`: CHANGES NEEDED, two findings; round 2

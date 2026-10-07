@@ -1,7 +1,7 @@
 # Plan: R and JavaScript packages for cld-reducer, structured like turfLP
 
-Plan version: 4 (2026-10-07), after Astra plan reviews round 1 (six findings), round 2 (five
-findings), and round 3 (two findings), all fixed; see the execution log. Driver: cld-driver (Claude Code, claude-opus-5-5, xhigh).
+Plan version: 5 (2026-10-07), after Astra plan reviews rounds 1 to 4 (six, five, two, and two
+findings), all fixed; see the execution log. Driver: cld-driver (Claude Code, claude-opus-5-5, xhigh).
 Branch: `feat/r-js-packages`. Worktree: `C:\Claude\cld-reducer-r-js-packages`.
 Base: `origin/main` at `eb95fe9ad5e983a1f2e6e02668c3419647b9571e`.
 
@@ -870,7 +870,10 @@ each transition. Recovery always reads it first.
 
 1. Push the staging commits to `origin feat/r-js-packages` and open the draft PR. Create the
    rollback ref `refs/elves/rollback/cld-reducer-r-js-packages-2026-10-07/b0`. Take the
-   authority baseline (see "Route (c) authority audit").
+   authority baseline (see "Route (c) authority audit"). Then run the live GitHub gate: checks
+   8 and 9 and the events lookup of F, read-only, against the real repository and the new draft
+   PR. They must run without error and pass against the baseline just taken. A failure stops the
+   run before step 2. (Order: R0 on disposable repositories, then this step, then step 2.)
 2. Choose a session UUID `S`. Write `{"schema_version": 1, "run_id":
    "cld-reducer-r-js-packages-2026-10-07", "session_id": "S"}` to
    `.elves/runtime/prewalk/cld_reducer_r_js_package-d60c05050bd9310e/session.json` (the path
@@ -994,8 +997,9 @@ driver, only for the changes named below as authorized, with each update logged.
 
 **Threat model.** The audit catches mistakes and instruction drift by a cooperative worker. It
 is not a defense against a deliberate attacker: the worker runs as the same Windows user and
-could, in principle, edit the driver-private files. The driver's own transcript and the
-execution log keep a second copy of every driver commit SHA and every baseline update.
+could, in principle, edit the driver-private files. The driver's own transcript keeps a second
+copy of every driver commit SHA and every baseline update, and each driver evidence commit
+lists the SHAs of the earlier driver commits in the execution log.
 
 **Authorized changes** (the only ones that pass):
 
@@ -1003,7 +1007,9 @@ execution log keep a second copy of every driver commit SHA and every baseline u
   `refs/heads/feat/r-js-packages` (remote) may move only to a descendant of the last verified
   tip, and the remote tip must equal the local tip or be its ancestor.
 - B. Driver commits. Each commit the driver makes is recorded in `driver-commits.json` (SHA,
-  subject, changed paths) right after it is created, and also in the execution log. A recorded
+  subject, changed paths) and in the driver's transcript right after it is created, never in a
+  tracked file at that moment, so the working tree stays clean. The next driver evidence commit
+  lists it in the execution log; no commit records its own SHA. A recorded
   driver commit may touch only the driver's run docs: `.elves-session.json`, `docs/elves/**`,
   and `docs/plans/r-js-packages/plan.md`.
 - C. Worker commits. Every other commit since the launch head is a worker commit. It may touch
@@ -1073,8 +1079,9 @@ scratchpad, in a Herdr tab `cld-rehearsal` that it creates and closes afterwards
 disposable repository has a disposable local bare repository as its `origin` (no network, no
 GitHub). The packet is tiny ("add one line to a.txt, then a test file"). R0 uses the same flags
 and models, so it costs a few short turns. The GitHub checks (check 9 and the events lookup in F)
-cannot run against a bare remote; R0 runs them once read-only against the real repository to
-prove they work, and the driver records that. R0 must show:
+cannot run against a bare remote, and no PR exists before step 1, so R0 does not run them. The
+live GitHub gate in step 1 runs them after the draft PR exists and before the worker starts.
+R0 must show:
 
 1. Lifecycle: start, identity report, guide turn, exit, and resume on the execution route in one
    Herdr pane: `herdr agent get` and the transcript show one session id; `process-info` shows
@@ -1087,8 +1094,11 @@ prove they work, and the driver records that. R0 must show:
 3. Working directory: a benign `cd` into a subfolder is accepted by the transcript checks; a
    `cwd` outside the allowed roots fails them.
 4. Authorized progress passes the audit: a worker commit inside the owned paths, pushed to the
-   feature branch of the bare remote, passes; then a recorded driver evidence commit that
-   touches only run-doc paths, pushed the same way, passes; then a driver rollback ref passes.
+   feature branch of the bare remote, passes; then a driver evidence commit that touches only
+   run-doc paths, pushed the same way, with its SHA recorded only in `driver-commits.json` and
+   the transcript, leaves a clean working tree and passes; then a second driver evidence commit,
+   whose execution-log update lists the first SHA, passes the same way; then a driver rollback
+   ref passes.
 5. Each violation fails the audit, each in a fresh copy of the rehearsal repository:
    - moving a protected local branch (local `main`);
    - a worker commit that edits a driver run doc (`docs/elves/execution-log.md`);
@@ -1160,8 +1170,8 @@ plan. The worker never edits them.
   `met` and `evidence` for each row and `status: complete` for the batch, updates the
   execution log and survival guide, runs `acceptance_contract.py validate`, commits only those
   run-doc paths as `[feat/r-js-packages · Batch N/6 · Review] Record B<N> acceptance evidence`,
-  pushes, records that commit SHA in `driver-commits.json` and the execution log, creates and
-  records the rollback ref `b<N>`, runs the transcript checks and the authority audit, and only
+  pushes, records that commit SHA in `driver-commits.json` and its transcript (the execution log
+  gets it with the next evidence commit), creates and records the rollback ref `b<N>`, runs the transcript checks and the authority audit, and only
   then prompts B<N+1>. A failed row gets a gap
   prompt for the same batch first. This is the B1 to B2 path.
 - **Routes (a) and (b), parked full-run:** the worker closes each internal batch with its

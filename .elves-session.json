@@ -241,7 +241,7 @@
     "default_for_session": true
   },
   "continuation_guard": {
-    "reason": "Phase 1 plan review gate (round 4): wait for Lantern routing, Mason's route decision (H13), and EXECUTE APPROVED.",
+    "reason": "Phase 1 plan review gate (round 5): wait for Lantern routing, Mason's route decision (H13), and EXECUTE APPROVED.",
     "stop_allowed": true
   },
   "elves_version": "2.39.0",
