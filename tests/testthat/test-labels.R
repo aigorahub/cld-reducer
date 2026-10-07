@@ -1,0 +1,10 @@
+test_that("labels run A to Z, then AA, AB, and so on", {
+  labels <- make_letter_labels(704)
+  expect_equal(labels[1:3], c("A", "B", "C"))
+  expect_equal(labels[26:29], c("Z", "AA", "AB", "AC"))
+  expect_equal(labels[52:53], c("AZ", "BA"))
+  expect_equal(labels[702:704], c("ZZ", "AAA", "AAB"))
+  expect_false(anyDuplicated(labels) > 0)
+  expect_equal(make_letter_labels(0), character(0))
+  expect_error(make_letter_labels(-1))
+})
