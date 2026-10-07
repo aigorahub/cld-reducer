@@ -118,10 +118,23 @@ describe("failure paths", () => {
     await expect(reduceFromAdjacency(SIMPLE)).rejects.toThrow(/HiGHS returned an invalid solution/);
   });
 
+  // The first solve of the wheat example may already return the canonical optimum, which
+  // would leave no feasible re-solve to test. A tiny extra cost on the early memberships
+  // moves the first solution away from it; the later solves are unchanged.
+  const offCanonicalFirstSolve = (): typeof solver.hooks.run => (problem, lower, upper, sumLimit, t) => {
+    if (sumLimit === null) {
+      const cost = Float64Array.from(problem.cost);
+      for (let k = 0; k < problem.numX; k++) cost[k] = 1 + 1e-3 * (problem.numX - k) / problem.numX;
+      return realRun({ ...problem, cost }, lower, upper, sumLimit, t);
+    }
+    return realRun(problem, lower, upper, sumLimit, t);
+  };
+
   it.runIf(hasConformance)("scripted invalid later solutions are rejected (wheat has feasible re-solves)", async () => {
     let later = 0;
+    const first = offCanonicalFirstSolve();
     solver.hooks.run = (problem, lower, upper, sumLimit, t) => {
-      const out = realRun(problem, lower, upper, sumLimit, t);
+      const out = first(problem, lower, upper, sumLimit, t);
       if (sumLimit !== null && out.status === "optimal") {
         later++;
         return { ...out, values: new Float64Array(out.values!.length) };
@@ -133,8 +146,9 @@ describe("failure paths", () => {
   });
 
   it.runIf(hasConformance)("a solution that violates a fixing is rejected", async () => {
+    const first = offCanonicalFirstSolve();
     solver.hooks.run = (problem, lower, upper, sumLimit, t) => {
-      const out = realRun(problem, lower, upper, sumLimit, t);
+      const out = first(problem, lower, upper, sumLimit, t);
       if (sumLimit !== null && out.status === "optimal") {
         const v = Float64Array.from(out.values!);
         v[lower.findIndex((x, k) => k < problem.numX && x > 0.5)] = 0;
