@@ -147,7 +147,7 @@ R keeps presolve off because the CRAN `highs` package bundles HiGHS 1.14, where 
 **Controls.** Both checks are solver errors, run after the method check of section 2 and before the cliques of section 3, `time_limit` first:
 
 - `time_limit` is absent or a finite number greater than 0 (seconds; a boolean or a string is not a number): otherwise `time_limit must be positive when provided`.
-- `max_cliques` is absent or a whole number of 1 or more (a boolean is not a number): otherwise `max_cliques must be a positive integer or None` (`NULL` or `null` in R and JavaScript).
+- `max_cliques` is absent or a whole number of 1 or more (a boolean is not a number): otherwise the message starts with `max_cliques must be a positive integer or ` and ends with `None` (Python), `NULL` (R), or `null` (JavaScript).
 
 **One budget.** `time_limit` is one budget for all solves in a call, measured from just before the first solve with a monotonic clock (R `proc.time()[["elapsed"]]`, Python `time.monotonic()`, JavaScript `performance.now() / 1000`). Each solve gets the time left as its HiGHS time limit. When no time is left before a solve starts, or HiGHS stops on the time limit, the call raises a solver error with the prefix `assignment-minimum MILP failed: ` and the text `Time limit reached`. The clique enumeration is not part of the budget.
 
@@ -245,7 +245,7 @@ Invalid input error prefixes and messages, in one list:
 Solver error prefixes and messages:
 
 - `time_limit must be positive when provided`
-- `max_cliques must be a positive integer or None`
+- `max_cliques must be a positive integer or ` followed by `None`, `NULL`, or `null`
 - `maximal clique enumeration exceeded max_cliques=`
 - `assignment-minimum MILP failed: ` followed by the HiGHS status text
 - `HiGHS returned an invalid solution`
