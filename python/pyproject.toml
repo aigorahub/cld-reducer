@@ -9,6 +9,7 @@ description = "Reduce compact letter displays while preserving pairwise statisti
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
+license-files = ["LICENSE"]
 authors = [
   { name = "John Ennis" },
   { name = "Carl Graham" },
@@ -54,7 +55,11 @@ cld-reduce = "cld_reducer.cli:main"
 [project.urls]
 Homepage = "https://github.com/aigorahub/cld-reducer"
 Repository = "https://github.com/aigorahub/cld-reducer"
+Source = "https://github.com/aigorahub/cld-reducer/tree/main/python"
 Issues = "https://github.com/aigorahub/cld-reducer/issues"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/cld_reducer", "tests", "examples", "README.md", "LICENSE"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cld_reducer"]
