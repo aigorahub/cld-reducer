@@ -18,6 +18,48 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 
 ---
 
+## 2026-10-07 ET: plan review round 2 (Astra, routed by Lantern)
+
+**Input:** Astra reviewed staging commit `328f902`: CHANGES NEEDED, five findings; round 1
+findings 1, 2, 4, 5, 6 fixed, finding 3 partly fixed. Lantern: fix all five; for finding 2 add
+local checks and state that the audit detects, not prevents; for finding 3 pick a launch
+configuration that keeps Herdr identity without plain-bash hooks.
+
+**Verification and fixes:**
+
+1. P1 recovery bypassing the transition gate: confirmed. `native_worker.py` lines 2509 to 2570
+   resume the guide route with `recovery_prompt()` and validate artifacts before any switch; the
+   plan resumed the execution route on any death. Fixed: phase record
+   `.elves/runtime/route-c/phase.json` and phase-specific recovery in route (c).
+2. P1 authority audit missing local changes: confirmed. Elves `_verify_native_git_contract`
+   checks branch, ancestry, origin config digest, and all local refs; the plan checked mostly
+   remote state. The Elves helpers in `git_contract.py` fail here with `FileNotFoundError`.
+   Fixed: plan section "Route (c) authority audit" (local refs, ancestry, worktrees, main
+   checkout, local, global, and system git config, remotes, hooks, commit attribution, turfLP
+   at `c6e6b86` with ignored files, remote refs with GitHub event attribution, PR and releases),
+   detection only, stated in H13 item (2).
+3. P2 inherited hooks and plugins: confirmed in `~/.claude/settings.json`: Stop hook
+   `bash ~/.claude/hooks/style-check.sh`, SessionStart hook `herdr-agent-state.ps1` (calls
+   `herdr pane report-agent-session`), plugins `gitkraken-hooks`, `slack`, `vercel`. `where.exe
+   bash` lists Git Bash first and the WindowsApps (WSL) launcher second. Elves launches Claude
+   with `--safe-mode` (`host_profiles.py` lines 99 to 104). Chosen configuration: `--safe-mode`
+   on every worker start, and the driver runs the same `herdr pane report-agent-session` command
+   after each start. `--restricted` rejected (removes Bash). Disclosed as trade-off items 8 and
+   9 and in H13 item (3). Packet section 9 carries the house rules that safe mode drops.
+4. P2 transcript `cwd` check too strict: confirmed (the driver transcript itself shows
+   cld-reducer and turfLP `cwd` values). Fixed: separate session binding, launch location
+   (process cwd and first entry), and an allowed working-directory set (worktree and below,
+   turfLP and below), plus a hook-entry check.
+5. P2 B2-A1 Windows-only: confirmed. Fixed: "on the execution host" plus a Windows generator
+   job in `conformance-r.yaml` with `core.autocrlf true`; route table note updated.
+
+**Added:** rehearsal R0 on disposable repositories before a route (c) launch (lifecycle, guide
+interruption, working directory, audit drills), which covers Astra's disproving checks for
+findings 1 to 4 and the unverified Herdr lifecycle. Plan version 3. `sync-session` re-derived
+the rows (B2-A1 text changed); `validate` OK; survival guide OK; packet rows equal plan rows (39).
+
+---
+
 ## 2026-10-07 ET: plan review round 1 (Astra, routed by Lantern)
 
 **Input:** Astra reviewed staging commit `5fc67b6`: CHANGES NEEDED, six findings. Lantern added

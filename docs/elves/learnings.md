@@ -15,6 +15,9 @@ Durable lessons for this repository and this machine. Run status goes in the exe
 - [L8] [2026-10-07] Claude Code transcripts (`~/.claude/projects/<slug>/<session>.jsonl`) record `model`, `sessionId`, and `cwd` on each message, so a resume with a new `--model` can be checked from the transcript; effort is not recorded. (evidence: execution-log 2026-10-07 plan review round 1)
 - [L9] [2026-10-07] `herdr --skill` prints the herdr skill when it is not installed as a Claude skill. (evidence: execution-log 2026-10-07 plan review round 1)
 
+- [L10] [2026-10-07] The Elves git contract helpers (`cobbler_runtime/git_contract.py`) fail on this Windows host with `FileNotFoundError` when they call git; route (c) needs its own audit script. (evidence: execution-log 2026-10-07 plan review round 2)
+- [L11] [2026-10-07] User settings on this host run a Stop hook with plain `bash` and a Herdr SessionStart hook (`herdr-agent-state.ps1`, which calls `herdr pane report-agent-session`) and enable three plugins. `claude --safe-mode` turns all of them off; a supervisor must then report the Herdr session identity itself. Transcripts record a `stop_hook_summary` entry when a Stop hook runs. (evidence: execution-log 2026-10-07 plan review round 2)
+
 ## Retired learnings
 
 None.

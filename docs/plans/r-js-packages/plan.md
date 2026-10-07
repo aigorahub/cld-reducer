@@ -1,7 +1,7 @@
 # Plan: R and JavaScript packages for cld-reducer, structured like turfLP
 
-Plan version: 2 (2026-10-07), after Astra plan review round 1 (six findings, all fixed; see the
-execution log). Driver: cld-driver (Claude Code, claude-opus-5-5, xhigh).
+Plan version: 3 (2026-10-07), after Astra plan reviews round 1 (six findings) and round 2 (five
+findings), all fixed; see the execution log. Driver: cld-driver (Claude Code, claude-opus-5-5, xhigh).
 Branch: `feat/r-js-packages`. Worktree: `C:\Claude\cld-reducer-r-js-packages`.
 Base: `origin/main` at `eb95fe9ad5e983a1f2e6e02668c3419647b9571e`.
 
@@ -315,7 +315,7 @@ The spec is normative. Every implementation and the generator follow it. It must
 | `python.yaml` (replaces `ci.yml`) | test: ubuntu, macos, windows x Python 3.10, 3.13 with `uv sync --locked --extra dev` (the `dev` extra holds pytest, ruff, and build; plain `uv sync` installs no extras), then `uv run --locked ruff check .`, `uv run --locked ruff format --check .`, `uv run --locked pytest`, and both example scripts; minimum: `uv venv --python 3.10`, `uv pip install -e ".[dev]" "highspy==1.15.1" "numpy==1.24.*" "pandas==2.0.*"`, `uv run --no-sync pytest`; package: `uv build`, wheel into a clean venv without the `dev` extra, CLI on the ABC example | push, pull_request |
 | `js.yaml` | test: ubuntu, macos, windows x Node 22, 24: `npm ci`, typecheck, build, test, `test:conformance`; pack: tarball contents check and clean install smoke test | push, pull_request |
 | `R-CMD-check.yaml` | R-CMD-check: macOS release, Windows release, Ubuntu devel, release, oldrel-1; as-cran: Ubuntu release, `--as-cran` with the PDF manual (TinyTeX), `error-on: "warning"`, `check-dir` under `runner.temp` (B5-A7); generated-files: see "Generated-files job" below | push to main, pull_request |
-| `conformance-r.yaml` | `generate.py --check`, `test_generate.py` (from B2), `Rscript conformance/run_r.R` (from B5) | push, pull_request |
+| `conformance-r.yaml` | generator job on Ubuntu and on Windows with `core.autocrlf true`: `generate.py --check`, `test_generate.py` (from B2); R job on Ubuntu: `Rscript conformance/run_r.R` (from B5) | push, pull_request |
 | `publish-npm.yaml` | as in the JavaScript design | release published, manual |
 | `publish-python.yaml` | turfLP's workflow adapted to `python/` (PyPI trusted publishing, environment `pypi`) | release published, manual |
 
@@ -481,11 +481,13 @@ the repository root and from `python/`.
 - [ ] `test_generate.py` with hand cases and the enumeration cross check.
 - [ ] `conformance/README.md`: files, input format, fixture format, pass rule, exclusions,
   commands.
-- [ ] `conformance-r.yaml` with the two generator steps (Python 3.12 on Ubuntu).
+- [ ] `conformance-r.yaml` with a generator job that runs the two generator steps with Python
+  3.12 on `ubuntu-latest` and on `windows-latest`; the Windows job runs `git config --global
+  core.autocrlf true` before checkout, so it always tests CRLF working files.
 
 **Acceptance criteria:**
 
-- [ ] B2-A1: `python conformance/generate.py --check` exits 0 on Windows, and the same command exits 0 in the `conformance-r.yaml` job on Ubuntu on the PR head that closes B2.
+- [ ] B2-A1: `python conformance/generate.py --check` exits 0 on the execution host, and the same command exits 0 in both `conformance-r.yaml` generator jobs (Ubuntu, and Windows with `core.autocrlf true`) on the PR head that closes B2.
 - [ ] B2-A2: `python conformance/test_generate.py` exits 0, and its cross check compares the exact search with plain enumeration on every graph with up to 6 groups.
 - [ ] B2-A3: The fixtures contain every labeled graph with 1 to 5 groups, at least 200 seeded random graphs with 6 to 12 groups, the wheat and simple ABC examples, the D4 letter renaming example, a 28 group star (labels after Z), the complete and the empty graph, `max_cliques` cases, and error cases for every input rule of the spec; `conformance/README.md` states the case counts.
 - [ ] B2-A4: The wheat fixture expects 56 assignments before, 44 after, 4 letters after, and the canonical display; the simple ABC fixture expects `{"1": "A", "2": "AB", "3": "AC", "4": "BC", "5": "C"}`.
@@ -701,7 +703,8 @@ CRAN, npm, or PyPI yet).
 All of these hold at one exact PR head:
 
 1. GitHub Actions on the PR head: every job in `R-CMD-check.yaml` (5 matrix, as-cran,
-   generated-files), `conformance-r.yaml`, `python.yaml` (6 matrix, minimum, package), and
+   generated-files), `conformance-r.yaml` (generator on Ubuntu and Windows, R), `python.yaml` (6
+   matrix, minimum, package), and
    `js.yaml` (6 matrix, pack) succeeds. No job is skipped or cancelled.
 2. The as-cran log shows `0 errors | 0 warnings`; each NOTE is in `cran-comments.md`.
 3. Local record on the execution host (route dependent: Windows for routes (b) and (c), WSL
@@ -758,10 +761,17 @@ These need a person. The run does not do them.
   some inputs with one optimum. Confirm the Python changes D5 and D6.
 - **H11.** Choose Option A (local R install) or Option B (CI only) for the R loop. Without a
   choice, Option B applies.
-- **H13.** Choose the execution route (a), (b), or (c) of the section "Execution routes". Route
-  (c) needs Mason's explicit acceptance of experimental prewalk and of the items it gives up.
 - **H12.** Confirm that the wheat significance data (Piepho 2004, as reproduced in Ennis,
   Fayle, and Ennis 2012, Table 7) may ship in the CRAN package with that citation.
+- **H13.** Choose the execution route (a), (b), or (c) of the section "Execution routes". Route
+  (c) needs Mason's explicit acceptance of three separate things: (1) experimental, unqualified
+  prewalk (items 1 to 3, 5 to 7); (2) the residual authority risk (item 4): the worker has full
+  local git and `gh` authority, and the authority audit only **detects** prohibited actions after
+  the fact (moved local refs, changed git config or remotes, a changed turfLP checkout, pushed
+  refs, PR or release changes); it does not prevent them and cannot undo a merge or a push; (3)
+  the launch configuration (items 8 and 9): `--safe-mode` without the user's `CLAUDE.md`,
+  skills, plugins, MCP servers, or hooks (including the writing-style Stop hook), and Herdr
+  identity reported by the driver.
 
 ## Execution routes
 
@@ -779,6 +789,8 @@ cannot run on this native Windows host. Facts from Elves 2.39.0 as installed:
   same reason (`PermissionError` on the directory open). A locking-only patch still fails.
 - `references/agent-teams.md` states: "Native Windows Python is not a qualified Elves execution
   host." Elves supports Windows only through WSL2.
+- The Elves git contract helpers (`cobbler_runtime/git_contract.py`: protected-ref snapshot and
+  origin config digest) fail on this host with `FileNotFoundError` when they call git.
 - No cached prewalk qualification exists on Windows or in WSL. WSL Ubuntu has `python3` and
   `git` only.
 - Read-only helpers work on Windows: `acceptance_contract.py validate`,
@@ -830,53 +842,105 @@ Proposed by Lantern. The worker is an interactive Claude Code session in a separ
 this workspace, in the registered Windows worktree. The driver (this session) is the
 supervisor, does not park, gates each batch, and owns all run memory.
 
-**Steps (after `EXECUTE APPROVED` and Mason's acceptance of experimental prewalk):**
+**Worker launch configuration.** Every worker start (guide, guide recovery, execution, execution
+recovery) uses `--safe-mode`, like the Elves Claude transport (`host_profiles.py`, lines 99 to
+104). Safe mode turns off the user's customizations on this host: the user `CLAUDE.md`, skills,
+the three enabled plugins (`gitkraken-hooks`, `slack`, `vercel`), MCP servers, and all hooks,
+including the Stop hook `bash ~/.claude/hooks/style-check.sh` (plain `bash`) and the Herdr
+SessionStart hook `herdr-agent-state.ps1`. Auth, model selection, built-in tools, and
+`--permission-mode auto` work normally. `--restricted` was rejected because it removes Bash.
+Because the Herdr hook does not run, the driver reports the session identity itself after each
+start with the same command the hook runs:
+`herdr pane report-agent-session P --source herdr:claude --agent claude --seq <epoch ms>
+--agent-session-id S --agent-session-path <transcript path> --session-start-source
+<startup|resume>`. The packet carries the house rules that safe mode no longer loads from
+`CLAUDE.md` (no AI attribution, the writing rules), because the style Stop hook is off.
+
+**Phase record.** The driver keeps `.elves/runtime/route-c/phase.json` (untracked, driver-owned)
+with one of `guide`, `guide_recovery`, `transition_check`, `execution`, plus the session id,
+the route of the running process, and the time. The driver writes it before each start and
+each transition. Recovery always reads it first.
+
+**Steps (after `EXECUTE APPROVED`, Mason's acceptance under H13, and a passing rehearsal R0):**
 
 1. Push the staging commits to `origin feat/r-js-packages` and open the draft PR. Create the
-   rollback ref `refs/elves/rollback/cld-reducer-r-js-packages-2026-10-07/b0`.
+   rollback ref `refs/elves/rollback/cld-reducer-r-js-packages-2026-10-07/b0`. Take the
+   authority baseline (see "Route (c) authority audit").
 2. Choose a session UUID `S`. Write `{"schema_version": 1, "run_id":
    "cld-reducer-r-js-packages-2026-10-07", "session_id": "S"}` to
    `.elves/runtime/prewalk/cld_reducer_r_js_package-d60c05050bd9310e/session.json` (the path
    that `prewalk.prewalk_paths()` returns for this run).
 3. Write the guide message `.elves/runtime/guide-message.md`: the text of the installed
-   `prewalk.guide_prompt(run_id, paths, todo_limit=10)` (exact TODO and checkpoint shapes),
-   then the full worker packet. This is the one packet message.
+   `prewalk.guide_prompt(run_id=..., paths=..., todo_limit=10)` (exact TODO and checkpoint
+   shapes), then the full worker packet. This is the one packet message.
 4. `herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd C:\Claude\cld-reducer-r-js-packages
    --label cld-worker --no-focus`; read the root pane `P` from the JSON.
-5. `herdr agent start cld-worker --kind claude --pane P -- --session-id S --model
-   claude-opus-5-5 --effort xhigh --permission-mode auto`.
+5. Phase `guide`. `herdr agent start cld-worker --kind claude --pane P -- --safe-mode
+   --session-id S --model claude-opus-5-5 --effort xhigh --permission-mode auto`, then the
+   identity report (source `startup`).
 6. Guide turn: `herdr agent prompt cld-worker "@.elves/runtime/guide-message.md" --wait`, then
-   `herdr agent wait cld-worker --timeout <ms>` in a loop as the watchdog if the prompt wait ends
-   first.
-   The guide orients, writes the B1 TODO (at most 10 items) and the first meaningful B1 edit
-   (no commit with `Close`), writes `checkpoint.json` (`first_meaningful_edit`), and ends its
-   turn.
-7. Transition checks by the driver, model-free, before any resume: `herdr agent get
-   cld-worker` shows state `idle` or `done` and session `S`;
+   `herdr agent wait cld-worker --timeout <ms>` in a loop as the watchdog if the prompt wait
+   ends first. The guide orients, writes the B1 TODO (at most 10 items) and the first meaningful
+   B1 edit (no commit with `Close`), writes `checkpoint.json` (`first_meaningful_edit`), and
+   ends its turn.
+7. Phase `transition_check`, model-free, before anything runs on the execution route:
+   `herdr agent get cld-worker` shows `idle` or `done`;
    `prewalk.load_and_validate_transition_artifacts()` and `prewalk.validate_meaningful_edit()`
    from the installed Elves pass (if either cannot run on Windows, the driver does the same
    checks by hand: valid TODO and checkpoint shapes, a real product edit among the declared
    changed paths, no change to driver-owned run docs or forbidden paths, no `Close` commit since
-   the staging head, branch and origin unchanged, `git ls-remote origin` shows `main`
-   unchanged). Any failure stops the run before resume.
+   the staging head); the transcript checks below pass for the guide part; the authority audit
+   passes. Any failure goes to "Recovery" below; nothing starts on the execution route.
 8. End the guide process: `herdr agent prompt cld-worker "/exit"`, then `herdr pane
    process-info --pane P` must show the shell in the foreground.
-9. Resume the same session on the execution route: `herdr agent start cld-worker --kind claude
-   --pane P -- --resume S --model claude-sonnet-5-5 --effort high --permission-mode auto`.
-10. Handoff evidence: `herdr agent get cld-worker` shows session `S` again; `herdr pane
-    process-info --pane P` shows the argv with `--resume S --model claude-sonnet-5-5 --effort
-    high`. After the first execution reply, the transcript
-    `~/.claude/projects/C--Claude-cld-reducer-r-js-packages/S.jsonl` must show one `sessionId`
-    (`S`), `cwd` equal to the worktree, and assistant messages with `model` claude-opus-5-5
-    before the transition and claude-sonnet-5-5 after it. (Claude Code transcripts record the
-    served model on each assistant message; this was checked on the driver's own transcript.
-    Effort is not recorded anywhere, so the execution effort stays unobserved.)
+9. Phase `execution`. `herdr agent start cld-worker --kind claude --pane P -- --safe-mode
+   --resume S --model claude-sonnet-5-5 --effort high --permission-mode auto`, then the identity
+   report (source `resume`).
+10. Handoff evidence: `herdr pane process-info --pane P` shows the argv with `--safe-mode
+    --resume S --model claude-sonnet-5-5 --effort high` and the worktree root as cwd. After the
+    first execution reply, the transcript checks below pass for the whole session, with
+    assistant messages from claude-opus-5-5 before the transition and claude-sonnet-5-5 after
+    it. (Claude Code transcripts record the served model on each assistant message; this was
+    checked on the driver's own transcript. Effort is not recorded, so it stays unobserved.)
 11. Transition message: `herdr agent prompt cld-worker "Continue." --wait`. The worker finishes
     B1, pushes its `Close` commit, writes `.elves/runtime/worker-report-B1.md`, replies with that
     path, and waits.
-12. Batch loop: see "Batch completion and session evidence". The driver prompts the next batch
-    only when `herdr agent get` shows `idle` or `done`. The prompt names the batch and points to
-    its handoff block in the plan and to packet sections 4 to 8; it never resends the packet.
+12. Batch loop: see "Batch completion and session evidence". Before each next prompt, the
+    transcript checks and the authority audit pass. The driver prompts only when `herdr agent
+    get` shows `idle` or `done`. The prompt names the batch and points to its handoff block in
+    the plan and to packet sections 4 to 9; it never resends the packet.
+
+**Transcript checks** (file `~/.claude/projects/C--Claude-cld-reducer-r-js-packages/S.jsonl`).
+Launch location and working directory are separate checks:
+
+- Session binding: the file exists, and every entry that has `sessionId` has `S`.
+- Launch location: at every start, `herdr pane process-info` shows the worktree root as the
+  process cwd, and the first transcript entry after each start has the worktree root as `cwd`.
+- Working directory during work: every `cwd` value, after normalization (Git Bash `/c/...`
+  becomes `C:\...`, slashes become backslashes, the drive letter is compared without case, no
+  trailing separator), is the worktree root or a folder below it, or `C:\Claude\turfLP` or a
+  folder below it (reading the template is allowed; the audit proves it stays clean). A `cwd`
+  such as `python\` or `js\` is accepted. Any other `cwd` fails the gate.
+- Models: assistant `model` is claude-opus-5-5 before the recorded transition time and
+  claude-sonnet-5-5 after it.
+- Hooks: no entry has a hook subtype (for example `stop_hook_summary`), which proves that no
+  user hook ran.
+
+**Recovery (phase-specific, mirrors `native_worker.py` lines 2509 to 2570):**
+
+- Guide phase (`guide`) fails: the process dies, the turn errors, or step 7 finds missing or
+  invalid artifacts. The driver sets phase `guide_recovery` and makes one bounded guide recovery
+  on the **guide route**: `--safe-mode --resume S --model claude-opus-5-5 --effort xhigh
+  --permission-mode auto`, the identity report, then exactly the text of the installed
+  `prewalk.recovery_prompt()` (no packet). Then step 7 runs again. The execution route is never
+  started while the phase is `guide` or `guide_recovery`.
+- Guide recovery fails, or step 7 fails again: the run stops and the driver reports to Lantern.
+  If the worktree is still clean at the staging head, Mason may restart route (c) from step 2
+  with a new session; after any edit, a fresh session is forbidden (no cold fallback). Elves
+  allows an automatic clean fallback only in `auto` mode, which this route is not.
+- Execution phase (`execution`) fails: the driver resumes `S` on the execution route (same
+  flags as step 9) and sends `Continue.`. Transient provider errors wait 5, 10, then 20 minutes
+  first. If `S` cannot be resumed, the run stops and the driver reports.
 
 **Rule check against the installed Elves 2.39.0, with corrections to Lantern's proposal:**
 
@@ -887,6 +951,10 @@ supervisor, does not park, gates each batch, and owns all run memory.
   caller-generated UUID; the guide prompt requires reading it from that file.
 - Correction: the guide message uses the installed `guide_prompt()` text so the TODO and
   checkpoint shapes are exact, and both artifacts are validated before the resume.
+- Correction: `--safe-mode` on every start, like the Elves transport, with the driver reporting
+  the Herdr session identity.
+- Correction: recovery is phase-specific; a guide failure resumes the guide route with the Elves
+  recovery prompt, as `native_worker.py` does.
 - Correction: later batch prompts are new worker turns, so the handoff standard ("before every
   worker turn, a stand-alone packet") applies; each batch prompt points to that batch's
   handoff block in the plan, which has all eight parts. This is not a packet replay.
@@ -894,10 +962,6 @@ supervisor, does not park, gates each batch, and owns all run memory.
   prompts go only to `idle` or `done`. On `blocked`, the driver reads the pane and does not
   answer the approval dialog (workspace rule); it reports to Lantern. On `unknown`, it waits and
   reads.
-- After the first edit, cold fallback is forbidden (prewalk.md): if the worker process dies,
-  the driver resumes session `S` on the execution route and sends `Continue.`; transient
-  provider errors wait 5, 10, then 20 minutes. If `S` cannot be resumed, the run stops and the
-  driver reports; it never starts a fresh session with a copied packet.
 - Compaction (prewalk.md, P4): an interactive session that runs six batches will likely
   compact. After a compaction the driver records `prewalk_fallback:
   prewalk_dequalified_by_compaction`, and later batches rely on the run docs and packet files,
@@ -906,37 +970,117 @@ supervisor, does not park, gates each batch, and owns all run memory.
   Elves execution host, so the route runs outside Elves' qualified support. Mason's acceptance
   covers that.
 
-**What route (c) gives up compared with a qualified cobbler prewalk:**
+### Route (c) authority audit
+
+The worker runs with Mason's full local git access and `gh` authority (scopes `repo`,
+`workflow`). Nothing below **prevents** a prohibited action. The audit **detects** it after the
+fact, at each gate (step 7, every batch boundary, and terminal readiness), before the next
+prompt. A failed audit stops the run and the driver reports to Lantern and Mason. Some actions
+cannot be undone by detection (for example a merged PR or a pushed ref). The installed Elves git
+helpers (`git_contract.py`) fail on this host (`FileNotFoundError` when they call git), so the
+driver runs these checks with its own script `.elves/runtime/route-c/audit.py` (untracked,
+driver-owned), which compares against a baseline taken at step 1.
+
+Local, in the cld-reducer repository (shared by the main checkout and the worktree):
+
+1. All local refs (`git for-each-ref --format="%(refname) %(objectname)" refs`), except
+   `refs/heads/feat/r-js-packages`, `refs/remotes/origin/feat/r-js-packages`, and the driver's
+   own rollback refs: no ref is new, missing, or moved. This covers local `main`, tags, and
+   `refs/stash`.
+2. The worktree is on `feat/r-js-packages`; `eb95fe9` and the last driver-verified tip are both
+   ancestors of `HEAD` (no history rewrite).
+3. `git worktree list --porcelain` is unchanged (no new or moved worktree); the main checkout
+   `C:\Claude\cld-reducer` is clean, on `main`, at its baseline commit.
+4. Git configuration: SHA-256 of `git config --local --list`, of `git config --global --list`,
+   of `git config --system --list`, and of `git remote -v` are unchanged (covers origin URLs,
+   new remotes, `core.hooksPath`, credential helpers, and push settings). The packet tells the
+   worker to push with `git push origin HEAD:feat/r-js-packages`, which changes no config.
+5. Hooks: the list and SHA-256 of non-sample files in `.git/hooks/` is unchanged.
+6. Commits since the staging head contain no `Co-Authored-By` or `Generated with` line, and
+   only touch paths owned by the batches done so far.
+
+Template:
+
+7. `C:\Claude\turfLP`: `HEAD` is `c6e6b86`, `git status --porcelain --ignored` matches the
+   baseline (catches tracked, untracked, and ignored files, for example a `node_modules`
+   folder), and its refs and config digests are unchanged.
+
+Remote and GitHub:
+
+8. `git ls-remote origin`: no new ref other than `refs/heads/feat/r-js-packages` and GitHub's
+   `refs/pull/*`. If `main` moved, the driver checks
+   `gh api repos/aigorahub/cld-reducer/events` for the actor and event; a change made by the
+   account the worker uses during the batch counts as a violation (other team merges do not).
+9. `gh pr view <n>`: still a draft, open, not merged, title and body unchanged since the
+   driver's last edit; `gh pr list --state all --author @me` shows no new PR; `gh release list`
+   and the remote tags show nothing new.
+
+R0 (below) proves that the script fails on each kind of violation before the real launch.
+
+### Route (c) rehearsal R0
+
+Before the real launch, the driver runs route (c) once on disposable repositories in the
+scratchpad (local only, no remote, no push), in a Herdr tab `cld-rehearsal` that it creates and
+closes afterwards, with a tiny packet ("add one line to a.txt, then
+a test file"). It uses the same flags and models, so it costs a few short turns. It must show:
+
+1. Start, identity report, guide turn, exit, and resume on the execution route in one Herdr
+   pane: `herdr agent get` and the transcript show one session id; `process-info` shows the
+   Sonnet argv; the transcript shows the Opus then Sonnet `model` values and no hook entries.
+2. Guide interruption: the driver interrupts a guide after its first edit and before its
+   checkpoint (`herdr agent send-keys cld-rehearsal ctrl+c`). Step 7 fails, the phase stays
+   `guide`, the driver does the guide recovery on the guide route, and only after step 7 passes
+   does the execution route start.
+3. Working directory: a benign `cd` into a subfolder is accepted by the transcript checks; a
+   `cwd` outside the allowed roots fails them.
+4. Audit: in separate disposable repositories, moving a protected local ref, changing the origin
+   config, and editing a file in a stand-in template checkout each make `audit.py` fail.
+
+Any failure stops the run before the real launch, and the driver reports it. R0 results go in
+the execution log.
+
+**What route (c) gives up compared with a qualified cobbler prewalk** (Mason accepts these
+under H13):
 
 1. No live qualification canary: retained guide context and instruction fidelity after the
-   resume are unproven (experimental, not `retained_safe`).
+   resume are unproven (experimental, not `retained_safe`). R0 is a rehearsal, not a
+   qualification.
 2. No machine-enforced transition kernel: the driver runs the validators or the same checks by
    hand.
 3. No version-3 private native-worker state, no single redacted follow log, no stream identity
    check, no salvage tail, no continuity watchdog, no futile re-drive guard: the driver uses
    `herdr agent wait` with timeouts, `herdr agent read`, the transcript JSONL, and the execution
    log.
-4. No sandbox and no narrowed Git roots: the worker runs with Mason's full git and `gh`
-   authority (scopes `repo`, `workflow`) and could push other refs, edit or merge PRs, or create
-   tags. Prevention is by instruction and the `auto` permission classifier only. Detection:
-   after every batch the driver checks `git ls-remote origin` (`main` unchanged, no new ref other
-   than `feat/r-js-packages`), `gh pr view` (still draft, not merged), and `gh release list` and
-   tags (none new). `main` protection (PR required, admins enforced) blocks a direct push to
-   `main`, but not a PR merge.
-5. The transition is done by the driver, not by the supervisor.
+4. **Residual authority risk (separate from item 1).** No narrowed Git roots and no supervisor
+   git contract check: the worker can move local refs, change git config, edit the turfLP checkout, push other refs,
+   edit or merge PRs, or create tags and releases. Prevention is by instruction and the `auto`
+   permission classifier only. The authority audit detects these after the fact and stops the
+   run, but cannot undo a merged PR or a pushed ref. `main` protection (PR required, admins
+   enforced) blocks a direct push to `main`, not a PR merge.
+5. The transition and recovery are done by the driver, not by the supervisor.
 6. Native Windows is not a qualified Elves host; Elves writers (`sync-session --write`,
-   `cobbler_agents.py`) are unavailable, so the driver writes the session JSON itself and runs
-   only the read-only Elves checks.
+   `cobbler_agents.py`) and the git helpers are unavailable, so the driver writes the session
+   JSON itself and runs only the read-only Elves checks and its own audit script.
 7. The route-change proof is the transcript `model` field and the argv. For Claude Code, Elves
    itself records the route change as `unobserved`, so this point is not weaker.
+8. **Launch configuration differs from the user's normal Claude Code.** Safe mode removes the
+   user `CLAUDE.md`, skills, plugins, MCP servers, and hooks for the worker, including the Stop
+   hook that checks Mason's writing rules. The packet carries those rules, the worker checks
+   unpushed commits for attribution lines before each push, and the driver's audit and review
+   check commits and docs.
+9. **Herdr session identity is reported by the driver**, not by the SessionStart hook. The
+   independent identity proof is the transcript (`sessionId`) and the process argv.
 
 What it keeps: one exact session across the route change (checkable), one packet, only
-`Continue.` at the transition, the registered worktree, driver-owned run memory, per-batch
-acceptance checks by the driver, and the final independent reviews.
+`Continue.` at the transition, phase-specific recovery, the registered worktree, driver-owned
+run memory, per-batch acceptance checks and audits by the driver, and the final independent
+reviews.
 
-**Recommendation.** Route (c) if Mason accepts the seven items above; it can start on this
-machine without new installs beyond the Python venv and `npm ci`. Route (a) if Mason wants
-qualified prewalk; it costs the WSL setup and transfer first. Route (b) is not for this run.
+**Recommendation.** Route (c) if Mason accepts the nine items above and R0 passes; it can start
+on this machine without new installs beyond the Python venv and `npm ci`. Route (a) if Mason
+wants qualified prewalk and the Elves supervisor's own git contract checks; it costs the WSL
+setup and transfer first.
+Route (b) is not for this run.
 
 ### Batch completion and session evidence
 
@@ -949,7 +1093,8 @@ plan. The worker never edits them.
   `met` and `evidence` for each row and `status: complete` for the batch, updates the
   execution log and survival guide, runs `acceptance_contract.py validate`, commits only those
   run-doc paths as `[feat/r-js-packages · Batch N/6 · Review] Record B<N> acceptance evidence`,
-  pushes, creates the rollback ref `b<N>`, and only then prompts B<N+1>. A failed row gets a gap
+  pushes, creates the rollback ref `b<N>`, runs the transcript checks and the authority audit,
+  and only then prompts B<N+1>. A failed row gets a gap
   prompt for the same batch first. This is the B1 to B2 path.
 - **Routes (a) and (b), parked full-run:** the worker closes each internal batch with its
   `Close` commit body and `.elves/runtime/worker-report-B<N>.md` as interim evidence. Session
@@ -972,9 +1117,13 @@ plan. The worker never edits them.
 | Worker packet paths and report path | Windows paths | rewritten for WSL | Windows paths |
 | Elves Report path | Windows temp folder | `/tmp` | Windows temp folder |
 | Session-file writes | driver writes JSON directly | `sync-session --write` works | after the port |
+| Worker launch configuration | `--safe-mode`, identity reported by the driver | Elves transport (`--safe-mode`, stream JSON) | same as (a) |
+| Authority checks | driver audit script, detection only | Elves git contract (local refs, ancestry, origin config) | same as (a) |
+| Pre-launch proof | rehearsal R0 | required-mode qualification canary | same as (a) |
 
 Every other part of the plan (spec, packages, conformance, CI, acceptance criteria) is the same
-on every route.
+on every route. The acceptance criteria name no host: B2-A1 says "the execution host", and the
+Windows coverage it used to give comes from the Windows generator job in CI on every route.
 
 ### Run control summary
 

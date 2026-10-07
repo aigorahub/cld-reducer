@@ -33,7 +33,7 @@ ends at a green, reviewed, draft PR. No merge, tag, release, CRAN submission, or
 - **Merge policy:** user-merges (default). The driver never merges. No merge-on-green opt-in and no landing command in this run.
 - **Final-response policy:** allowed in Phase 1 after the `PLAN READY FOR REVIEW` line; after `EXECUTE APPROVED`, disallowed until the Stop Gate allows it.
 - **Coordination mode:** Cobbler-first (default).
-- **Execution route:** pending Mason (H13). Proposed: route (c), manual experimental prewalk in Herdr tab `cld-worker`, driver-supervised batches. Values below marked (c) change for routes (a) and (b); see the plan section "Route-dependent content".
+- **Execution route:** pending Mason (H13). Proposed: route (c), manual experimental prewalk in Herdr tab `cld-worker`, driver-supervised batches. Route (c) worker starts always use `--safe-mode`; the driver reports the Herdr session identity; the phase record is `.elves/runtime/route-c/phase.json`; recovery is phase-specific (guide failures resume the guide route only); the authority audit `.elves/runtime/route-c/audit.py` and the transcript checks run at every gate and detect, not prevent. Values below marked (c) change for routes (a) and (b); see the plan section "Route-dependent content".
 - **Batch completion rule:** route (c): the worker pushes the batch `Close` commit and writes `.elves/runtime/worker-report-B<N>.md`; the driver verifies each row, writes the session rows, commits and pushes the run docs (`Batch N/6 · Review`), then prompts the next batch. Routes (a) and (b): the worker closes internal batches with the Close commit body and report file as interim evidence; the parked driver writes session rows once at a safety, blocked, or terminal wake. Every completed batch must end with a commit and push.
 - **Progress visibility rule:** commit subjects `[feat/r-js-packages · Batch N/6 · Contract|Implement|Validate|Review|Close] <concrete outcome>`. No vague subjects. `Close` needs acceptance evidence and a Confidence trailer in the Elves format. No AI attribution lines.
 - **Coordinator-to-implementer handoff:** the plan has a handoff block per batch; the consolidated packet is `.elves/runtime/worker-packet.md`. Each batch completion reports confidence (high, medium, or low) and unsure areas; an empty list is a valid answer.
@@ -171,7 +171,8 @@ If one of these happens after `EXECUTE APPROVED`, update the docs, commit, push,
 - [x] Dedicated worktree confirmed; no other agent shares this branch
 - [ ] PR opened or existing PR recorded (pending: Phase 1 forbids push and PR)
 - [ ] Preflight run and critical failures cleared (blocked: LB1; needs the route decision H13)
-- [ ] Execution route chosen by Mason (H13); for route (c), experimental prewalk and its give-ups accepted
+- [ ] Execution route chosen by Mason (H13); for route (c), the three acceptances of H13 recorded (unqualified prewalk, residual authority risk, launch configuration)
+- [ ] Route (c) only: rehearsal R0 passed (lifecycle, guide interruption, working directory, audit drills) and the authority baseline taken
 - [x] Run mode, return time, and non-negotiables recorded
 - [x] Stop Gate initialized with `Stop allowed right now: no` unless a real stop condition already applies (Phase 1 gate applies now)
 - [ ] Plan review clean (Astra, routed by Lantern)

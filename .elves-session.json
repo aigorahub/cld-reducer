@@ -40,7 +40,7 @@
     {
       "acceptance": [
         {
-          "criterion": "`python conformance/generate.py --check` exits 0 on Windows, and the same command exits 0 in the `conformance-r.yaml` job on Ubuntu on the PR head that closes B2.",
+          "criterion": "`python conformance/generate.py --check` exits 0 on the execution host, and the same command exits 0 in both `conformance-r.yaml` generator jobs (Ubuntu, and Windows with `core.autocrlf true`) on the PR head that closes B2.",
           "evidence": "",
           "id": "B2-A1",
           "met": false
@@ -241,7 +241,7 @@
     "default_for_session": true
   },
   "continuation_guard": {
-    "reason": "Phase 1 plan review gate (round 2): wait for Lantern routing, Mason's route decision (H13), and EXECUTE APPROVED.",
+    "reason": "Phase 1 plan review gate (round 3): wait for Lantern routing, Mason's route decision (H13), and EXECUTE APPROVED.",
     "stop_allowed": true
   },
   "elves_version": "2.39.0",
@@ -252,6 +252,14 @@
       "c": "Herdr tab cld-worker, manual experimental exact-session prewalk, driver-supervised batches"
     },
     "proposed": "c",
+    "route_c": {
+      "authority_audit": ".elves/runtime/route-c/audit.py (detects, does not prevent)",
+      "herdr_identity": "driver runs herdr pane report-agent-session after each start",
+      "phase_record": ".elves/runtime/route-c/phase.json",
+      "recovery": "phase-specific: guide failure resumes the guide route with prewalk.recovery_prompt(); execution failure resumes the execution route with Continue.",
+      "rehearsal_r0": "pending",
+      "worker_launch_flags": "--safe-mode --permission-mode auto; guide: --session-id S --model claude-opus-5-5 --effort xhigh; execution: --resume S --model claude-sonnet-5-5 --effort high"
+    },
     "route_dependent_fields": [
       "worktree_path",
       "run_control.delegation_scope",
@@ -352,6 +360,7 @@
   "prewalk": {
     "actual": null,
     "blocker": "LB1: Elves native-worker supervisor and storage need a POSIX host (fcntl, Linux/macOS no-replace rename, dir_fd); native Windows is not a qualified Elves execution host (agent-teams.md).",
+    "phase": null,
     "proposed": "experimental_manual (route c, needs Mason's acceptance)",
     "requested": "required (Lantern brief)",
     "runtime_dir": ".elves/runtime/prewalk/cld_reducer_r_js_package-d60c05050bd9310e",
