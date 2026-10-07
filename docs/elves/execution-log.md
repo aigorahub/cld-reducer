@@ -9,12 +9,22 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 - **Active batch:** none
 - **Last completed batch:** none yet
 - **Next exact batch:** B1: Layout move and specification
-- **Active PR:** not created yet (Phase 1 forbids push and PR)
+- **Active PR:** #3 https://github.com/aigorahub/cld-reducer/pull/3 (draft)
 - **Docs promoted this run:** none yet
 - **Deferred hygiene:** none
 - **Latest Elves Report:** not generated yet
 - **Progress commits:** `[feat/r-js-packages · Batch N/6 · Contract|Implement|Validate|Review|Close] <outcome>`; the worker pushes only `feat/r-js-packages`; PR actions, run memory, final review stay with the driver.
 - **Handoff standard:** packet `.elves/runtime/worker-packet.md` has the eight handoff parts.
+
+---
+
+## 2026-10-07 ET: preflight, push, draft PR, rollback ref
+
+- `gh` in WSL: account `Mason-Hsu-Aigora`, scopes gist, read:org, repo, workflow (login by Mason); `gh auth setup-git` set the git credential helper. The Windows `gh` account is `MasonHsu02`; it is not used for this run.
+- Elves `preflight.sh` in WSL: 0 failures, 3 advisory warnings (`.playwright-mcp/` and `docs/audit/` not in `.gitignore`, recommended non-interactive env vars); the earlier run stalled on `git push --dry-run` before the login and was stopped.
+- `git push origin HEAD:feat/r-js-packages`: new remote branch at `f534d85`.
+- Draft PR #3 https://github.com/aigorahub/cld-reducer/pull/3 (base `main`, head `f534d85`); body lists H1 to H13. No review bot is configured on this repository.
+- Host-owned rollback ref b0 created with `cobbler_agents.py implement rollback-ref` (local only), recorded in the session.
 
 ---
 

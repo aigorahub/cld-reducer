@@ -337,16 +337,16 @@
       "model": "claude-opus-5-5"
     }
   },
-  "phase": "launch_prep",
+  "phase": "launching",
   "plan_path": "docs/plans/r-js-packages/plan.md",
   "pr": {
+    "status": "open_draft",
+    "number": 3,
+    "url": "https://github.com/aigorahub/cld-reducer/pull/3",
     "base": "main",
-    "bot_review_trigger": "none configured",
-    "head": null,
-    "number": null,
-    "reason": "Phase 1 forbids push and PR; the driver opens a draft from the staging commit after EXECUTE APPROVED and before worker launch.",
-    "status": "pending",
-    "url": null
+    "head_at_open": "f534d856798920c4eb89c10f62eb8c40ab4f1692",
+    "opened_by": "gh in WSL as Mason-Hsu-Aigora",
+    "bot_review_trigger": "none configured (no review bot on this repository)"
   },
   "prewalk": {
     "actual": null,
@@ -387,5 +387,11 @@
   "start_head": "eb95fe9ad5e983a1f2e6e02668c3419647b9571e",
   "status": "staged",
   "worker_packet_path": ".elves/runtime/worker-packet.md",
-  "worktree_path": "/home/mason/src/cld-reducer-r-js-packages"
+  "worktree_path": "/home/mason/src/cld-reducer-r-js-packages",
+  "rollback_refs": {
+    "b0": {
+      "ref": "refs/elves/rollback/cld-reducer-r-js-package/ef8e9e5c-0c89-4d/b0-44fef74d51ce",
+      "head": "f534d856798920c4eb89c10f62eb8c40ab4f1692"
+    }
+  }
 }
