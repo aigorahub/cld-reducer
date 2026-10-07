@@ -11,3 +11,20 @@ dist/
 htmlcov/
 .coverage
 *.csv.tmp
+
+# R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.tar.gz
+*.Rcheck/
+
+# Python
+python/dist/
+python/build/
+
+# JavaScript
+node_modules/
+js/dist/
+*.tgz
