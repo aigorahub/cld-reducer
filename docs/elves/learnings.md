@@ -11,6 +11,10 @@ Durable lessons for this repository and this machine. Run status goes in the exe
 - [L5] [2026-10-07] CRAN `highs` 1.14.0-2 bundles HiGHS 1.14 and `highs_control()` defaults to `threads = 1L`; turfLP keeps presolve off in R because of a HiGHS 1.14 presolve defect. npm `highs` 1.15.3 and PyPI `highspy` 1.15.1 bundle HiGHS 1.15. (evidence: CRAN PACKAGES, cran/highs R/highs.R, npm and PyPI registry reads on 2026-10-07)
 - [L6] [2026-10-07] npm trusted publishing works only for a package that already exists, so the first `cld-reducer` publish is manual (turfLP PR #9). (evidence: aigorahub/turfLP PR #9 body)
 
+- [L7] [2026-10-07] Elves `references/agent-teams.md` says native Windows Python is not a qualified Elves execution host (Windows only through WSL2). The pure validators in `cobbler_runtime/prewalk.py` still import on Windows and can check prewalk TODO and checkpoint artifacts by hand. (evidence: execution-log 2026-10-07 plan review round 1)
+- [L8] [2026-10-07] Claude Code transcripts (`~/.claude/projects/<slug>/<session>.jsonl`) record `model`, `sessionId`, and `cwd` on each message, so a resume with a new `--model` can be checked from the transcript; effort is not recorded. (evidence: execution-log 2026-10-07 plan review round 1)
+- [L9] [2026-10-07] `herdr --skill` prints the herdr skill when it is not installed as a Claude skill. (evidence: execution-log 2026-10-07 plan review round 1)
+
 ## Retired learnings
 
 None.

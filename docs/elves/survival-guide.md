@@ -28,12 +28,13 @@ ends at a green, reviewed, draft PR. No merge, tag, release, CRAN submission, or
 - **Checkpoint semantics:** none
 - **May continue after checkpoint:** yes
 - **Actual stop conditions:** Phase 1: plan printed as `PLAN READY FOR REVIEW` and waiting for Lantern. Execution: draft PR green per the plan section "Definition of green", or a true blocker.
-- **Workspace ownership:** dedicated worktree `C:\Claude\cld-reducer-r-js-packages` on branch `feat/r-js-packages`, created with the Elves `preflight_worktree.py --create-worktree feat/r-js-packages --base origin/main` (dry run first). No other agent shares it. The main checkout `C:\Claude\cld-reducer` stays on `main` and is not used for edits.
+- **Workspace ownership:** dedicated worktree `C:\Claude\cld-reducer-r-js-packages` on branch `feat/r-js-packages`, created with the Elves `preflight_worktree.py --create-worktree feat/r-js-packages --base origin/main` (dry run first). No other agent shares it. The main checkout `C:\Claude\cld-reducer` stays on `main` and is not used for edits. Route dependent: routes (b) and (c) keep this worktree; route (a) re-registers a worktree in WSL.
 - **Branch tip at start (collision tripwire):** `eb95fe9ad5e983a1f2e6e02668c3419647b9571e` (origin/main at staging). Upstream tracking was removed so a bare `git push` cannot target `main`.
 - **Merge policy:** user-merges (default). The driver never merges. No merge-on-green opt-in and no landing command in this run.
 - **Final-response policy:** allowed in Phase 1 after the `PLAN READY FOR REVIEW` line; after `EXECUTE APPROVED`, disallowed until the Stop Gate allows it.
 - **Coordination mode:** Cobbler-first (default).
-- **Batch completion rule:** the trusted full-run worker closes each batch with acceptance evidence and a pushed `Close` commit on `feat/r-js-packages`. The parked driver updates run memory once at a safety, blocked, or terminal wake.
+- **Execution route:** pending Mason (H13). Proposed: route (c), manual experimental prewalk in Herdr tab `cld-worker`, driver-supervised batches. Values below marked (c) change for routes (a) and (b); see the plan section "Route-dependent content".
+- **Batch completion rule:** route (c): the worker pushes the batch `Close` commit and writes `.elves/runtime/worker-report-B<N>.md`; the driver verifies each row, writes the session rows, commits and pushes the run docs (`Batch N/6 · Review`), then prompts the next batch. Routes (a) and (b): the worker closes internal batches with the Close commit body and report file as interim evidence; the parked driver writes session rows once at a safety, blocked, or terminal wake. Every completed batch must end with a commit and push.
 - **Progress visibility rule:** commit subjects `[feat/r-js-packages · Batch N/6 · Contract|Implement|Validate|Review|Close] <concrete outcome>`. No vague subjects. `Close` needs acceptance evidence and a Confidence trailer in the Elves format. No AI attribution lines.
 - **Coordinator-to-implementer handoff:** the plan has a handoff block per batch; the consolidated packet is `.elves/runtime/worker-packet.md`. Each batch completion reports confidence (high, medium, or low) and unsure areas; an empty list is a valid answer.
 - **Worker packet:** `.elves/runtime/worker-packet.md` (also `worker_packet_path` in `.elves-session.json`; `.elves/` is ignored through `.git/info/exclude`).
@@ -43,13 +44,13 @@ ends at a green, reviewed, draft PR. No merge, tag, release, CRAN submission, or
 - **E2E mode:** chat-to-work (landable PR only).
 - **Work driver:** host-native (a separate native Claude Code worker session with exact-session prewalk, not in-session execution).
 - **Implementation lane:** fast
-- **Delegation scope:** full_run (B1 to B6 in one packet)
+- **Delegation scope:** batch for route (c) (one packet at the guide turn, then one prompt per batch that points to the batch handoff block); full_run for routes (a) and (b)
 - **Git mode:** branch_progress (the worker commits and pushes only `feat/r-js-packages`)
-- **Driver monitor mode:** parked_monitor
-- **Driver update policy:** sanitized follow stream; no timed chat updates; material wakes only.
-- **Driver poll policy:** host wait primitive with a fallback watchdog.
-- **Driver review policy:** final independent review only (Astra plus a fresh Opus 5.5 session), then delta re-review until clean.
-- **Follow mode:** default sanitized stream.
+- **Driver monitor mode:** interactive for route (c) (`herdr agent wait` with timeouts as watchdog); parked_monitor for routes (a) and (b)
+- **Driver update policy:** route (c): progress lines in the driver pane at batch boundaries; routes (a) and (b): sanitized follow stream, material wakes only.
+- **Driver poll policy:** route (c): `herdr agent wait cld-worker` with a timeout, then `herdr agent get` and `git log`; routes (a) and (b): host wait primitive with a fallback watchdog.
+- **Driver review policy:** route (c): per-batch contract walk of the acceptance rows by the driver; all routes: final independent review (Astra plus a fresh Opus 5.5 session), then delta re-review until clean.
+- **Follow mode:** route (c): `herdr agent read` and the worker transcript; routes (a) and (b): default sanitized stream.
 - **Risk posture:** standard (B3 and B5 are high).
 - **Trust mode:** trusted
 - **Landing outcome:** landable_pr (draft PR, not merged)
@@ -62,7 +63,7 @@ ends at a green, reviewed, draft PR. No merge, tag, release, CRAN submission, or
 - **GitHub push auth route:** host `gh` (account MasonHsu02, scopes repo and workflow).
 - **Re-drive budget:** 2 substantive re-drives. Transient provider errors retry the same worker with 5m, 10m, 20m backoff and do not use this budget.
 - **Continuation harness:** none
-- **Routes:** guide phase claude-opus-5-5 at xhigh, execution phase claude-sonnet-5-5 at high, `worker.prewalk=required`. Qualification failure stops the run; no cold substitute and no silent model change.
+- **Routes:** guide phase claude-opus-5-5 at xhigh, execution phase claude-sonnet-5-5 at high. Prewalk: `required` (qualified) for route (a); experimental, manual, Mason-accepted for route (c). Qualification failure, or a failed route (c) transition check, stops the run; no cold substitute and no silent model change.
 - **Continuation rule:** after `EXECUTE APPROVED`, if work remains and the actual stop conditions are not met, continue without waiting for acknowledgment.
 
 ---
@@ -95,7 +96,7 @@ ends at a green, reviewed, draft PR. No merge, tag, release, CRAN submission, or
 
 - **Planned batches remaining:** 6
 - **Stop allowed right now:** yes
-- **Why:** Phase 1 ends at the plan review gate; execution needs `EXECUTE APPROVED` from Lantern, and launch blocker LB1 needs a decision.
+- **Why:** Phase 1 ends at the plan review gate; execution needs `EXECUTE APPROVED` from Lantern and Mason's route decision (H13).
 - **Next required action:** print `PLAN READY FOR REVIEW: C:\Claude\cld-reducer-r-js-packages\docs\plans\r-js-packages\plan.md` and wait for Lantern.
 
 After `EXECUTE APPROVED`, set `Stop allowed right now: no` until the stop point.
@@ -118,7 +119,7 @@ After `EXECUTE APPROVED`, set `Stop allowed right now: no` until the stop point.
 ## Out-of-scope findings
 
 - **Filed this run:** none
-- **Could not file:** LB1 (Elves supervisor needs Unix `fcntl` on Windows). Not filed in `aigorahub/elves` during Phase 1; reported to Lantern in the plan.
+- **Could not file:** LB1 (Elves native-worker supervisor and storage need a POSIX host). Not filed in `aigorahub/elves` during Phase 1; reported to Lantern in the plan section "Execution routes".
 
 ---
 
@@ -169,12 +170,13 @@ If one of these happens after `EXECUTE APPROVED`, update the docs, commit, push,
 - [x] Branch created (`feat/r-js-packages`)
 - [x] Dedicated worktree confirmed; no other agent shares this branch
 - [ ] PR opened or existing PR recorded (pending: Phase 1 forbids push and PR)
-- [ ] Preflight run and critical failures cleared (blocked: LB1, Elves supervisor on Windows)
+- [ ] Preflight run and critical failures cleared (blocked: LB1; needs the route decision H13)
+- [ ] Execution route chosen by Mason (H13); for route (c), experimental prewalk and its give-ups accepted
 - [x] Run mode, return time, and non-negotiables recorded
 - [x] Stop Gate initialized with `Stop allowed right now: no` unless a real stop condition already applies (Phase 1 gate applies now)
 - [ ] Plan review clean (Astra, routed by Lantern)
 - [ ] `EXECUTE APPROVED` received from Lantern
-- [ ] Prewalk qualification passed for claude-sonnet-5-5 at high
+- [ ] Route (a): prewalk qualification passed for claude-sonnet-5-5 at high; route (c): transition checks passed (plan route (c) steps 7 and 10)
 
 ---
 
@@ -244,4 +246,8 @@ Every completed batch must end with a commit and push (by the worker on `branch_
 
 ## Acceptance Checks
 
-Landable is plan acceptance with proof, not green CI alone. Before a batch is complete: its `B#-A#` rows have evidence in `.elves-session.json`, its CI workflow is green on the Close commit, and docs for owned surfaces are current. Before readiness: every `M-A#` row has evidence, the landing check passes on the evidence commit, and "Definition of green" in the plan holds at one exact head.
+Landable is plan acceptance with proof, not green CI alone. Only the driver writes `.elves-session.json`.
+
+- Route (c): a batch is complete when the driver has verified its `B#-A#` rows, written them to `.elves-session.json`, and pushed that run-doc commit; only then does the driver prompt the next batch.
+- Routes (a) and (b): a batch is closed by the worker when its `Close` commit (with acceptance ids and evidence in the body) is pushed, its report file exists, and its CI workflow is green on that commit; its session rows stay `met: false` until the driver's terminal or safety reconciliation writes them.
+- Before readiness, on every route: every `B#-A#` and `M-A#` row has evidence in the session, the landing check passes on the evidence commit, and "Definition of green" in the plan holds at one exact head.

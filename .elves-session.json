@@ -52,7 +52,7 @@
           "met": false
         },
         {
-          "criterion": "The fixtures contain every labeled graph with 1 to 5 groups, at least 200 seeded random graphs with 6 to 12 groups, the wheat and simple ABC examples, a 28 group star (labels after Z), the complete and the empty graph, `max_cliques` cases, and error cases for every input rule of the spec; `conformance/README.md` states the case counts.",
+          "criterion": "The fixtures contain every labeled graph with 1 to 5 groups, at least 200 seeded random graphs with 6 to 12 groups, the wheat and simple ABC examples, the D4 letter renaming example, a 28 group star (labels after Z), the complete and the empty graph, `max_cliques` cases, and error cases for every input rule of the spec; `conformance/README.md` states the case counts.",
           "evidence": "",
           "id": "B2-A3",
           "met": false
@@ -172,7 +172,7 @@
           "met": false
         },
         {
-          "criterion": "The generated-files job finds no difference between committed `man/` and `NAMESPACE` and the roxygen output.",
+          "criterion": "The generated-files job follows the six steps of the plan section \"Generated-files job\" and passes on the PR head that closes B5. Its failure path is shown once: either a failing run that still produced a downloadable `generated-files` artifact (the Option B bootstrap run), or, under Option A, a local run of the same commands on a tree with one deleted help page, one stale help page, one new undocumented export, and no `data/` folder, which exits non-zero for each case.",
           "evidence": "",
           "id": "B5-A4",
           "met": false
@@ -187,6 +187,12 @@
           "criterion": "`R CMD build` output contains no file from `python/`, `js/`, `conformance/`, `docs/`, `data-raw/`, `.github/`, or the run docs (checked with `tar tzf` on the built tarball).",
           "evidence": "",
           "id": "B5-A6",
+          "met": false
+        },
+        {
+          "criterion": "The as-cran job checks the built tarball in a check directory under `runner.temp`, outside the checkout, so the tests cannot reach repository files; `grep -rnE \"\\.\\./|read\\.csv|readLines|jsonlite|file\\.path\" tests/` finds nothing (a comment may still name a fixture id); and `run_r.R` compares each R data set with its CSV in `conformance/data/`.",
+          "evidence": "",
+          "id": "B5-A7",
           "met": false
         }
       ],
@@ -220,7 +226,7 @@
           "met": false
         },
         {
-          "criterion": "`NEWS.md` 0.2.0 lists the R and JavaScript packages, the Python layout move and git URL change, the move to `highspy`, the canonical tie-break, the unrounded `reduction_pct`, the `solver_status` text \"Optimal\", `time_limit` as one budget for all solves, and the new finite means check.",
+          "criterion": "`NEWS.md` 0.2.0 lists the R and JavaScript packages, the Python layout move and git URL change, the move to `highspy`, the canonical tie-break, the canonical clique order that can rename letters for inputs with one optimal covering (with the D4 example), the unrounded `reduction_pct`, the `solver_status` text \"Optimal\", `time_limit` as one budget for all solves, and the new finite means check.",
           "evidence": "",
           "id": "B6-A5",
           "met": false
@@ -235,10 +241,28 @@
     "default_for_session": true
   },
   "continuation_guard": {
-    "reason": "Phase 1 plan review gate: wait for Lantern routing and EXECUTE APPROVED; launch blocker LB1 open.",
+    "reason": "Phase 1 plan review gate (round 2): wait for Lantern routing, Mason's route decision (H13), and EXECUTE APPROVED.",
     "stop_allowed": true
   },
   "elves_version": "2.39.0",
+  "execution_route": {
+    "options": {
+      "a": "WSL Linux host, Elves native-worker launch with required (qualified) prewalk",
+      "b": "Elves Windows storage port, then required prewalk (separate project, not for this run)",
+      "c": "Herdr tab cld-worker, manual experimental exact-session prewalk, driver-supervised batches"
+    },
+    "proposed": "c",
+    "route_dependent_fields": [
+      "worktree_path",
+      "run_control.delegation_scope",
+      "run_control.driver_monitor_mode",
+      "prewalk",
+      "local_record_host",
+      "worker_packet_path contents",
+      "elves_report_path"
+    ],
+    "status": "pending_mason_decision"
+  },
   "master_acceptance": [
     {
       "criterion": "At the final head, the Python, JavaScript, and R runners each pass every fixture in `conformance/fixtures/`, so the three languages return the same groups, assignments, letters, and integer stats for every case.",
@@ -265,7 +289,7 @@
       "met": false
     },
     {
-      "criterion": "The PR body lists every human open item of this plan (H1 to H12), and nothing was merged, tagged, released, submitted to CRAN, or published to npm or PyPI.",
+      "criterion": "The PR body lists every human open item of this plan (H1 to H13), and nothing was merged, tagged, released, submitted to CRAN, or published to npm or PyPI.",
       "evidence": "",
       "id": "M-A5",
       "met": false
@@ -327,15 +351,17 @@
   },
   "prewalk": {
     "actual": null,
-    "blocker": "LB1: cobbler_agents.py exits on native Windows (ModuleNotFoundError: fcntl); no POSIX host with Claude Code CLI and Elves is set up.",
-    "requested": "required",
+    "blocker": "LB1: Elves native-worker supervisor and storage need a POSIX host (fcntl, Linux/macOS no-replace rename, dir_fd); native Windows is not a qualified Elves execution host (agent-teams.md).",
+    "proposed": "experimental_manual (route c, needs Mason's acceptance)",
+    "requested": "required (Lantern brief)",
+    "runtime_dir": ".elves/runtime/prewalk/cld_reducer_r_js_package-d60c05050bd9310e",
     "status": "blocked"
   },
   "repository": "aigorahub/cld-reducer",
   "run_control": {
-    "delegation_scope": "full_run",
+    "delegation_scope": "batch (route c) | full_run (routes a, b)",
     "driver_merge_authorized": false,
-    "driver_monitor_mode": "parked_monitor",
+    "driver_monitor_mode": "interactive (route c) | parked_monitor (routes a, b)",
     "e2e_mode": "chat-to-work",
     "git_mode": "branch_progress",
     "implementation_lane": "fast",

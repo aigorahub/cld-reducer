@@ -4,8 +4,8 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 
 ## Run digest
 
-- **Last updated:** 2026-10-07 11:55 ET
-- **Current phase:** Staging (Phase 1, plan review gate)
+- **Last updated:** 2026-10-07 ET, after plan review round 1
+- **Current phase:** Staging (Phase 1, plan review gate, round 2 pending)
 - **Active batch:** none
 - **Last completed batch:** none yet
 - **Next exact batch:** B1: Layout move and specification
@@ -15,6 +15,54 @@ Run `cld-reducer-r-js-packages-2026-10-07`. Newest entries first. Times are ET.
 - **Latest Elves Report:** not generated yet
 - **Progress commits:** `[feat/r-js-packages · Batch N/6 · Contract|Implement|Validate|Review|Close] <outcome>`; the worker pushes only `feat/r-js-packages`; PR actions, run memory, final review stay with the driver.
 - **Handoff standard:** packet `.elves/runtime/worker-packet.md` has the eight handoff parts.
+
+---
+
+## 2026-10-07 ET: plan review round 1 (Astra, routed by Lantern)
+
+**Input:** Astra reviewed staging commit `5fc67b6`: CHANGES NEEDED, six findings. Lantern added
+instructions: define route (c), make Option B the R default, commit a new staging commit, no
+push or PR.
+
+**Verification and fixes (each finding checked in the files first):**
+
+1. P1 batch completion versus session ownership: confirmed (survival guide "Acceptance Checks"
+   required session rows the worker cannot write while the driver is parked). Fixed: plan
+   section "Batch completion and session evidence" (route (c): driver writes rows between
+   batches; routes (a) and (b): worker interim evidence, driver reconciles at terminal), and the
+   survival guide "Acceptance Checks" and Run Control.
+2. P1 R tests needing excluded files: confirmed (dataset-versus-CSV and wheat-versus-fixture
+   tests read `conformance/`). Fixed: testthat uses only installed content and literal expected
+   values; repository checks move to `run_r.R`; new B5-A7 (check directory under
+   `runner.temp`, grep of `tests/`).
+3. P2 LB1 understated: confirmed in `storage.py` (no-replace rename only on Linux and macOS at
+   lines 61 to 96; `dir_fd` traversal from line 289) and in `agent-teams.md` ("Native Windows
+   Python is not a qualified Elves execution host"). Fixed: plan section "Execution routes"
+   with corrected LB1, routes (a), (b), (c), and a "Route-dependent content" table; the
+   sentence "The plan content does not depend on this choice" is removed.
+4. P2 Python CI extras: confirmed (`uv sync --locked` installs no extras; pytest and ruff are
+   in `dev`). Fixed: `uv sync --locked --extra dev` and `uv run --locked` commands; minimum
+   job installs `.[dev]`.
+5. P2 CI-only R bootstrap: confirmed (roxygen does not run `data-raw/`; `git diff` misses
+   untracked files; no artifact on failure). Fixed: plan section "Generated-files job" (pinned
+   roxygen2, `if: always()` artifact, `git status --porcelain`, content check of data sets) and
+   B5-A4.
+6. P2 letter renaming for unique optima: confirmed by hand (cliques {0,1,4}, {0,2,4}, {0,3};
+   all memberships forced; sort keys tie at index 0, so clique order decides). Fixed: D4, H10,
+   B6-A5, B2-A3 (the example is a fixture), risks.
+
+**Route (c) check against Elves 2.39.0:** read `prewalk.md`, `agent-teams.md`, and
+`cobbler_runtime/prewalk.py`. `herdr --skill` loaded (the herdr CLI prints its skill). Claude
+Code 2.1.292 `--help` lists `--session-id`, `--resume`, `--model`, `--effort`,
+`--permission-mode`. The driver's own transcript JSONL records `model`, `sessionId`, and `cwd`
+on each message, so the route change can be checked from the worker transcript.
+`cobbler_runtime/prewalk.py` imports on Windows; `prewalk_paths()` gives
+`.elves/runtime/prewalk/cld_reducer_r_js_package-d60c05050bd9310e/`. Corrections to Lantern's
+proposal and the seven items route (c) gives up are in the plan.
+
+**Other changes:** R Option B is the default (H11). New H13 (route choice). Plan version 2.
+`sync-session` (no `--write`) re-derived 33 batch rows and 6 master rows; `validate` OK;
+survival guide validation OK; packet rows equal plan rows (39); no em dash, en dash, or emoji.
 
 ---
 

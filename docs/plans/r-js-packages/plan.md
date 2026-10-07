@@ -1,6 +1,7 @@
 # Plan: R and JavaScript packages for cld-reducer, structured like turfLP
 
-Plan version: 1 (2026-10-07). Driver: cld-driver (Claude Code, claude-opus-5-5, xhigh).
+Plan version: 2 (2026-10-07), after Astra plan review round 1 (six findings, all fixed; see the
+execution log). Driver: cld-driver (Claude Code, claude-opus-5-5, xhigh).
 Branch: `feat/r-js-packages`. Worktree: `C:\Claude\cld-reducer-r-js-packages`.
 Base: `origin/main` at `eb95fe9ad5e983a1f2e6e02668c3419647b9571e`.
 
@@ -86,8 +87,15 @@ results, so Mason confirms them when he approves the plan.
   the one whose membership vector, read in canonical order, is lexicographically greatest: in
   that order, keep each membership whenever an optimal covering that agrees with all earlier
   choices keeps it. The spec in B1 pins the order.
-  This changes Python output for inputs with several optima. The simple ABC result does not
-  change. turfLP did not need this, because it compares objective values only.
+  This changes Python output in two ways. (1) Inputs with several optima can get a different
+  optimal covering. (2) Inputs with one optimal covering can get **different letter names**:
+  the canonical clique order (sorted group indices) replaces the NetworkX enumeration order,
+  and that order breaks ties in the letter sort key. Example (Astra, review round 1): groups
+  0 to 4, no means, non-significant pairs 01, 02, 03, 04, 14, 24. Every membership is forced,
+  so the optimum is unique, but NetworkX 3.7 orders the cliques {0,3}, {0,1,4}, {0,2,4} and
+  the canonical order is {0,1,4}, {0,2,4}, {0,3}; group 3 changes from `A` to `C`. The simple ABC
+  result does not change. turfLP did not need this rule, because it compares objective values
+  only.
 - **D5. Python moves to `highspy` directly** and drops `scipy` and `networkx`. Same HiGHS
   family and options as JavaScript, explicit control of presolve, threads, and tolerances, and
   the same clique code in all three languages. New Python dependencies: `highspy>=1.15.1,<1.16`,
@@ -203,7 +211,8 @@ The spec is normative. Every implementation and the generator follow it. It must
 - **Data:** `piepho2004_wheat` (190 rows), `simple_abc_pairs` (10 rows), `simple_abc_means`
   (5 rows), built by `data-raw/datasets.R` from `conformance/data/`, saved as `data/*.rda`,
   `LazyData: true`, each documented with its source (Piepho 2004, Ennis, Fayle, and Ennis 2012
-  Table 7). A testthat test proves each data set equals its CSV.
+  Table 7). The CSV files are not in the R package, so the proof that each data set equals its
+  CSV runs in `conformance/run_r.R` and in the generated-files CI job, not in testthat.
 - **Docs:** roxygen2 with markdown, like turfLP (`Config/roxygen2/version` pinned). A package
   help page, one page per function and data set, runnable examples. `inst/CITATION` with the
   package manual entry and the 2012 article (doi:10.1145/2133803.2275596). `inst/WORDLIST` for
@@ -213,10 +222,14 @@ The spec is normative. Every implementation and the generator follow it. It must
   B5 verifies by resolving it. Software names in single quotes ('HiGHS'). URL and BugReports.
 - **Authors@R:** John Ennis (aut, cre, email from H2), Carl Graham, Luciana Castro, Rachel
   Lampert, Ryan Jordan, Vanessa Rios de Souza (aut), Aigora (cph, fnd). Mason confirms (H3).
-- **Tests:** testthat edition 3: input checks and messages, clique order, the simple ABC display,
-  the wheat result (44 assignments, 4 letters, display equal to the conformance fixture),
-  labels beyond Z, solver failure paths (through a replaceable solve hook, like turfLP), data
-  sets. All tests together under 60 s on CI.
+- **Tests:** testthat edition 3, using only what the installed package contains (its functions,
+  its data sets, and literal expected values in the test files). No test reads `conformance/`,
+  a CSV, or any path outside the package. Coverage: input checks and messages, clique order,
+  the simple ABC display, the wheat result (56 before, 44 after, 4 letters, and the canonical
+  display as a literal copied from the wheat fixture, with a comment naming the fixture id),
+  the D4 renaming example, labels beyond Z, solver failure paths (through a replaceable solve
+  hook, like turfLP), and the shape of the data sets. `conformance/run_r.R` holds every check
+  that needs repository files. All tests together under 60 s on CI.
 - **Examples:** each under 2 s on CI (R CMD check `--timings`). The wheat example is small.
 - **CRAN files:** `cran-comments.md` (new submission, test environments, results per
   environment), `NEWS.md` (0.2.0 entry), `.Rbuildignore` covering `^python$`, `^js$`,
@@ -299,12 +312,35 @@ The spec is normative. Every implementation and the generator follow it. It must
 
 | Workflow | Jobs | Trigger |
 |---|---|---|
-| `python.yaml` (replaces `ci.yml`) | test: ubuntu, macos, windows x Python 3.10, 3.13 with `uv sync --locked`, ruff check, ruff format check, pytest, both example scripts; minimum: `highspy==1.15.1`, `numpy==1.24.*`, `pandas==2.0.*` on 3.10; package: `uv build`, wheel into a clean venv, CLI on the ABC example | push, pull_request |
+| `python.yaml` (replaces `ci.yml`) | test: ubuntu, macos, windows x Python 3.10, 3.13 with `uv sync --locked --extra dev` (the `dev` extra holds pytest, ruff, and build; plain `uv sync` installs no extras), then `uv run --locked ruff check .`, `uv run --locked ruff format --check .`, `uv run --locked pytest`, and both example scripts; minimum: `uv venv --python 3.10`, `uv pip install -e ".[dev]" "highspy==1.15.1" "numpy==1.24.*" "pandas==2.0.*"`, `uv run --no-sync pytest`; package: `uv build`, wheel into a clean venv without the `dev` extra, CLI on the ABC example | push, pull_request |
 | `js.yaml` | test: ubuntu, macos, windows x Node 22, 24: `npm ci`, typecheck, build, test, `test:conformance`; pack: tarball contents check and clean install smoke test | push, pull_request |
-| `R-CMD-check.yaml` | R-CMD-check: macOS release, Windows release, Ubuntu devel, release, oldrel-1; as-cran: Ubuntu release, `--as-cran` with the PDF manual (TinyTeX), `error-on: "warning"`; generated-files: roxygenise and `git diff --exit-code -- man NAMESPACE`, upload `man/`, `NAMESPACE`, `data/` as an artifact | push to main, pull_request |
+| `R-CMD-check.yaml` | R-CMD-check: macOS release, Windows release, Ubuntu devel, release, oldrel-1; as-cran: Ubuntu release, `--as-cran` with the PDF manual (TinyTeX), `error-on: "warning"`, `check-dir` under `runner.temp` (B5-A7); generated-files: see "Generated-files job" below | push to main, pull_request |
 | `conformance-r.yaml` | `generate.py --check`, `test_generate.py` (from B2), `Rscript conformance/run_r.R` (from B5) | push, pull_request |
 | `publish-npm.yaml` | as in the JavaScript design | release published, manual |
 | `publish-python.yaml` | turfLP's workflow adapted to `python/` (PyPI trusted publishing, environment `pypi`) | release published, manual |
+
+**Generated-files job** (in `R-CMD-check.yaml`, Ubuntu, R release). It generates, publishes,
+then checks, in this order:
+
+1. Install dependencies, with roxygen2 pinned to the version recorded in DESCRIPTION
+   (`Config/roxygen2/version`), so a newer roxygen2 alone cannot cause drift.
+2. Save the committed data sets: copy `data/*.rda` from `HEAD` to a temporary folder (a missing
+   file is recorded as missing).
+3. Run `Rscript data-raw/datasets.R` (writes `data/*.rda` from `conformance/data/*.csv`), then
+   `Rscript -e 'roxygen2::roxygenise()'` (writes `man/` and `NAMESPACE`).
+4. Upload `man/`, `NAMESPACE`, and `data/` as the artifact `generated-files` with
+   `if: always()`, so the artifact exists even when a later step fails.
+5. Documentation drift: fail when `git status --porcelain -- man NAMESPACE` prints anything.
+   This catches changed and deleted tracked files and new untracked files (for example the
+   help page of a new export), which `git diff --exit-code` misses.
+6. Data drift: `Rscript data-raw/check-datasets.R <saved folder>` loads each regenerated data set
+   and the saved committed copy and fails when a committed copy is missing or when
+   `identical()` is false. Content is compared, not bytes, because `.rda` bytes can change
+   between R versions.
+
+In Option B the first R push has no `man/` or `data/*.rda`, so this job fails at step 5 or 6
+and leaves the `generated-files` artifact; the worker downloads it with `gh run download`,
+commits the files, and the next run passes.
 
 Action versions follow turfLP (`actions/checkout@v6`, `actions/setup-node@v7`,
 `actions/setup-python@v7`, `astral-sh/setup-uv@v10.2.0`, `r-lib/actions/*@v2`,
@@ -313,17 +349,21 @@ Action versions follow turfLP (`actions/checkout@v6`, `actions/setup-node@v7`,
 
 ## How the R checks run
 
-R is not installed on this machine. Two options; Mason picks one at approval (H11).
+R is not installed on this machine. Two options. Mason picks one (H11). **If Mason does not
+choose, Option B applies.**
 
-- **Option A (recommended): local R plus CI.** Mason approves a local install for the worker:
-  the current R release for Windows (4.6.x) and CRAN binary packages `highs`, `testthat`, `roxygen2`, `jsonlite`,
-  `pkgload`, `rcmdcheck` (no Rtools, because all are binaries). The worker runs roxygen,
-  `data-raw/datasets.R`, testthat, `conformance/run_r.R`, and
-  `R CMD check --as-cran --no-manual` locally. CI remains the gate.
-- **Option B: CI only.** The worker pushes R changes and reads CI logs (`gh run view
-  --log-failed`). The generated-files job produces `man/`, `NAMESPACE`, and `data/*.rda`; the
-  worker downloads them with `gh run download` and commits them. Slower: each R fix costs one CI
-  round (about 5 to 10 minutes).
+- **Option A: local R plus CI.** Mason approves a local install for the worker: the current R
+  release (4.6.x) for the execution host and CRAN binary packages `highs`, `testthat`,
+  `roxygen2` (the pinned version), `jsonlite`, `pkgload`, `rcmdcheck`. On Windows no Rtools is
+  needed, because all are binaries. The worker runs roxygen, `data-raw/datasets.R`, testthat,
+  `conformance/run_r.R`, and `R CMD build`, then copies the tarball into an empty temporary
+  folder outside the checkout and runs `R CMD check --as-cran --no-manual` there. CI remains
+  the gate. (Route dependent: the host is Windows for routes (b) and (c), Linux for route (a).)
+- **Option B (default): CI only.** No local R install. The worker pushes R changes and reads CI
+  logs (`gh run list --branch feat/r-js-packages`, `gh run view <id> --log-failed`). The
+  generated-files job produces `man/`, `NAMESPACE`, and `data/*.rda`; the worker downloads
+  them with `gh run download` and commits them. Slower: each R fix costs one CI round (about 5
+  to 10 minutes).
 
 In both options the PDF manual check runs only in the CI as-cran job, and R conformance runs
 in `conformance-r.yaml`. Before the CRAN submission, a human runs win-builder (R-devel and
@@ -375,8 +415,8 @@ format of the Elves skill. No AI attribution lines in commits or PR text.
 - **Acceptance evidence:** the commands named in the criteria, with output in the progress
   ledger and the Close commit body.
 - **Failure modes / pitfalls:** hatch paths are relative to `python/`; pytest must run from
-  `python/`; the CLI test calls `python -m cld_reducer.cli` and needs the editable install. This
-  machine has `core.autocrlf=true`, so working tree text files are CRLF while git stores LF:
+  `python/`; the CLI test calls `python -m cld_reducer.cli` and needs the editable install. On
+  this Windows machine (routes (b) and (c); route dependent), `core.autocrlf=true`, so working tree text files are CRLF while git stores LF:
   compare copies by git blob id, not by working tree bytes, and check that `git diff --stat -M`
   shows renames, not rewrites.
 - **HEAD / paths / output:** start at the staging commit on `feat/r-js-packages`; plan
@@ -420,7 +460,7 @@ the repository root and from `python/`.
 - **Non-obvious rationale:** The generator must not import package code or call a solver; it is
   the independent referee. Exact search is feasible: the wheat example has 18 optional
   memberships after the forced ones. Keep random graphs at 12 groups or fewer so `--check` stays
-  fast (target: under 2 minutes on this machine; record the time).
+  fast (target: under 2 minutes on the execution host; record the time).
 - **Build On targets:** turfLP `conformance/generate.py` (argparse modes, manifest, SHA-256,
   splitmix64), `conformance/test_generate.py`, `conformance/README.md`.
 - **Owned surfaces:** `conformance/**` except `run_r.R`; `.github/workflows/conformance-r.yaml`
@@ -429,7 +469,7 @@ the repository root and from `python/`.
 - **Acceptance evidence:** commands and counts below.
 - **Failure modes / pitfalls:** fix dict order and `json.dumps` settings (sorted keys or a fixed
   order, `\n` line ends) so output is the same on Windows and Linux. Working tree files are CRLF
-  on this machine (`core.autocrlf=true`): read text in universal newline mode, hash and compare
+  on this Windows machine (`core.autocrlf=true`; route dependent): read text in universal newline mode, hash and compare
   LF-normalized text, and write with `newline="\n"`.
 - **HEAD / paths / output:** after B1 Close.
 
@@ -447,7 +487,7 @@ the repository root and from `python/`.
 
 - [ ] B2-A1: `python conformance/generate.py --check` exits 0 on Windows, and the same command exits 0 in the `conformance-r.yaml` job on Ubuntu on the PR head that closes B2.
 - [ ] B2-A2: `python conformance/test_generate.py` exits 0, and its cross check compares the exact search with plain enumeration on every graph with up to 6 groups.
-- [ ] B2-A3: The fixtures contain every labeled graph with 1 to 5 groups, at least 200 seeded random graphs with 6 to 12 groups, the wheat and simple ABC examples, a 28 group star (labels after Z), the complete and the empty graph, `max_cliques` cases, and error cases for every input rule of the spec; `conformance/README.md` states the case counts.
+- [ ] B2-A3: The fixtures contain every labeled graph with 1 to 5 groups, at least 200 seeded random graphs with 6 to 12 groups, the wheat and simple ABC examples, the D4 letter renaming example, a 28 group star (labels after Z), the complete and the empty graph, `max_cliques` cases, and error cases for every input rule of the spec; `conformance/README.md` states the case counts.
 - [ ] B2-A4: The wheat fixture expects 56 assignments before, 44 after, 4 letters after, and the canonical display; the simple ABC fixture expects `{"1": "A", "2": "AB", "3": "AC", "4": "BC", "5": "C"}`.
 - [ ] B2-A5: `generate.py` and `test_generate.py` import only the Python standard library (checked by a grep of their import lines).
 
@@ -570,6 +610,9 @@ in "Notes".
 - **Failure modes / pitfalls:** without local R (Option B), generated files come from the CI
   artifact; `CITATION.cff` at the root needs `.Rbuildignore`; non ASCII characters in R code
   fail the check; examples over 5 s get a CRAN NOTE; tests must not write outside `tempdir()`;
+  tests must not read repository files, because CRAN checks the tarball alone (a relative path
+  such as `../../../conformance` can reach the checkout from the default `check/` folder in CI,
+  so B5-A7 moves the check folder outside it);
   the generated-files job must install the roxygen2 version recorded in DESCRIPTION, or version
   churn alone fails the diff.
 - **HEAD / paths / output:** after B4 Close.
@@ -585,12 +628,13 @@ in "Notes".
 - [ ] B5-A1: The CI as-cran job (`R CMD check --as-cran` with the PDF manual) ends with 0 errors and 0 warnings, and every NOTE it reports is listed and explained in `cran-comments.md`.
 - [ ] B5-A2: The five R-CMD-check matrix jobs (macOS release, Windows release, Ubuntu devel, release, oldrel-1) end with 0 errors and 0 warnings, and any NOTE is listed and explained in `cran-comments.md`.
 - [ ] B5-A3: `conformance-r.yaml` passes, and `run_r.R` reports every fixture in `reduce.json`, `errors.json`, and `labels.json` as checked and passed.
-- [ ] B5-A4: The generated-files job finds no difference between committed `man/` and `NAMESPACE` and the roxygen output.
+- [ ] B5-A4: The generated-files job follows the six steps of the plan section "Generated-files job" and passes on the PR head that closes B5. Its failure path is shown once: either a failing run that still produced a downloadable `generated-files` artifact (the Option B bootstrap run), or, under Option A, a local run of the same commands on a tree with one deleted help page, one stale help page, one new undocumented export, and no `data/` folder, which exits non-zero for each case.
 - [ ] B5-A5: The check timings show every example under 2 s, and the testthat run takes under 60 s on Ubuntu release.
 - [ ] B5-A6: `R CMD build` output contains no file from `python/`, `js/`, `conformance/`, `docs/`, `data-raw/`, `.github/`, or the run docs (checked with `tar tzf` on the built tarball).
+- [ ] B5-A7: The as-cran job checks the built tarball in a check directory under `runner.temp`, outside the checkout, so the tests cannot reach repository files; `grep -rnE "\.\./|read\.csv|readLines|jsonlite|file\.path" tests/` finds nothing (a comment may still name a fixture id); and `run_r.R` compares each R data set with its CSV in `conformance/data/`.
 
 **Docs likely touched:** `man/`, `NEWS.md`, `cran-comments.md`.
-**Risk:** `high`: CRAN rules and a CI-gated loop if R stays off this machine.
+**Risk:** `high`: CRAN rules, and a CI-gated loop under Option B (the default).
 **Caution:** do not run win-builder or submit to CRAN; those are human steps.
 **Affected surfaces:** R package files at the root, R workflows.
 **Constitution impacts:** none.
@@ -631,7 +675,7 @@ tarball), spec parity, data documentation.
 - [ ] B6-A2: Every code example in `README.md`, `python/README.md`, and `js/README.md` was run on the final code (R examples in CI or local R), and its printed output in the README matches the run.
 - [ ] B6-A3: `cffconvert --validate` passes on `CITATION.cff`.
 - [ ] B6-A4: `publish-npm.yaml` and `publish-python.yaml` check that the release tag equals `v` plus the package version and use trusted publishing with no stored token; no workflow publishes on push or pull_request.
-- [ ] B6-A5: `NEWS.md` 0.2.0 lists the R and JavaScript packages, the Python layout move and git URL change, the move to `highspy`, the canonical tie-break, the unrounded `reduction_pct`, the `solver_status` text "Optimal", `time_limit` as one budget for all solves, and the new finite means check.
+- [ ] B6-A5: `NEWS.md` 0.2.0 lists the R and JavaScript packages, the Python layout move and git URL change, the move to `highspy`, the canonical tie-break, the canonical clique order that can rename letters for inputs with one optimal covering (with the D4 example), the unrounded `reduction_pct`, the `solver_status` text "Optimal", `time_limit` as one budget for all solves, and the new finite means check.
 
 **Docs likely touched:** all READMEs, NEWS.md, CITATION.cff.
 **Risk:** `low`.
@@ -649,7 +693,7 @@ CRAN, npm, or PyPI yet).
 - [ ] M-A2: At the final head, every job of `R-CMD-check.yaml`, `conformance-r.yaml`, `python.yaml`, and `js.yaml` succeeds on the PR, and the as-cran job shows 0 errors and 0 warnings.
 - [ ] M-A3: The npm package is ready to publish: B4-A2 and B4-A3 hold at the final head, `publish-npm.yaml` is in place, and nothing was published.
 - [ ] M-A4: Existing Python users keep the import name `cld_reducer`, the public names and exceptions, the CLI `cld-reduce` with its flags, and all 25 tests from `main`; the git URL change and the behavior changes are in NEWS.md.
-- [ ] M-A5: The PR body lists every human open item of this plan (H1 to H12), and nothing was merged, tagged, released, submitted to CRAN, or published to npm or PyPI.
+- [ ] M-A5: The PR body lists every human open item of this plan (H1 to H13), and nothing was merged, tagged, released, submitted to CRAN, or published to npm or PyPI.
 - [ ] M-A6: Astra and a fresh Opus 5.5 review report no open finding at the exact final head, and a `Local tests passed on <head SHA>` PR comment lists the local commands and results.
 
 ## Definition of green
@@ -660,7 +704,8 @@ All of these hold at one exact PR head:
    generated-files), `conformance-r.yaml`, `python.yaml` (6 matrix, minimum, package), and
    `js.yaml` (6 matrix, pack) succeeds. No job is skipped or cancelled.
 2. The as-cran log shows `0 errors | 0 warnings`; each NOTE is in `cran-comments.md`.
-3. Local record on this Windows host, posted as the PR comment `Local tests passed on <SHA>`:
+3. Local record on the execution host (route dependent: Windows for routes (b) and (c), WSL
+   Linux for route (a)), posted as the PR comment `Local tests passed on <SHA>`:
    `python conformance/generate.py --check`, `python conformance/test_generate.py`; in
    `python/`: `ruff check .`, `ruff format --check .`, `pytest`, both example scripts; in `js/`:
    `npm ci`, `npm run typecheck`, `npm run build`, `npm test`, `npm run test:conformance`,
@@ -680,11 +725,11 @@ All of these hold at one exact PR head:
 | Generator defect | Wrong expected values in all three languages | Cross check against plain enumeration (B2-A2); hand-checked cases; Astra review of B2 |
 | No local R | Slow R loop | Option A, or Option B with the generated-files artifact |
 | CRAN rejection points | Resubmission | turfLP lessons: short examples, explained NOTEs, PDF manual check, `.Rbuildignore`, spelling WORDLIST |
-| Python behavior change on tied inputs | Different wheat display than 0.1.0 | Mason confirms D4; NEWS.md entry; 0.1.0 was never on PyPI |
+| Python behavior change on tied inputs and on letter names | Different wheat display than 0.1.0; renamed letters for some uniquely optimal inputs (D4 example) | Mason confirms D4 (H10); NEWS.md entry names both changes; the D4 example is a fixture; 0.1.0 was never on PyPI |
 | npm name taken before first publish | Rename needed | Name free today; H6 asks for an early first publish after approval |
 | Group label strings differ by language for numeric labels | Different group keys | Spec says labels are strings; fixtures use string labels; README notes it |
 | `highs` (GPL) imported by an MIT package | License questions | Same as turfLP, which passed the CRAN pretests |
-| Elves supervisor not usable on Windows | Execution cannot launch as routed | Launch blocker LB1 below |
+| Elves supervisor not usable on native Windows | Execution cannot launch as routed | Section "Execution routes": LB1 and routes (a), (b), (c) |
 
 ## Human open items
 
@@ -708,48 +753,238 @@ These need a person. The run does not do them.
 - **H8.** GitHub: create environments `npm` and `pypi`; after merge, tag `v0.2.0` and publish a
   release; update the repository description ("Python tools ...") and topics.
 - **H9.** Merge approval for the PR.
-- **H10.** Confirm D4 (canonical tie-break) and the Python changes D5 and D6.
-- **H11.** Choose Option A (local R install) or Option B (CI only) for the R loop.
+- **H10.** Confirm D4 (canonical tie-break and canonical clique order), including both Python
+  output changes: a different covering for inputs with several optima, and renamed letters for
+  some inputs with one optimum. Confirm the Python changes D5 and D6.
+- **H11.** Choose Option A (local R install) or Option B (CI only) for the R loop. Without a
+  choice, Option B applies.
+- **H13.** Choose the execution route (a), (b), or (c) of the section "Execution routes". Route
+  (c) needs Mason's explicit acceptance of experimental prewalk and of the items it gives up.
 - **H12.** Confirm that the wheat significance data (Piepho 2004, as reproduced in Ennis,
   Fayle, and Ennis 2012, Table 7) may ship in the CRAN package with that citation.
 
-## Launch blocker
+## Execution routes
 
-**LB1. The Elves native-worker supervisor does not start on this Windows host.**
-`cobbler_agents.py` (Elves 2.39.0, the entry point for `native-worker launch --prewalk
-required`) exits at import with `ModuleNotFoundError: No module named 'fcntl'` from
-`cobbler_runtime/worktree_fingerprint.py`, and `cobbler_runtime/storage.py` states that directory
-locking requires Unix `fcntl.flock`. No cached prewalk proof exists on Windows or in WSL. WSL
-Ubuntu has `python3` and `git`, but no Claude Code CLI, no `gh`, no Node.js, and no Elves
-install, and the worktree registered from Windows records Windows paths. `acceptance_contract.py`
-and `elves_landing_check.py` run on Windows.
+### Launch blocker LB1 (corrected after review round 1)
 
-The brief forbids a cold substitute or a silent model change. So the execution phase cannot
-launch the prewalk worker until Lantern or Mason picks one:
+The routed launch, `cobbler_agents.py native-worker launch --host claude --prewalk required`,
+cannot run on this native Windows host. Facts from Elves 2.39.0 as installed:
 
-- (a) Run the driver, the supervisor, and the worker in WSL: install the Claude Code CLI and log
-  in, `gh` with auth, Node.js 24, Elves 2.39.0 (`sync_installed_skills.py --target claude`),
-  Python packages, and R if Option A; clone the repository in the WSL file system and create the
-  registered worktree there; then run required-mode qualification.
-- (b) Fix Elves locking for native Windows (for example `msvcrt.locking`) in
-  `aigorahub/elves`, install that version, then run required-mode qualification. (No Elves issue
-  about this exists; closed issue #272 was a different Windows defect.)
-- (c) Another route that Mason names explicitly.
+- Every `cobbler_agents.py` command exits at import with `ModuleNotFoundError: No module named
+  'fcntl'` (`cobbler_runtime/worktree_fingerprint.py`).
+- `cobbler_runtime/storage.py` needs more than `fcntl`: lines 61 to 96 load an atomic
+  no-replace rename only on Linux (`renameat2`) and macOS (`renameatx_np`) and fail closed
+  elsewhere, and line 289 onward opens directory descriptors and uses `dir_fd`, which Windows
+  Python does not support. `acceptance_contract.py sync-session --write` fails here for the
+  same reason (`PermissionError` on the directory open). A locking-only patch still fails.
+- `references/agent-teams.md` states: "Native Windows Python is not a qualified Elves execution
+  host." Elves supports Windows only through WSL2.
+- No cached prewalk qualification exists on Windows or in WSL. WSL Ubuntu has `python3` and
+  `git` only.
+- Read-only helpers work on Windows: `acceptance_contract.py validate`,
+  `elves_landing_check.py`, and the pure validators in `cobbler_runtime/prewalk.py`.
 
-The plan content does not depend on this choice.
+The choice of route changes run contracts, paths, and evidence. "Route-dependent content" below
+lists every place. Mason chooses the route (H13).
 
-## Run control summary
+### Route (a): Linux host in WSL, qualified prewalk
 
-- **Routes:** guide and driver: this session (Claude Code, claude-opus-5-5, xhigh). Worker:
-  one native Claude Code session with exact-session prewalk, `worker.prewalk=required`, guide
-  phase claude-opus-5-5 at xhigh, execution phase claude-sonnet-5-5 at high. Qualification
-  failure stops the run and the driver reports it. Plan and final reviewer: Codex gpt-6-astra
-  at high in tab `cld-review` (seated by Lantern). Second final reviewer: a fresh Opus 5.5
-  session that is not the driver or the worker.
-- **Delegation:** one trusted full-run packet for B1 to B6, `branch_progress` (the worker
-  commits and pushes only `feat/r-js-packages`), driver parked, one cumulative terminal review,
-  fixes, then both reviewers re-review until clean.
-- **PR:** none in Phase 1. After `EXECUTE APPROVED`, the driver pushes the staging commit and
+The only route that runs the Elves supervisor and its required-mode qualification as designed.
+
+- Setup in WSL: Claude Code CLI and login, `gh` and auth, Node.js 24, Python 3 with `venv`,
+  `uv`, Elves 2.39.0 (`python3 scripts/sync_installed_skills.py --apply --target claude` from an
+  `aigorahub/elves` checkout), and R under Option A.
+- Repository transfer: clone `aigorahub/cld-reducer` in the WSL file system, create the
+  registered worktree with `preflight_worktree.py --create-worktree feat/r-js-packages --base
+  origin/main` (same tripwire `eb95fe9`), then bring the unpushed staging commits across with
+  `git bundle create` on Windows and `git fetch <bundle>` plus a fast-forward in WSL. The
+  Windows worktree is then retired (not deleted until Mason agrees).
+- Rebuild what is Windows-specific: `worktree_path` and every path in the run docs and packet;
+  regenerate the ignored worker packet in the WSL worktree; rerun `sync-session` and
+  `validate` there.
+- Driver: the driver must run where the supervisor runs. Either Lantern seats a WSL driver with
+  these run docs, or this session drives through `wsl.exe` commands. Lantern decides.
+- Then: `native-worker launch --prewalk required --guide-model claude-opus-5-5 --guide-effort
+  xhigh --execution-model claude-sonnet-5-5 --execution-effort high`. Qualification failure
+  stops the run.
+- Risks (Astra): the commit transfer, the ignored packet, the worktree registration, and every
+  Windows path and Windows-only evidence item must be redone; a mistake there breaks the
+  tripwire or the landing check.
+- Proof needed before launch: registration, required prewalk qualification, durable state
+  writes, worker launch and resume, and acceptance reconciliation, all on the WSL host, with the
+  recorded paths and the final evidence requirements changed to that host.
+
+### Route (b): port Elves storage to native Windows
+
+Not a patch. It needs a separately designed and tested Windows storage port in
+`aigorahub/elves`: locking (for example `LockFileEx` through `msvcrt` or `ctypes`), an atomic
+no-replace rename (for example `MoveFileExW` without `MOVEFILE_REPLACE_EXISTING`), and a
+replacement for the descriptor-relative (`dir_fd`) traversal and its no-follow guarantees, with
+Windows CI, a security review, a release, a reinstall, and then required-mode qualification. It
+is a separate project outside this run and would delay it by days. Not recommended for this run.
+No Elves issue exists for it yet; filing one is Lantern's or Mason's decision.
+
+### Route (c): manual experimental prewalk in a Herdr tab, driver-supervised batches
+
+Proposed by Lantern. The worker is an interactive Claude Code session in a separate Herdr tab of
+this workspace, in the registered Windows worktree. The driver (this session) is the
+supervisor, does not park, gates each batch, and owns all run memory.
+
+**Steps (after `EXECUTE APPROVED` and Mason's acceptance of experimental prewalk):**
+
+1. Push the staging commits to `origin feat/r-js-packages` and open the draft PR. Create the
+   rollback ref `refs/elves/rollback/cld-reducer-r-js-packages-2026-10-07/b0`.
+2. Choose a session UUID `S`. Write `{"schema_version": 1, "run_id":
+   "cld-reducer-r-js-packages-2026-10-07", "session_id": "S"}` to
+   `.elves/runtime/prewalk/cld_reducer_r_js_package-d60c05050bd9310e/session.json` (the path
+   that `prewalk.prewalk_paths()` returns for this run).
+3. Write the guide message `.elves/runtime/guide-message.md`: the text of the installed
+   `prewalk.guide_prompt(run_id, paths, todo_limit=10)` (exact TODO and checkpoint shapes),
+   then the full worker packet. This is the one packet message.
+4. `herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd C:\Claude\cld-reducer-r-js-packages
+   --label cld-worker --no-focus`; read the root pane `P` from the JSON.
+5. `herdr agent start cld-worker --kind claude --pane P -- --session-id S --model
+   claude-opus-5-5 --effort xhigh --permission-mode auto`.
+6. Guide turn: `herdr agent prompt cld-worker "@.elves/runtime/guide-message.md" --wait`, then
+   `herdr agent wait cld-worker --timeout <ms>` in a loop as the watchdog if the prompt wait ends
+   first.
+   The guide orients, writes the B1 TODO (at most 10 items) and the first meaningful B1 edit
+   (no commit with `Close`), writes `checkpoint.json` (`first_meaningful_edit`), and ends its
+   turn.
+7. Transition checks by the driver, model-free, before any resume: `herdr agent get
+   cld-worker` shows state `idle` or `done` and session `S`;
+   `prewalk.load_and_validate_transition_artifacts()` and `prewalk.validate_meaningful_edit()`
+   from the installed Elves pass (if either cannot run on Windows, the driver does the same
+   checks by hand: valid TODO and checkpoint shapes, a real product edit among the declared
+   changed paths, no change to driver-owned run docs or forbidden paths, no `Close` commit since
+   the staging head, branch and origin unchanged, `git ls-remote origin` shows `main`
+   unchanged). Any failure stops the run before resume.
+8. End the guide process: `herdr agent prompt cld-worker "/exit"`, then `herdr pane
+   process-info --pane P` must show the shell in the foreground.
+9. Resume the same session on the execution route: `herdr agent start cld-worker --kind claude
+   --pane P -- --resume S --model claude-sonnet-5-5 --effort high --permission-mode auto`.
+10. Handoff evidence: `herdr agent get cld-worker` shows session `S` again; `herdr pane
+    process-info --pane P` shows the argv with `--resume S --model claude-sonnet-5-5 --effort
+    high`. After the first execution reply, the transcript
+    `~/.claude/projects/C--Claude-cld-reducer-r-js-packages/S.jsonl` must show one `sessionId`
+    (`S`), `cwd` equal to the worktree, and assistant messages with `model` claude-opus-5-5
+    before the transition and claude-sonnet-5-5 after it. (Claude Code transcripts record the
+    served model on each assistant message; this was checked on the driver's own transcript.
+    Effort is not recorded anywhere, so the execution effort stays unobserved.)
+11. Transition message: `herdr agent prompt cld-worker "Continue." --wait`. The worker finishes
+    B1, pushes its `Close` commit, writes `.elves/runtime/worker-report-B1.md`, replies with that
+    path, and waits.
+12. Batch loop: see "Batch completion and session evidence". The driver prompts the next batch
+    only when `herdr agent get` shows `idle` or `done`. The prompt names the batch and points to
+    its handoff block in the plan and to packet sections 4 to 8; it never resends the packet.
+
+**Rule check against the installed Elves 2.39.0, with corrections to Lantern's proposal:**
+
+- Packet once, only `Continue.` at the transition, exact resume with a route override, `auto`
+  permission mode and never `bypassPermissions` (prewalk.md): kept.
+- Correction: the session id is assigned by the driver with `--session-id` and written to
+  `session.json` before the guide turn, as the Elves Claude transport does with a
+  caller-generated UUID; the guide prompt requires reading it from that file.
+- Correction: the guide message uses the installed `guide_prompt()` text so the TODO and
+  checkpoint shapes are exact, and both artifacts are validated before the resume.
+- Correction: later batch prompts are new worker turns, so the handoff standard ("before every
+  worker turn, a stand-alone packet") applies; each batch prompt points to that batch's
+  handoff block in the plan, which has all eight parts. This is not a packet replay.
+- "Do not type messages into a working, blocked, unknown, or parked pane" (agent-teams.md):
+  prompts go only to `idle` or `done`. On `blocked`, the driver reads the pane and does not
+  answer the approval dialog (workspace rule); it reports to Lantern. On `unknown`, it waits and
+  reads.
+- After the first edit, cold fallback is forbidden (prewalk.md): if the worker process dies,
+  the driver resumes session `S` on the execution route and sends `Continue.`; transient
+  provider errors wait 5, 10, then 20 minutes. If `S` cannot be resumed, the run stops and the
+  driver reports; it never starts a fresh session with a copied packet.
+- Compaction (prewalk.md, P4): an interactive session that runs six batches will likely
+  compact. After a compaction the driver records `prewalk_fallback:
+  prewalk_dequalified_by_compaction`, and later batches rely on the run docs and packet files,
+  not on retained guide context.
+- No rule forbids the route outright, but agent-teams.md says native Windows is not a qualified
+  Elves execution host, so the route runs outside Elves' qualified support. Mason's acceptance
+  covers that.
+
+**What route (c) gives up compared with a qualified cobbler prewalk:**
+
+1. No live qualification canary: retained guide context and instruction fidelity after the
+   resume are unproven (experimental, not `retained_safe`).
+2. No machine-enforced transition kernel: the driver runs the validators or the same checks by
+   hand.
+3. No version-3 private native-worker state, no single redacted follow log, no stream identity
+   check, no salvage tail, no continuity watchdog, no futile re-drive guard: the driver uses
+   `herdr agent wait` with timeouts, `herdr agent read`, the transcript JSONL, and the execution
+   log.
+4. No sandbox and no narrowed Git roots: the worker runs with Mason's full git and `gh`
+   authority (scopes `repo`, `workflow`) and could push other refs, edit or merge PRs, or create
+   tags. Prevention is by instruction and the `auto` permission classifier only. Detection:
+   after every batch the driver checks `git ls-remote origin` (`main` unchanged, no new ref other
+   than `feat/r-js-packages`), `gh pr view` (still draft, not merged), and `gh release list` and
+   tags (none new). `main` protection (PR required, admins enforced) blocks a direct push to
+   `main`, but not a PR merge.
+5. The transition is done by the driver, not by the supervisor.
+6. Native Windows is not a qualified Elves host; Elves writers (`sync-session --write`,
+   `cobbler_agents.py`) are unavailable, so the driver writes the session JSON itself and runs
+   only the read-only Elves checks.
+7. The route-change proof is the transcript `model` field and the argv. For Claude Code, Elves
+   itself records the route change as `unobserved`, so this point is not weaker.
+
+What it keeps: one exact session across the route change (checkable), one packet, only
+`Continue.` at the transition, the registered worktree, driver-owned run memory, per-batch
+acceptance checks by the driver, and the final independent reviews.
+
+**Recommendation.** Route (c) if Mason accepts the seven items above; it can start on this
+machine without new installs beyond the Python venv and `npm ci`. Route (a) if Mason wants
+qualified prewalk; it costs the WSL setup and transfer first. Route (b) is not for this run.
+
+### Batch completion and session evidence
+
+Only the driver writes `.elves-session.json`, the survival guide, the execution log, and the
+plan. The worker never edits them.
+
+- **Route (c):** after the worker pushes the B<N> `Close` commit and writes
+  `.elves/runtime/worker-report-B<N>.md`, it is idle. The driver checks every `B<N>-A#` itself
+  (reruns or inspects the named commands; reads the CI result for the Close commit), writes
+  `met` and `evidence` for each row and `status: complete` for the batch, updates the
+  execution log and survival guide, runs `acceptance_contract.py validate`, commits only those
+  run-doc paths as `[feat/r-js-packages · Batch N/6 · Review] Record B<N> acceptance evidence`,
+  pushes, creates the rollback ref `b<N>`, and only then prompts B<N+1>. A failed row gets a gap
+  prompt for the same batch first. This is the B1 to B2 path.
+- **Routes (a) and (b), parked full-run:** the worker closes each internal batch with its
+  `Close` commit body and `.elves/runtime/worker-report-B<N>.md` as interim evidence. Session
+  rows stay `met: false` until the driver's one terminal (or safety) reconciliation, where the
+  driver verifies each row and writes it. This is the Elves trusted full-run rule; the
+  survival guide's "Acceptance Checks" says so.
+
+### Route-dependent content
+
+| Item | Route (c) | Route (a) | Route (b) |
+|---|---|---|---|
+| Worktree and `worktree_path` | `C:\Claude\cld-reducer-r-js-packages` | new WSL path, re-registered | Windows path |
+| Driver monitor mode and delegation | interactive, per batch (`Delegation scope: batch`) | parked, `full_run` | parked, `full_run` |
+| Batch completion evidence | driver writes session rows per batch | worker reports; driver reconciles at terminal | same as (a) |
+| Prewalk mode and evidence | experimental, manual; transcript and argv | required, qualified canary | required, qualified canary |
+| Worker launch | Herdr steps 4 to 11 | `cobbler_agents.py native-worker launch` | same as (a) |
+| Local record host ("Definition of green" item 3) | Windows | WSL Linux | Windows |
+| Local tools (Python venv, `npm ci`, R under Option A) | Windows | WSL Linux | Windows |
+| CRLF pitfalls (B1, B2, packet) | apply (`core.autocrlf=true`) | apply only if WSL git sets `core.autocrlf` | apply |
+| Worker packet paths and report path | Windows paths | rewritten for WSL | Windows paths |
+| Elves Report path | Windows temp folder | `/tmp` | Windows temp folder |
+| Session-file writes | driver writes JSON directly | `sync-session --write` works | after the port |
+
+Every other part of the plan (spec, packages, conformance, CI, acceptance criteria) is the same
+on every route.
+
+### Run control summary
+
+- **Models:** guide claude-opus-5-5 at xhigh; execution claude-sonnet-5-5 at high, on every
+  route. Plan and final reviewer: Codex gpt-6-astra at high in tab `cld-review` (seated by
+  Lantern). Second final reviewer: a fresh Opus 5.5 session that is not the driver or the
+  worker. No silent model change; a route change needs Mason.
+- **Git:** the worker commits and pushes only `feat/r-js-packages`. PR actions, run memory,
+  final review, and landing stay with the driver.
+- **PR:** none in Phase 1. After `EXECUTE APPROVED`, the driver pushes the staging commits and
   opens the draft PR before the worker starts.
 - **Stop point:** a landable draft PR that meets "Definition of green". No merge, tag, release,
   CRAN submission, or publish.
@@ -787,7 +1022,8 @@ The plan content does not depend on this choice.
   generator), add the case to `conformance/test_generate.py`, regenerate with
   `generate.py --write`, and name the change in the next Close commit body. Then all
   implementations that already passed must pass again. Fixture JSON is never edited by hand.
-- Local tools needed in execution (installed only after approval): a Python virtual
+- Local tools needed in execution, on the execution host (route dependent), installed only
+  after approval: a Python virtual
   environment under `python/.venv` with the package, `pytest`, `ruff`, `uv`, `cffconvert`;
   `npm ci` in `js/`; R per H11.
 - turfLP paths in this plan are references to read, never to change.
