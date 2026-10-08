@@ -696,7 +696,7 @@ CRAN, npm, or PyPI yet).
 - [x] M-A3: The npm package is ready to publish: B4-A2 and B4-A3 hold at the final head, `publish-npm.yaml` is in place, and nothing was published.
 - [x] M-A4: Existing Python users keep the import name `cld_reducer`, the public names and exceptions, the CLI `cld-reduce` with its flags, and all 25 tests from `main`; the git URL change and the behavior changes are in NEWS.md.
 - [x] M-A5: The PR body lists every human open item of this plan (H1 to H13), and nothing was merged, tagged, released, submitted to CRAN, or published to npm or PyPI.
-- [ ] M-A6: Astra and a fresh Opus 5.5 review report no open finding at the exact final head, and a `Local tests passed on <head SHA>` PR comment lists the local commands and results.
+- [x] M-A6: Astra and a fresh Opus 5.5 review report no open finding at the exact final head, and a `Local tests passed on <head SHA>` PR comment lists the local commands and results.
 
 ## Definition of green
 

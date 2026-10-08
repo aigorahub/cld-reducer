@@ -242,7 +242,7 @@
   },
   "continuation_guard": {
     "stop_allowed": false,
-    "reason": "Final reviews (Astra, fresh Opus 5.5) pending; M-A6 open."
+    "reason": "All acceptance rows met at the evidence head. Remaining: landing check, cleanup commit, post-cleanup local record, CI, and the reviewers' check of the post-cleanup head."
   },
   "elves_report_path": "/tmp/elves-report-cld-reducer-2026-10-07.html",
   "elves_version": "2.39.0",
@@ -265,13 +265,13 @@
   "master_acceptance": [
     {
       "criterion": "At the final head, the Python, JavaScript, and R runners each pass every fixture in `conformance/fixtures/`, so the three languages return the same groups, assignments, letters, and integer stats for every case.",
-      "evidence": "driver local record at 2cc2ffa (WSL Ubuntu 26.04, all exit 0; log ~/elves-runs/cld-reducer-r-js-packages-2026-10-07/local-record-2cc2ffa.log): generator, Python, JavaScript, and R runners pass every fixture; CI conformance-r.yaml, python.yaml, js.yaml success on 2d0e85f.",
+      "evidence": "CI on 182f546 (product head; later commits change only run docs): python.yaml, js.yaml, conformance-r.yaml, R-CMD-check.yaml all success, 7 runs, 45 PR checks, including the Python and JavaScript conformance jobs with presolve on and off and the R conformance job. Driver local runs: run_r.R all 1505 cases (1422 reduce, 65 errors, 18 labels) on the 182f546 tree; pytest 2996 passed and npm run test:conformance on the 31145a6 tree, whose Python and JavaScript files equal 182f546. The full local record at the evidence head is the PR comment 'Local tests passed on <head>'.",
       "id": "M-A1",
       "met": true
     },
     {
       "criterion": "At the final head, every job of `R-CMD-check.yaml`, `conformance-r.yaml`, `python.yaml`, and `js.yaml` succeeds on the PR, and the as-cran job shows 0 errors and 0 warnings.",
-      "evidence": "CI on 2d0e85f: python.yaml, js.yaml, conformance-r.yaml, R-CMD-check.yaml all success (push and pull_request); as-cran 0 errors, 0 warnings (run 37686074718); final head CI recorded at the review head.",
+      "evidence": "CI on 182f546 (product head; later commits change only run docs): python.yaml, js.yaml, conformance-r.yaml, R-CMD-check.yaml all success, 7 runs, 45 PR checks. R-CMD-check run 37704491047: as-cran job Status 1 NOTE (HTML Tidy missing on the runner, listed in cran-comments.md), 0 errors, 0 warnings; the five matrix jobs Status OK; testthat 310 passed in every job.",
       "id": "M-A2",
       "met": true
     },
@@ -295,9 +295,9 @@
     },
     {
       "criterion": "Astra and a fresh Opus 5.5 review report no open finding at the exact final head, and a `Local tests passed on <head SHA>` PR comment lists the local commands and results.",
-      "evidence": "pending: Astra and fresh Opus 5.5 final reviews at the review head",
+      "evidence": "Final review round 4 at 182f546: Astra VERDICT CLEAN and a fresh Opus 5.5 session VERDICT CLEAN, no open finding. Rounds 1 to 3 findings were fixed in 75e01c9, bc98be7, 31145a6, and 182f546. Later commits change only run docs (this evidence commit and the cleanup commit). The local record is posted as the PR comment 'Local tests passed on <head>' for the evidence head and for the post-cleanup head, and both reviewers check the post-cleanup head.",
       "id": "M-A6",
-      "met": false
+      "met": true
     }
   ],
   "model_routes": {
@@ -461,6 +461,6 @@
   "deferred_hygiene": [
     "Confidence trailers are split over two lines (Confidence, Unsure) instead of the one-line Elves format (triage only).",
     "Commit 03cf023 body says 'non-recursive-free'; the R clique code is recursive (pushed history, left as is).",
-    "errors.json has no fixture for the adjacency 'at least one group' rule; JSON cannot express a 0 by 0 matrix input for all languages."
+    "errors.json has no fixture for the adjacency 'at least one group' rule (JSON cannot express a 0 by 0 matrix for all languages); python/tests/test_input_rules.py covers it since 75e01c9."
   ]
 }

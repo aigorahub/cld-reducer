@@ -94,10 +94,10 @@ ends at a green, reviewed, draft PR. No merge, tag, release, CRAN submission, or
 
 ## Stop Gate
 
-- **Planned batches remaining:** 0 (B1 to B6 closed); final reviews remain
+- **Planned batches remaining:** 0 (B1 to B6 closed); final reviews clean at 182f546
 - **Stop allowed right now:** no
-- **Why:** the final reviews (Astra and a fresh Opus 5.5 session) and M-A6 remain.
-- **Next required action:** print REVIEW READY with the evidence head and PR URL, fix every finding, and repeat until both reviewers are clean; then record M-A6, run the landing check, clean up run docs, and attest the final head.
+- **Why:** the landing check, the cleanup commit, the post-cleanup local record and CI, and the reviewers' check of the post-cleanup head remain.
+- **Next required action:** run the landing check at the evidence head, remove the session, survival guide, and execution log in one cleanup commit, post the local record for the cleanup head, wait for CI, and print REVIEW READY for that head.
 
 After `EXECUTE APPROVED`, set `Stop allowed right now: no` until the stop point.
 
@@ -187,9 +187,9 @@ If one of these happens after `EXECUTE APPROVED`, update the docs, commit, push,
 
 **Active batch:** none
 
-**What was just finished:** final review round 1 fixed (`75e01c9`, `bc98be7`); both reviewers confirmed it. Round 2 (R numeric NaN labels) fixed in `31145a6`; both reviewers confirmed it. Round 3 (one regression from both: R factor with an explicit NA level) fixed by the driver with an R unit test; local checks green on the uncommitted tree.
+**What was just finished:** final review round 4: Astra and the fresh Opus 5.5 session both VERDICT CLEAN at 182f546; M-A6 evidence written and the plan row ticked.
 
-**Single next action:** wait for CI on the round 3 head, then print REVIEW READY with that head for both reviewers.
+**Single next action:** commit the evidence, post the local record for the evidence head, and run the landing check.
 
 ---
 
