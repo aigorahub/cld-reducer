@@ -30,6 +30,10 @@ Durable lessons for this repository and this machine. Run status goes in the exe
 
 - [L18] [2026-10-07] Elves native workers (Claude transport) have no git network access and no gh auth (`GIT_ALLOW_PROTOCOL=file`, disabled push URL, empty credential helper, empty `GH_CONFIG_DIR`). Packets must make pushes and CI reads driver-owned, for example a driver-written CI status file the worker reads. (evidence: execution-log 2026-10-07 qualified launch)
 
+- [L19] [2026-10-07] In R, `as.character(NaN)` is the text "NaN", and a factor with an explicit NA level (`addNA()`, `exclude = NULL`) has no NA code but converts to NA. Check missing labels on both the given values and the converted strings. (evidence: final review rounds 2 and 3, commits `31145a6` and `182f546`)
+- [L20] [2026-10-07] The Elves landing check accepts a local test record only in a strict form: the first line `Local tests passed on <full sha>`, then only lines ``- `<command>`: passed``. Counts and notes go in a separate PR comment. (evidence: Elves 2.39.0 `cobbler_runtime/merge_evidence.py`)
+- [L21] [2026-10-07] On this host, the Claude Code scratchpad lost its older files during the long session, and the Write tool turns a typed backslash-u escape into the character itself. Keep driver helper scripts in WSL under `~/elves-runs/<run>/bin`, and write escapes with `sed` or `chr()`. (evidence: commit `bc98be7`, amended from `eb8c214`)
+
 ## Retired learnings
 
 None.
