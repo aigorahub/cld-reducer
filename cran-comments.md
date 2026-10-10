@@ -1,7 +1,8 @@
 ## Submission status
 
 Version 0.2.0 is a candidate for a new CRAN package. It has not been submitted.
-Data reuse confirmation remains a release condition. John Ennis is the sole
+John Ennis confirmed the public example data and approved their inclusion on
+2026-10-10. John Ennis is the sole
 package author and maintainer, as directed on 2026-10-09. See `docs/releasing.md` and the installed `COPYRIGHTS` notice.
 
 ## Candidate checked locally
@@ -50,5 +51,4 @@ The wheat example contains the significance decisions for 190 pairwise
 comparisons of 20 treatments. It comes from Piepho (2004), as reproduced in
 Table 7 of Ennis, Fayle, and Ennis (2012). The simple example contains ten pair
 comparisons and five means from Ennis, Fayle, and Ennis (2012). `COPYRIGHTS` records sources, CSV-to-R transformations,
-and the reuse confirmation that is still required. Citations do not establish
-data redistribution rights. Resolve this condition before any submission.
+and the maintainer confirmation and approval recorded on 2026-10-10.

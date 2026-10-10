@@ -59,20 +59,19 @@ been created by this work.
 ## Decisions and checks still required
 
 - Confirm the earlier Python project's identity and used versions.
-- Confirm the reuse basis for the example data in `inst/COPYRIGHTS`. The simple
-  example and its means come from the 2012 paper. The wheat decisions come from
-  Piepho (2004), reproduced in the 2012 paper. No explicit reuse license was
-  found. R and the Python source archive include both. The npm README includes
-  the simple example. The Python wheel omits the CSV files but includes
-  simple-example output in its metadata.
+- John Ennis confirmed that the example data are public and approved their
+  inclusion on 2026-10-10. All three source notices record this decision.
+  New archives must replace the candidates above because the notices changed.
 - The maintainer directed sole package authorship by John Ennis on 2026-10-09.
   Package metadata and the software citation now use that name. Published work
   citations and existing copyright notices retain their authors and holders.
 - Record the two win-builder results for the file above.
-- Obtain explicit approval to merge the PRs. Recheck the resulting commit.
+- Merge approval was given on 2026-10-10, subject to thorough review. Recheck
+  the final head and the resulting commit.
 - Configure the confirmed PyPI project's publisher and authorize the version
   tag. Run the final workflow dry runs and preserve their checked artifacts.
-- Obtain publication approval. Publish those exact artifacts. Record CRAN
+- Publication was approved on 2026-10-10, subject to thorough review. Publish
+  the checked artifacts after registry setup. Record CRAN
   submission and acceptance separately.
 
 Code checks do not verify registry access. Dry runs do not prove publication

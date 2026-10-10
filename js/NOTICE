@@ -1,8 +1,9 @@
-Example data sources and reuse status
+Example data sources and reuse record
 
-The MIT license covers the package code. It does not establish permission to
-redistribute data copied from a publication. Publication is blocked until the
-maintainer records a confirmed reuse basis for the wheat data below.
+The MIT license covers the package code. The examples below contain public
+summary data from the cited papers. On 2026-10-10, John Ennis confirmed that
+the data are public and approved their inclusion in these distributions.
+This record does not assign a new license to the source publications.
 
 piepho2004_wheat_pairs.csv / piepho2004_wheat
 Source: Piepho (2004), An Algorithm for a Letter-Based Representation of All-
@@ -13,27 +14,22 @@ Content: significant/non-significant decisions for the 190 unordered pairs of
 20 wheat treatments. The repository stores these decisions as CSV rows.
 R data-raw/datasets.R reads labels as text and decisions as logical values,
 then saves the same rows as piepho2004_wheat.rda. Python examples copy the CSV.
-Reuse permission: unconfirmed. A citation alone does not grant permission.
-Owner of follow-up: John Ennis, proposed package maintainer.
+Reuse record: maintainer confirmation and approval on 2026-10-10.
 
 simple_abc_to_ac_pairs.csv / simple_abc_pairs
 simple_abc_to_ac_means.csv / simple_abc_means
 Source: Ennis, Fayle, and Ennis (2012), Assignment-Minimum Clique Coverings,
-doi:10.1145/2133803.2275596. The R help pages already attribute the five-group
-ABC-to-AC teaching example and its means to this paper. A specific reuse license
-has not been established.
+doi:10.1145/2133803.2275596. The R help pages attribute the five-group
+ABC-to-AC teaching example and its means to this paper.
 Content: ten pairwise decisions and five numeric means. R data-raw/datasets.R
 reads the CSV files and saves the corresponding data frames. Python examples
 copy the CSV files.
-Reuse basis: maintainer confirmation required before publication.
-Owner of follow-up: John Ennis.
+Reuse record: maintainer confirmation and approval on 2026-10-10.
 
-Do not interpret this notice as a new license or as confirmed permission.
-Retain it in every distribution that contains the example data.
+Retain this source record with the example data.
 
 Distribution scope
 The R archive contains both example data sets. The Python source archive contains
 their CSV files. The Python wheel omits the CSV files but includes simple-example
 output from the README in its metadata. The npm archive contains no wheat data,
-but its README reproduces the simple five-group example. Resolve the reuse record
-for each artifact that includes the corresponding material.
+but its README reproduces the simple five-group example.

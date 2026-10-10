@@ -29,13 +29,10 @@ John Ennis owns the following release decisions:
   unavailable, resolve access or restoration before publication. A 404 does not
   authorize name reuse, version reuse, or recreation. A new-project route needs
   explicit maintainer approval. A different historical name also needs a decision.
-- Confirm the source and reuse basis for all data listed in `inst/COPYRIGHTS`.
-  `python/NOTICE` and `js/NOTICE` carry the same record. Rights remain unconfirmed.
-  This blocks publication of the affected artifacts. The code's MIT license
-  does not grant rights to third-party data. R and the Python source archive
-  contain the wheat data. The npm archive contains only the simple example in
-  its README. The Python wheel omits the CSV files but includes simple-example
-  output in its metadata.
+- John Ennis confirmed that the example data are public and approved their
+  inclusion on 2026-10-10. `inst/COPYRIGHTS`, `python/NOTICE`, and `js/NOTICE`
+  record the sources, transformations, distribution scope, and that approval.
+  This record does not assign a new license to the source publications.
 - John Ennis is the sole package author and CRAN maintainer,
   `john.m.ennis@aigora.com`, as directed by the maintainer on 2026-10-09.
   Published-paper citations and existing copyright notices retain their authors
