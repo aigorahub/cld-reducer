@@ -198,7 +198,7 @@ Registry account access has not been configured by this work.
 | Registry trusted publishers | Registry maintainer | Exact repository, workflow, environment; successful authorized upload |
 | Repository description | Updated 2026-10-09 | Describes R, Python, and JavaScript packages |
 | Tag and release | Repository maintainer | Separate authorization, checked commit, hashes |
-| win-builder | Sent 2026-10-10 UTC; results pending | Same frozen file sent to R-release and R-devel |
+| win-builder | R-release sent 2026-10-10 UTC; result pending | R-devel upload returned 550 and needs retry |
 | CRAN submission | CRAN maintainer | Submission receipt, then separate acceptance |
 
 References: [npm trusted publishers](https://docs.npmjs.com/trusted-publishers/),

@@ -7,10 +7,10 @@ conditions. See `docs/releasing.md` and the installed `COPYRIGHTS` notice.
 ## Candidate checked locally
 
 - Date: 2026-10-09 in America/New_York (2026-10-10 UTC).
-- Source: `df5fa97bb78a5834eea66df6ce9bbab5f71dca1b`. Later changes to this file
+- Source: `ad2c03f65541c9f0b10af21efcd0048c95fc9dc0`. Later changes to this file
   and `docs/` do not enter the R archive.
 - File: `cldreducer_0.2.0.tar.gz`.
-- SHA-256: `31c79adf99a063320dc9343bfd481ae8d3a380d34fa3549694573efc981acb00`.
+- SHA-256: `6a6fa55164199b90de39272935c23f2de1cb0028480cbbc6f96e2bc8d19332ff`.
 - System: macOS Tahoe 26.6.2, aarch64-apple-darwin23, R 4.6.1 (2026-06-24).
 - Command: `R CMD check --as-cran --timings`, through `rcmdcheck`, on the built
   archive outside the checkout. PDF manual enabled. Pandoc, TinyTeX, and HTML
@@ -20,7 +20,7 @@ Result: **0 errors, 0 warnings, 1 NOTE**.
 
 The NOTE is from CRAN incoming feasibility: `New submission`. This is expected
 for a new package. The PDF manual and HTML manual checks pass. The longest
-example, `reduce_letters`, took 0.339 seconds elapsed. All 310 local testthat
+example, `reduce_letters`, took 0.350 seconds elapsed. All 310 local testthat
 checks pass without warnings or skips. All 1,505 shared conformance cases and
 the three data comparisons also pass from the repository.
 
@@ -32,10 +32,11 @@ manual and HTML Tidy. The generated-file job checks help, namespace, and data.
 Record results from the final candidate commit before submission. Earlier PR
 results do not certify a later archive.
 
-Win-builder R-devel and R-release: the archive with the SHA-256 above was
-uploaded to both queues on 2026-10-10 at 02:25 UTC. Both FTP transfers returned
-226 (transfer complete). Results are pending. The proposed maintainer receives
-the result emails. Add both result links before submission. If packaged bytes
+Win-builder R-release: the archive with the SHA-256 above was uploaded on
+2026-10-10 at 02:27 UTC. The FTP transfer returned 226 (transfer complete).
+The R-devel transfer returned 550 and must be retried. Results are pending.
+The proposed maintainer receives the result emails. Add both result links
+before submission. If packaged bytes
 change, rebuild and repeat the checks.
 
 ## Notes for the reviewer

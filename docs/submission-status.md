@@ -8,29 +8,31 @@ Neither PR has been merged. No version tag or registry upload has been made.
 
 ## Checked candidate
 
-These files were built from `df5fa97bb78a5834eea66df6ce9bbab5f71dca1b`.
+These files were built from `ad2c03f65541c9f0b10af21efcd0048c95fc9dc0`.
 Later changes to this record and `cran-comments.md` do not change the package
 contents. These are review candidates. Final publication workflows must build
 and check the authorized tag on `main`.
 
 | File | SHA-256 |
 |---|---|
-| `cldreducer_0.2.0.tar.gz` | `31c79adf99a063320dc9343bfd481ae8d3a380d34fa3549694573efc981acb00` |
-| `cld_reducer-0.2.0.tar.gz` | `451c504672975a3ed8a848b79275b1324f3e9acf509364e65db1a9469c35a19b` |
-| `cld_reducer-0.2.0-py3-none-any.whl` | `8fb63311a62c72e1c388f7753fdb49501c209c63daf865990824b98afeed09b9` |
-| `cld-reducer-0.2.0.tgz` | `294176e28768843c8cf518c2e918b433c0856e0f45c3fe94e94e99ff30827ccd` |
+| `cldreducer_0.2.0.tar.gz` | `6a6fa55164199b90de39272935c23f2de1cb0028480cbbc6f96e2bc8d19332ff` |
+| `cld_reducer-0.2.0.tar.gz` | `d5bbe0569cf6811a918098abbef53dfbe388237f52a91eac11ce2b4b98d1c4e2` |
+| `cld_reducer-0.2.0-py3-none-any.whl` | `78371df5daaba7807df602305bade78a833b26f80ceda0ea31e0e4d83bea2a60` |
+| `cld-reducer-0.2.0.tgz` | `d61759316082ebebdc696f61fdc85dacf51d9809aea3989b877e07f67b5ccabc` |
 
 The R archive passes `R CMD check --as-cran --timings` with its PDF manual and
 HTML validation. Result: zero errors, zero warnings, one new-submission NOTE.
-The longest example takes 0.339 seconds. See `cran-comments.md`.
+The longest example takes 0.350 seconds. See `cran-comments.md`.
 
 Both Python files pass Twine. The wheel and a wheel rebuilt from the source
 archive pass API, CLI, label, and example checks in separate clean environments
 outside the checkout. The retained npm archive passes clean installation,
 WASM execution, and TypeScript consumer checks.
 
-The R archive above was sent to win-builder's `R-release` and `R-devel` queues
-on 2026-10-10 at 02:25 UTC. Both FTP transfers returned 226. Results are pending.
+The R archive above was sent to win-builder's `R-release` queue on 2026-10-10
+at 02:27 UTC. The FTP transfer returned 226. The `R-devel` transfer returned
+550 and must be retried. Results are pending. An earlier archive was sent to
+both queues at 02:25 UTC; those requests do not certify this candidate.
 This is a test request. It is not a CRAN submission.
 
 ## Repository and registry setup
