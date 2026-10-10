@@ -1,0 +1,173 @@
+# R package: R CMD check on five platforms, the CRAN checks with the PDF manual on the
+# built tarball in a folder outside the checkout, and a check that man/, NAMESPACE, and
+# data/ are current.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+name: R-CMD-check.yaml
+
+permissions: read-all
+
+jobs:
+  R-CMD-check:
+    runs-on: ${{ matrix.config.os }}
+
+    name: ${{ matrix.config.os }} (${{ matrix.config.r }})
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {os: macos-latest,   r: 'release'}
+          - {os: windows-latest, r: 'release'}
+          - {os: ubuntu-latest,   r: 'devel', http-user-agent: 'release'}
+          - {os: ubuntu-latest,   r: 'release'}
+          - {os: ubuntu-latest,   r: 'oldrel-1'}
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.config.r }}
+          http-user-agent: ${{ matrix.config.http-user-agent }}
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          upload-snapshots: true
+          build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'
+
+  as-cran:
+    runs-on: ubuntu-latest
+    name: CRAN checks with the PDF manual
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-tinytex@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      # rcmdcheck builds the tarball and checks it in a folder under RUNNER_TEMP, so the
+      # tests run outside the checkout and cannot reach repository files (../../..).
+      - name: R CMD check --as-cran on the built tarball
+        shell: Rscript {0}
+        run: |
+          options(crayon.enabled = TRUE)
+          if (Sys.getenv("_R_CHECK_FORCE_SUGGESTS_", "") == "") Sys.setenv("_R_CHECK_FORCE_SUGGESTS_" = "false")
+          if (Sys.getenv("_R_CHECK_CRAN_INCOMING_", "") == "") Sys.setenv("_R_CHECK_CRAN_INCOMING_" = "false")
+          check_dir <- file.path(Sys.getenv("RUNNER_TEMP"), "check")
+          stopifnot(!startsWith(normalizePath(check_dir, mustWork = FALSE), normalizePath(getwd())))
+          rcmdcheck::rcmdcheck(
+            args = c("--as-cran"),
+            build_args = character(),
+            error_on = "warning",
+            check_dir = check_dir
+          )
+
+      - name: Show the testthat output and the timings
+        if: always()
+        shell: bash
+        run: |
+          find "$RUNNER_TEMP/check" -name 'testthat.Rout*' -exec cat '{}' \; || true
+          find "$RUNNER_TEMP/check" -name '*-Ex.timings' -exec sh -c 'echo "{}"; sort -k2 -n -r "{}" | head -5' \; || true
+
+      - name: Upload the check results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: as-cran-results
+          path: ${{ runner.temp }}/check
+
+  generated-files:
+    runs-on: ubuntu-latest
+    name: man/, NAMESPACE, and data/ are current
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::pkgload
+          needs: check
+
+      # Step 1: the roxygen2 version recorded in DESCRIPTION, so that a newer roxygen2
+      # alone cannot cause a difference.
+      - name: Install the roxygen2 version from DESCRIPTION
+        shell: Rscript {0}
+        run: |
+          version <- read.dcf("DESCRIPTION", fields = "Config/roxygen2/version")[1, 1]
+          pak::pkg_install(paste0("roxygen2@", version))
+
+      # Step 2: save the committed data sets. A missing file stays missing.
+      - name: Save the committed data sets
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/committed-data"
+          for name in piepho2004_wheat simple_abc_pairs simple_abc_means; do
+            git show "HEAD:data/$name.rda" > "$RUNNER_TEMP/committed-data/$name.rda" 2>/dev/null \
+              || rm -f "$RUNNER_TEMP/committed-data/$name.rda"
+          done
+          ls -l "$RUNNER_TEMP/committed-data"
+
+      # Step 3: regenerate the data sets and the documentation.
+      - run: Rscript data-raw/datasets.R
+      - run: Rscript -e 'roxygen2::roxygenise()'
+
+      # Step 4: publish the generated files, also when a later step fails.
+      - name: Upload the generated files
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: generated-files
+          path: |
+            man
+            NAMESPACE
+            data
+          if-no-files-found: warn
+
+      # Step 5: documentation drift. git status also sees deleted tracked files and new
+      # untracked files, such as the help page of a new export, which git diff misses.
+      - name: Check that man/ and NAMESPACE are current
+        shell: bash
+        run: |
+          status="$(git status --porcelain -- man NAMESPACE)"
+          if [ -n "$status" ]; then
+            echo "man/ or NAMESPACE differ from the roxygen output:"
+            echo "$status"
+            exit 1
+          fi
+
+      # Step 6: data drift. Content is compared, not bytes, because .rda bytes can change
+      # between R versions.
+      - name: Check that data/ is current
+        run: Rscript data-raw/check-datasets.R "$RUNNER_TEMP/committed-data"

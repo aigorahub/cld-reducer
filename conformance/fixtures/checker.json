@@ -1,0 +1,320 @@
+{
+ "schema_version": 1,
+ "kind": "checker",
+ "case": "hand/wheat",
+ "bad": [
+  {
+   "name": "loses_relationship",
+   "result": {
+    "groups": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20"
+    ],
+    "assignments": {
+     "1": [
+      "B",
+      "C"
+     ],
+     "2": [
+      "B",
+      "D"
+     ],
+     "3": [
+      "A",
+      "D"
+     ],
+     "4": [
+      "B",
+      "D"
+     ],
+     "5": [
+      "A",
+      "B"
+     ],
+     "6": [
+      "B",
+      "D"
+     ],
+     "7": [
+      "A",
+      "B"
+     ],
+     "8": [
+      "A",
+      "B",
+      "C"
+     ],
+     "9": [
+      "B",
+      "D"
+     ],
+     "10": [
+      "A",
+      "B"
+     ],
+     "11": [
+      "B",
+      "D"
+     ],
+     "12": [
+      "C",
+      "D"
+     ],
+     "13": [
+      "B",
+      "D"
+     ],
+     "14": [
+      "A",
+      "B",
+      "C"
+     ],
+     "15": [
+      "A",
+      "B",
+      "C"
+     ],
+     "16": [
+      "A",
+      "B"
+     ],
+     "17": [
+      "A",
+      "B",
+      "C"
+     ],
+     "18": [
+      "B"
+     ],
+     "19": [
+      "A",
+      "B",
+      "C"
+     ],
+     "20": [
+      "C"
+     ]
+    },
+    "letters": {
+     "1": "BC",
+     "2": "BD",
+     "3": "AD",
+     "4": "BD",
+     "5": "AB",
+     "6": "BD",
+     "7": "AB",
+     "8": "ABC",
+     "9": "BD",
+     "10": "AB",
+     "11": "BD",
+     "12": "CD",
+     "13": "BD",
+     "14": "ABC",
+     "15": "ABC",
+     "16": "AB",
+     "17": "ABC",
+     "18": "B",
+     "19": "ABC",
+     "20": "C"
+    },
+    "stats": {
+     "assignments_before": 56,
+     "assignments_after": 43,
+     "num_letters_before": 4,
+     "num_letters_after": 4,
+     "num_groups": 20,
+     "num_edges": 172
+    },
+    "solver_status": "Optimal",
+    "objective": 44,
+    "reduction_pct": {
+     "numerator": 12,
+     "denominator": 56
+    },
+    "method": "assignment_minimum",
+    "relationship_preserved": true
+   }
+  },
+  {
+   "name": "not_minimal",
+   "result": {
+    "groups": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20"
+    ],
+    "assignments": {
+     "1": [
+      "A",
+      "B",
+      "C",
+      "D"
+     ],
+     "2": [
+      "A",
+      "B",
+      "C"
+     ],
+     "3": [
+      "A",
+      "B"
+     ],
+     "4": [
+      "A",
+      "B",
+      "C"
+     ],
+     "5": [
+      "A",
+      "C"
+     ],
+     "6": [
+      "A",
+      "B",
+      "C"
+     ],
+     "7": [
+      "A",
+      "C"
+     ],
+     "8": [
+      "A",
+      "B",
+      "C",
+      "D"
+     ],
+     "9": [
+      "A",
+      "B",
+      "C"
+     ],
+     "10": [
+      "A",
+      "C"
+     ],
+     "11": [
+      "A",
+      "B",
+      "C"
+     ],
+     "12": [
+      "B",
+      "D"
+     ],
+     "13": [
+      "A",
+      "B",
+      "C"
+     ],
+     "14": [
+      "A",
+      "B",
+      "C",
+      "D"
+     ],
+     "15": [
+      "A",
+      "B",
+      "C",
+      "D"
+     ],
+     "16": [
+      "A",
+      "C"
+     ],
+     "17": [
+      "A",
+      "B",
+      "C",
+      "D"
+     ],
+     "18": [
+      "C"
+     ],
+     "19": [
+      "A",
+      "B",
+      "C",
+      "D"
+     ],
+     "20": [
+      "D"
+     ]
+    },
+    "letters": {
+     "1": "ABCD",
+     "2": "ABC",
+     "3": "AB",
+     "4": "ABC",
+     "5": "AC",
+     "6": "ABC",
+     "7": "AC",
+     "8": "ABCD",
+     "9": "ABC",
+     "10": "AC",
+     "11": "ABC",
+     "12": "BD",
+     "13": "ABC",
+     "14": "ABCD",
+     "15": "ABCD",
+     "16": "AC",
+     "17": "ABCD",
+     "18": "C",
+     "19": "ABCD",
+     "20": "D"
+    },
+    "stats": {
+     "assignments_before": 56,
+     "assignments_after": 56,
+     "num_letters_before": 4,
+     "num_letters_after": 4,
+     "num_groups": 20,
+     "num_edges": 172
+    },
+    "solver_status": "Optimal",
+    "objective": 56,
+    "reduction_pct": {
+     "numerator": 0,
+     "denominator": 56
+    },
+    "method": "assignment_minimum",
+    "relationship_preserved": true
+   }
+  }
+ ]
+}

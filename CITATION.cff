@@ -5,8 +5,8 @@ message: >-
   Ennis 2012). You may additionally reference the related talks listed under
   `references` (CSP 2019, Sensometrics 2026).
 title: "cld-reducer"
-version: 0.1.0
-date-released: 2026-05-09
+version: 0.2.0
+date-released: 2026-10-07
 authors:
   - family-names: Ennis
     given-names: John

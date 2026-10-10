@@ -1,0 +1,38 @@
+# Publish the JavaScript package to npm when a GitHub release is published.
+# npm trusted publishing: npm accepts this workflow in this repository, so no
+# token is stored here. It needs npm 11.5.1 or later. The first publish of a new
+# package is done by hand, because trusted publishing needs an existing package.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+name: publish-npm.yaml
+
+permissions: read-all
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      id-token: write
+    defaults:
+      run:
+        working-directory: js
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest
+      - name: Check that the release tag matches the package version
+        if: github.event_name == 'release'
+        run: test "v$(node -p "require('./package.json').version")" = "${{ github.event.release.tag_name }}"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+      - run: npm run test:conformance
+      - run: npm publish --access public

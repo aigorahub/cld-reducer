@@ -1,0 +1,4 @@
+{"schema_version":1,"name":"exhaustive-n2","source":"every labeled graph on 2 groups (edge subset number in the id)","graphs":[
+{"id":"n2-0000","n":2,"edges":[],"labels":null,"means":null,"route":"adjacency"},
+{"id":"n2-0001","n":2,"edges":[[0,1]],"labels":null,"means":null,"route":"adjacency"}
+]}

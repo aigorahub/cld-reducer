@@ -1,0 +1,10 @@
+{"schema_version":1,"name":"exhaustive-n3","source":"every labeled graph on 3 groups (edge subset number in the id)","graphs":[
+{"id":"n3-0000","n":3,"edges":[],"labels":null,"means":null,"route":"adjacency"},
+{"id":"n3-0001","n":3,"edges":[[0,1]],"labels":null,"means":null,"route":"adjacency"},
+{"id":"n3-0002","n":3,"edges":[[0,2]],"labels":null,"means":null,"route":"adjacency"},
+{"id":"n3-0003","n":3,"edges":[[0,1],[0,2]],"labels":null,"means":null,"route":"adjacency"},
+{"id":"n3-0004","n":3,"edges":[[1,2]],"labels":null,"means":null,"route":"adjacency"},
+{"id":"n3-0005","n":3,"edges":[[0,1],[1,2]],"labels":null,"means":null,"route":"adjacency"},
+{"id":"n3-0006","n":3,"edges":[[0,2],[1,2]],"labels":null,"means":null,"route":"adjacency"},
+{"id":"n3-0007","n":3,"edges":[[0,1],[0,2],[1,2]],"labels":null,"means":null,"route":"adjacency"}
+]}

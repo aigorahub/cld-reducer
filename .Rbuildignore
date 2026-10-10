@@ -1,0 +1,16 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^LICENSE\.md$
+^README\.md$
+^CITATION\.cff$
+^cran-comments\.md$
+^\.github$
+^python$
+^js$
+^conformance$
+^docs$
+^data-raw$
+^\.git$
+^\.gitignore$
+^\.elves$
+^\.elves-session\.json$

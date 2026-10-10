@@ -1,0 +1,57 @@
+{
+  "name": "cld-reducer",
+  "version": "0.2.0",
+  "description": "Reduce compact letter displays while preserving pairwise statistical relationships",
+  "keywords": [
+    "compact-letter-display",
+    "post-hoc",
+    "statistics",
+    "sensometrics",
+    "mixed-integer-programming"
+  ],
+  "license": "MIT",
+  "author": "John Ennis <john.m.ennis@aigora.com>",
+  "homepage": "https://github.com/aigorahub/cld-reducer/tree/main/js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aigorahub/cld-reducer.git",
+    "directory": "js"
+  },
+  "bugs": {
+    "url": "https://github.com/aigorahub/cld-reducer/issues"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:conformance": "node scripts/conformance.mjs",
+    "check:package": "node scripts/check-package.mjs"
+  },
+  "dependencies": {
+    "highs": ">=1.15.3 <1.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.11"
+  }
+}

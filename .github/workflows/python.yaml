@@ -1,0 +1,71 @@
+# Python package: lint, format, and tests (including the shared conformance suite) on three
+# platforms from the lock file, plus one job at the minimum supported versions and one that
+# builds the wheel and runs it from a clean environment.
+on:
+  push:
+  pull_request:
+
+name: python.yaml
+
+permissions: read-all
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }} (Python ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.10", "3.13"]
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uv sync --locked --extra dev --python ${{ matrix.python }}
+      - run: uv run --locked python -c "import highspy; print('HiGHS', highspy.Highs().version())"
+      - run: uv run --locked ruff check .
+      - run: uv run --locked ruff format --check .
+      - run: uv run --locked pytest -q
+      - run: uv run --locked python examples/simple_abc_to_ac.py
+      - run: uv run --locked python examples/piepho2004_wheat.py
+
+  minimum:
+    runs-on: ubuntu-latest
+    name: ubuntu-latest (minimum versions)
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uv venv --python 3.10
+      - run: uv pip install -e ".[dev]" "highspy==1.15.1" "numpy==1.24.*" "pandas==2.0.*"
+      - run: uv run --no-sync pytest -q
+
+  package:
+    runs-on: ubuntu-latest
+    name: build and install the wheel
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uv build
+      - run: |
+          uv venv /tmp/clean --python 3.12
+          uv pip install --python /tmp/clean dist/*.whl
+          /tmp/clean/bin/cld-reduce "$GITHUB_WORKSPACE/conformance/data/simple_abc_to_ac_pairs.csv" \
+            --means "$GITHUB_WORKSPACE/conformance/data/simple_abc_to_ac_means.csv" \
+            --out /tmp/reduced.csv
+          cd /tmp
+          /tmp/clean/bin/python -c "
+          import pandas as pd
+          import cld_reducer
+          frame = pd.read_csv('/tmp/reduced.csv', dtype=str)
+          letters = dict(zip(frame['group'], frame['letters']))
+          assert letters == {'1': 'A', '2': 'AB', '3': 'AC', '4': 'BC', '5': 'C'}, letters
+          print('clean install ok', cld_reducer.__version__)"
