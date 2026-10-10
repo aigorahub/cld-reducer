@@ -220,8 +220,9 @@ The spec is normative. Every implementation and the generator follow it. It must
 - **DESCRIPTION text:** Title in title case, no "R" or "package" in it. Description cites
   Ennis, Fayle, and Ennis (2012) <doi:10.1145/2133803.2275596> and Piepho (2004) with a DOI that
   B5 verifies by resolving it. Software names in single quotes ('HiGHS'). URL and BugReports.
-- **Authors@R:** John Ennis (aut, cre, email from H2), Carl Graham, Luciana Castro, Rachel
-  Lampert, Ryan Jordan, Vanessa Rios de Souza (aut), Aigora (cph, fnd). Mason confirms (H3).
+- **Authors@R:** Updated by the maintainer on 2026-10-09: John Ennis is the sole
+  package author (aut, cre, email from H2). Existing Aigora copyright and funder
+  roles remain. This direction supersedes the original author list.
 - **Tests:** testthat edition 3, using only what the installed package contains (its functions,
   its data sets, and literal expected values in the test files). No test reads `conformance/`,
   a CSV, or any path outside the package. Coverage: input checks and messages, clique order,
@@ -742,8 +743,8 @@ These need a person. The run does not do them.
 - **H2.** CRAN maintainer name and email for `cre` in DESCRIPTION (proposal: John Ennis,
   `john.m.ennis@aigora.com`, as in turfLP). The maintainer must answer the CRAN confirmation
   email.
-- **H3.** Confirm the author list and roles (six authors from `pyproject.toml` as `aut`,
-  Aigora as `cph` and `fnd`).
+- **H3.** Resolved by the maintainer on 2026-10-09: John Ennis is the sole package
+  author. Existing Aigora copyright and funder roles remain.
 - **H4.** Run win-builder (R-devel and R-release) before submission and add the results to
   `cran-comments.md`.
 - **H5.** Submit to CRAN through the web form after Mason approves, and answer reviewer mail.
