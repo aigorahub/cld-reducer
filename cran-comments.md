@@ -32,12 +32,11 @@ manual and HTML Tidy. The generated-file job checks help, namespace, and data.
 Record results from the final candidate commit before submission. Earlier PR
 results do not certify a later archive.
 
-Win-builder results for this archive are pending. Earlier uploads used an
-archive with the previous author list and do not certify this candidate. On
-2026-10-10 at 02:33 UTC, both FTP and the official web form denied a replacement
-upload to R-devel because the existing file was not writable. The web form said
-that the earlier upload may still await processing. Send the current archive to
-R-release and R-devel after the queues accept it, and record both result links.
+The R-release and R-devel win-builder queues accepted the archive with the
+SHA-256 above on 2026-10-10 at 12:40 UTC. Both FTP transfers returned 226.
+Results remain pending. These requests use the current sole-author archive;
+earlier requests do not certify this file. Record both result links before
+submission.
 
 ## Notes for the reviewer
 

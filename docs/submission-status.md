@@ -1,6 +1,6 @@
 # Submission status
 
-Status on 2026-10-09 in America/New_York (2026-10-10 UTC).
+Status on 2026-10-10.
 
 PR [#4](https://github.com/aigorahub/cld-reducer/pull/4) contains the preparation
 work and follows PR [#3](https://github.com/aigorahub/cld-reducer/pull/3).
@@ -8,16 +8,17 @@ Neither PR has been merged. No version tag or registry upload has been made.
 
 ## Checked candidate
 
-These files were built from `eaee0e55243577ed3f36cb5c55f3e5ebcb5d22c5`.
-Later changes to this record and `cran-comments.md` do not change the package
-contents. These are review candidates. Final publication workflows must build
+The R and npm files were built from `eaee0e55243577ed3f36cb5c55f3e5ebcb5d22c5`.
+The Python files were built from `deb5db2604f85842af7385a9dca82cdca49c77f5` after
+the README quickstart was made self-contained. Later changes to this record
+and `cran-comments.md` do not change package contents. These are review candidates. Final publication workflows must build
 and check the authorized tag on `main`.
 
 | File | SHA-256 |
 |---|---|
 | `cldreducer_0.2.0.tar.gz` | `3f50237fc8400cd1504590e93d4082b738cbbedb8a5a51d1663b4bcc330a4c73` |
-| `cld_reducer-0.2.0.tar.gz` | `fedae49d8b3a027c760508b485bd55049fcb76e8424a03149374c99836d93a6c` |
-| `cld_reducer-0.2.0-py3-none-any.whl` | `8020dd6729e2d9e4ac6ae61849303823623572251eb368a84e8fbc8873d3503a` |
+| `cld_reducer-0.2.0.tar.gz` | `94a185b9102c49ca12a080305bf39b760e4c02ffcb4214d37b52e9938a30fc6f` |
+| `cld_reducer-0.2.0-py3-none-any.whl` | `d4abadfd3f81c62b2e7cda41c9bceca7167a49916a805dbe3d8d76c83f6ac36e` |
 | `cld-reducer-0.2.0.tgz` | `d61759316082ebebdc696f61fdc85dacf51d9809aea3989b877e07f67b5ccabc` |
 
 The R archive passes `R CMD check --as-cran --timings` with its PDF manual and
@@ -29,11 +30,10 @@ archive pass API, CLI, label, and example checks in separate clean environments
 outside the checkout. The retained npm archive passes clean installation,
 WASM execution, and TypeScript consumer checks.
 
-The archive above contains the sole-author metadata change. It replaces the
-previous candidates. Earlier win-builder uploads do not certify this file.
-R-devel denied the replacement attempt through both FTP and the official web
-form on 2026-10-10 at 02:33 UTC. The server still had the earlier file. Both
-Windows results for the new archive remain pending.
+The archive above contains the sole-author metadata change. Both win-builder
+queues accepted this exact file on 2026-10-10 at 12:40 UTC. Both FTP transfers
+returned 226. Results remain pending. These requests replace the earlier
+attempts whose files were blocked in the queues.
 
 ## Repository and registry setup
 
