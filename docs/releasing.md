@@ -180,6 +180,9 @@ commit, URLs, and any pending CRAN result. A GitHub release does not trigger
 uploads. A partial release stays partial until each registry is verified. Retry
 only the failed registry. Update public install claims after each registry works.
 
+See [submission status](submission-status.md) for the checked files, hashes,
+Windows check requests, and remaining account work.
+
 ## External setup record
 
 The table distinguishes completed repository setup from open release conditions.
@@ -194,7 +197,7 @@ Registry account access has not been configured by this work.
 | Registry trusted publishers | Registry maintainer | Exact repository, workflow, environment; successful authorized upload |
 | Repository description | Updated 2026-10-09 | Describes R, Python, and JavaScript packages |
 | Tag and release | Repository maintainer | Separate authorization, checked commit, hashes |
-| win-builder | CRAN maintainer | R-release and R-devel results for the frozen file |
+| win-builder | Sent 2026-10-10 UTC; results pending | Same frozen file sent to R-release and R-devel |
 | CRAN submission | CRAN maintainer | Submission receipt, then separate acceptance |
 
 References: [npm trusted publishers](https://docs.npmjs.com/trusted-publishers/),

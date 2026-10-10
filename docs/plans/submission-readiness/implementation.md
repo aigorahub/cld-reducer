@@ -46,11 +46,11 @@ controls, package checks, or release instructions.
 
 ## Release conditions
 
-This PR does not merge, tag, publish, submit, or change account configuration.
-The remaining conditions are in `docs/releasing.md`: Python project history,
-data reuse rights, author and maintainer approval, external environments and
-publishers, authorized win-builder checks, and separate release authorization.
-The code checks do not resolve those conditions.
+This PR does not merge, tag, publish, or submit to CRAN. The follow-up preparation
+created the GitHub `npm` and `pypi` environments, limited each to `main`, and sent
+the checked R archive to both win-builder queues. Registry publishers remain
+unconfigured. The remaining conditions are in `docs/submission-status.md`.
+The code checks do not resolve data reuse rights or Python project history.
 
 Live workflow dry runs require the reviewed code on main and an authorized
 version tag. Unit tests validate the local control paths without upload access.

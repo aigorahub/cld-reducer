@@ -7,11 +7,10 @@ conditions. See `docs/releasing.md` and the installed `COPYRIGHTS` notice.
 ## Candidate checked locally
 
 - Date: 2026-10-09 in America/New_York (2026-10-10 UTC).
-- Source: `b54fb49b2dbd0738f4c3fea78707d966d62e00f1`. The archive was built from
-  the same packaged files before this commit. Later changes to this file and
-  `docs/` do not enter the R archive.
+- Source: `df5fa97bb78a5834eea66df6ce9bbab5f71dca1b`. Later changes to this file
+  and `docs/` do not enter the R archive.
 - File: `cldreducer_0.2.0.tar.gz`.
-- SHA-256: `7e053dcd8007ed70bf3b647fc259cd24fae7fae9277b4321566ea1220174daac`.
+- SHA-256: `31c79adf99a063320dc9343bfd481ae8d3a380d34fa3549694573efc981acb00`.
 - System: macOS Tahoe 26.6.2, aarch64-apple-darwin23, R 4.6.1 (2026-06-24).
 - Command: `R CMD check --as-cran --timings`, through `rcmdcheck`, on the built
   archive outside the checkout. PDF manual enabled. Pandoc, TinyTeX, and HTML
@@ -21,14 +20,9 @@ Result: **0 errors, 0 warnings, 1 NOTE**.
 
 The NOTE is from CRAN incoming feasibility: `New submission`. This is expected
 for a new package. The PDF manual and HTML manual checks pass. The longest
-example, `reduce_letters`, took 0.336 seconds elapsed. All 310 local testthat
+example, `reduce_letters`, took 0.339 seconds elapsed. All 310 local testthat
 checks pass without warnings or skips. All 1,505 shared conformance cases and
 the three data comparisons also pass from the repository.
-
-An earlier check of the same archive used the old macOS system `tidy`. It had
-one additional NOTE because that validator was too old. The repeat with Tidy
-5.8.0 removed that NOTE. Do not treat the old validator NOTE as an outstanding
-package defect.
 
 ## CI and external checks
 
@@ -38,10 +32,11 @@ manual and HTML Tidy. The generated-file job checks help, namespace, and data.
 Record results from the final candidate commit before submission. Earlier PR
 results do not certify a later archive.
 
-Win-builder R-devel and R-release: pending. No archive has been sent. With
-separate authorization, send the frozen archive and record its result links and
-hash here. The proposed maintainer receives the result emails. If packaged bytes
-change, rebuild and repeat the checks before submission.
+Win-builder R-devel and R-release: the archive with the SHA-256 above was
+uploaded to both queues on 2026-10-10 at 02:25 UTC. Both FTP transfers returned
+226 (transfer complete). Results are pending. The proposed maintainer receives
+the result emails. Add both result links before submission. If packaged bytes
+change, rebuild and repeat the checks.
 
 ## Notes for the reviewer
 
@@ -54,6 +49,6 @@ for compact letter displays.
 The wheat example contains the significance decisions for 190 pairwise
 comparisons of 20 treatments. It comes from Piepho (2004), as reproduced in
 Table 7 of Ennis, Fayle, and Ennis (2012). The simple example contains ten pair
-comparisons and five means. `COPYRIGHTS` records sources, CSV-to-R transformations,
+comparisons and five means from Ennis, Fayle, and Ennis (2012). `COPYRIGHTS` records sources, CSV-to-R transformations,
 and the reuse confirmation that is still required. Citations do not establish
 data redistribution rights. Resolve this condition before any submission.
