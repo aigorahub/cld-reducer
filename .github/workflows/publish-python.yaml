@@ -59,7 +59,7 @@ jobs:
         working-directory: python
       - run: uv run --locked python ../scripts/test_release.py
         working-directory: python
-      - run: uv build --out-dir ../bundle/packages
+      - run: uv build --no-create-gitignore --out-dir ../bundle/packages
         working-directory: python
       - run: uv run --locked twine check ../bundle/packages/*
         working-directory: python
