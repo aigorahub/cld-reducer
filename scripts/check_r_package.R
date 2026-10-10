@@ -3,7 +3,9 @@ check_r_package <- function(tarball) {
   files <- utils::untar(tarball, list = TRUE)
   relative <- sub("^[^/]+/", "", files)
   forbidden <- c("python", "js", "conformance", "docs", "scripts", "data-raw",
-                 ".git", ".github", ".elves", ".Rproj.user")
+                 ".git", ".github", ".elves", ".Rproj.user",
+                 ".ruff_cache", ".pytest_cache", ".mypy_cache", "__pycache__",
+                 ".venv")
   stopifnot(!any(sub("/.*", "", relative) %in% forbidden))
   stopifnot(all(c("DESCRIPTION", "NAMESPACE", "LICENSE", "inst/COPYRIGHTS") %in% relative))
   stopifnot(all(paste0("data/", c("piepho2004_wheat", "simple_abc_pairs",
