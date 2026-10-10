@@ -83,15 +83,26 @@ import pandas as pd
 
 from cld_reducer import reduce_letters
 
-pairs = pd.read_csv("examples/simple_abc_to_ac_pairs.csv")
-means = pd.read_csv("examples/simple_abc_to_ac_means.csv")
+# One row for each pair. True means the groups differ significantly.
+pairs = pd.DataFrame(
+    [
+        ("1", "2", False), ("1", "3", False), ("1", "4", True),
+        ("1", "5", True), ("2", "3", False), ("2", "4", False),
+        ("2", "5", True), ("3", "4", False), ("3", "5", False),
+        ("4", "5", False),
+    ],
+    columns=["group1", "group2", "significant"],
+)
+means = pd.DataFrame(
+    {"group": ["1", "2", "3", "4", "5"], "mean": [3.73, 3.57, 3.46, 3.33, 3.30]}
+)
 
 result = reduce_letters(pairs, means)
 print(result.letters)
 # {'1': 'A', '2': 'AB', '3': 'AC', '4': 'BC', '5': 'C'}
 ```
 
-Run it from `python/`. The package also has a command line tool, `cld-reduce`. See [python/README.md](python/README.md).
+This example works after package installation and needs no external files. The package also has a command line tool, `cld-reduce`. See [python/README.md](python/README.md).
 
 ## Usage in JavaScript
 

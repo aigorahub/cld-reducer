@@ -31,8 +31,19 @@ import pandas as pd
 
 from cld_reducer import reduce_letters
 
-pairs = pd.read_csv("examples/simple_abc_to_ac_pairs.csv")
-means = pd.read_csv("examples/simple_abc_to_ac_means.csv")
+# One row for each pair. True means the groups differ significantly.
+pairs = pd.DataFrame(
+    [
+        ("1", "2", False), ("1", "3", False), ("1", "4", True),
+        ("1", "5", True), ("2", "3", False), ("2", "4", False),
+        ("2", "5", True), ("3", "4", False), ("3", "5", False),
+        ("4", "5", False),
+    ],
+    columns=["group1", "group2", "significant"],
+)
+means = pd.DataFrame(
+    {"group": ["1", "2", "3", "4", "5"], "mean": [3.73, 3.57, 3.46, 3.33, 3.30]}
+)
 
 result = reduce_letters(pairs, means)
 print(result.letters)
@@ -48,7 +59,7 @@ print(result.stats)
 # {'assignments_before': 9, 'assignments_after': 8, 'reduction_pct': 11.11111111111111, 'num_letters_before': 3, 'num_letters_after': 3, 'num_groups': 5, 'num_edges': 7, 'solver_status': 'Optimal', 'objective': 8}
 ```
 
-Run it from this folder. `reduce_letters` takes complete pairwise results: one row for each pair of groups, with a boolean column that tells whether the pair differs significantly. Missing pairs are rejected. `means` is optional and orders the groups and the letters. If you already have the non-significance matrix, use `reduce_from_adjacency`; there, `True` means two groups are not significantly different and must share a letter.
+This example works after package installation and needs no external files. `reduce_letters` takes complete pairwise results: one row for each pair of groups, with a boolean column that tells whether the pair differs significantly. Missing pairs are rejected. `means` is optional and orders the groups and the letters. If you already have the non-significance matrix, use `reduce_from_adjacency`; there, `True` means two groups are not significantly different and must share a letter.
 
 The result, a `CLDReductionResult`, has:
 
@@ -71,11 +82,11 @@ cld-reduce examples/simple_abc_to_ac_pairs.csv \
   --out reduced.csv
 ```
 
-The pairs file has the columns `group1`, `group2`, and `significant`; the optional means file has `group` and `mean`. The output CSV has the reduced letters and the summary statistics. Other flags: `--group1`, `--group2`, `--significant`, `--max-cliques`, `--no-max-cliques`, and `--method`.
+The paths above refer to files in a checkout or an extracted source archive. For your own data, pass your CSV paths. The pairs file has the columns `group1`, `group2`, and `significant`; the optional means file has `group` and `mean`. The output CSV has the reduced letters and the summary statistics. Other flags: `--group1`, `--group2`, `--significant`, `--max-cliques`, `--no-max-cliques`, and `--method`.
 
 ## Examples
 
-Run these from this folder:
+The following scripts and CSV files are included in a repository checkout or the source archive, but not in the installed wheel. Run them from `python/` in a checkout, or from the root of an extracted source archive:
 
 ```sh
 python examples/simple_abc_to_ac.py
