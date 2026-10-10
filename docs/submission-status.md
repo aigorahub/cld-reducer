@@ -8,35 +8,32 @@ Neither PR has been merged. No version tag or registry upload has been made.
 
 ## Checked candidate
 
-These archives precede the sole-author metadata change and are superseded.
-Do not publish them. Fresh archives must pass the checks below.
-
-These files were built from `ad2c03f65541c9f0b10af21efcd0048c95fc9dc0`.
+These files were built from `eaee0e55243577ed3f36cb5c55f3e5ebcb5d22c5`.
 Later changes to this record and `cran-comments.md` do not change the package
 contents. These are review candidates. Final publication workflows must build
 and check the authorized tag on `main`.
 
 | File | SHA-256 |
 |---|---|
-| `cldreducer_0.2.0.tar.gz` | `6a6fa55164199b90de39272935c23f2de1cb0028480cbbc6f96e2bc8d19332ff` |
-| `cld_reducer-0.2.0.tar.gz` | `d5bbe0569cf6811a918098abbef53dfbe388237f52a91eac11ce2b4b98d1c4e2` |
-| `cld_reducer-0.2.0-py3-none-any.whl` | `78371df5daaba7807df602305bade78a833b26f80ceda0ea31e0e4d83bea2a60` |
+| `cldreducer_0.2.0.tar.gz` | `3f50237fc8400cd1504590e93d4082b738cbbedb8a5a51d1663b4bcc330a4c73` |
+| `cld_reducer-0.2.0.tar.gz` | `fedae49d8b3a027c760508b485bd55049fcb76e8424a03149374c99836d93a6c` |
+| `cld_reducer-0.2.0-py3-none-any.whl` | `8020dd6729e2d9e4ac6ae61849303823623572251eb368a84e8fbc8873d3503a` |
 | `cld-reducer-0.2.0.tgz` | `d61759316082ebebdc696f61fdc85dacf51d9809aea3989b877e07f67b5ccabc` |
 
 The R archive passes `R CMD check --as-cran --timings` with its PDF manual and
 HTML validation. Result: zero errors, zero warnings, one new-submission NOTE.
-The longest example takes 0.350 seconds. See `cran-comments.md`.
+The longest example takes 0.357 seconds. See `cran-comments.md`.
 
 Both Python files pass Twine. The wheel and a wheel rebuilt from the source
 archive pass API, CLI, label, and example checks in separate clean environments
 outside the checkout. The retained npm archive passes clean installation,
 WASM execution, and TypeScript consumer checks.
 
-The R archive above was sent to win-builder's `R-release` queue on 2026-10-10
-at 02:27 UTC. The FTP transfer returned 226. The `R-devel` transfer returned
-550 and must be retried. Results are pending. An earlier archive was sent to
-both queues at 02:25 UTC; those requests do not certify this candidate.
-This is a test request. It is not a CRAN submission.
+The archive above contains the sole-author metadata change. It replaces the
+previous candidates. Earlier win-builder uploads do not certify this file.
+R-devel denied the replacement attempt through both FTP and the official web
+form on 2026-10-10 at 02:33 UTC. The server still had the earlier file. Both
+Windows results for the new archive remain pending.
 
 ## Repository and registry setup
 
