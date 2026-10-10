@@ -11,7 +11,7 @@ cld-reducer reduces compact letter displays (CLDs) while preserving the pairwise
 
 It implements the **assignment-minimum clique covering** problem introduced by Ennis, Fayle, and Ennis (2012): finding a CLD that uses the fewest possible individual letter-to-group assignments. The 2012 paper solves this problem with a backtracking algorithm (FIND-AM); this repository solves the same problem as a binary mixed-integer program with HiGHS. It is the implementation behind the CLD letter-reduction work presented at Sensometrics 2026.
 
-Status: version 0.2.0 is a release candidate. Public registry checks on 2026-10-09 found no current package under these names. An earlier Python submission remains unconfirmed. The installation commands below use the repository. See [release instructions and open conditions](docs/releasing.md).
+See [submission status](docs/submission-status.md) for registry availability and [release instructions](docs/releasing.md) for the release process. The commands below install from the repository.
 
 ## Why reduce CLDs?
 
@@ -32,7 +32,7 @@ remotes::install_github("aigorahub/cld-reducer")   # R
 pip install "git+https://github.com/aigorahub/cld-reducer.git#subdirectory=python"   # Python 3.10 or later
 ```
 
-The `#subdirectory=python` part is needed because the Python package lives in `python/`. The JavaScript package is built from `js/`; see [js/README.md](js/README.md). Once released, the commands will be `install.packages("cldreducer")`, `pip install cld-reducer`, and `npm install cld-reducer`.
+The `#subdirectory=python` part is needed because the Python package lives in `python/`. The JavaScript package is built from `js/`; see [js/README.md](js/README.md). For registry releases, the commands are `install.packages("cldreducer")`, `pip install cld-reducer`, and `npm install cld-reducer`.
 
 ## Usage in R
 

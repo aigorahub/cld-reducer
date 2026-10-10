@@ -6,7 +6,13 @@ The solver is HiGHS through `highspy`. The dependencies are `highspy`, NumPy, an
 
 ## Installation
 
-The current PyPI project lookup returned 404 on 2026-10-09. An earlier Python submission remains unconfirmed. Install this candidate from the repository:
+Install from PyPI:
+
+```sh
+pip install cld-reducer
+```
+
+To install the development version from the repository:
 
 ```sh
 pip install "git+https://github.com/aigorahub/cld-reducer.git#subdirectory=python"

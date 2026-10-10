@@ -6,13 +6,13 @@ The solver is HiGHS compiled to WebAssembly (the npm package [`highs`](https://w
 
 ## Installation
 
-The npm project lookup returned 404 on 2026-10-09. After publication:
+Install from npm:
 
 ```sh
 npm install cld-reducer
 ```
 
-Until then, build it from a clone of the repository and install the tarball:
+To build the development version from a clone of the repository:
 
 ```sh
 cd js
