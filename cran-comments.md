@@ -1,32 +1,59 @@
-## Submission
+## Submission status
 
-This is a new package, not yet on CRAN.
+Version 0.2.0 is a candidate for a new CRAN package. It has not been submitted.
+Data reuse confirmation and maintainer/author confirmation remain release
+conditions. See `docs/releasing.md` and the installed `COPYRIGHTS` notice.
 
-## Test environments
+## Candidate checked locally
 
-- Local: Ubuntu 26.04 (WSL), R 4.6.1, `R CMD check --as-cran --no-manual` on the built tarball in a folder outside the source tree
-- GitHub Actions: macOS (release), Windows (release), Ubuntu (devel, release, oldrel-1)
-- GitHub Actions: Ubuntu (release), `R CMD check --as-cran` with the PDF manual, on the built tarball in a folder outside the checkout
-- win-builder (R-devel and R-release): to be run by the maintainer before submission
+- Date: 2026-10-09 in America/New_York (2026-10-10 UTC).
+- Source: `b54fb49b2dbd0738f4c3fea78707d966d62e00f1`. The archive was built from
+  the same packaged files before this commit. Later changes to this file and
+  `docs/` do not enter the R archive.
+- File: `cldreducer_0.2.0.tar.gz`.
+- SHA-256: `7e053dcd8007ed70bf3b647fc259cd24fae7fae9277b4321566ea1220174daac`.
+- System: macOS Tahoe 26.6.2, aarch64-apple-darwin23, R 4.6.1 (2026-06-24).
+- Command: `R CMD check --as-cran --timings`, through `rcmdcheck`, on the built
+  archive outside the checkout. PDF manual enabled. Pandoc, TinyTeX, and HTML
+  Tidy 5.8.0 available.
 
-## R CMD check results
+Result: **0 errors, 0 warnings, 1 NOTE**.
 
-- Local (Ubuntu 26.04 on WSL, R 4.6.1), `--as-cran --no-manual --timings` on the built tarball: 0 errors | 0 warnings | 2 notes.
-  - CRAN incoming feasibility: "New submission". This is expected for a new package.
-  - "Files 'README.md' or 'NEWS.md' cannot be checked without 'pandoc' being installed". This machine has no pandoc; the GitHub Actions jobs install it, so the note does not appear there.
-  - Every example runs in under 2 s (the slowest, `reduce_letters`, takes about 1.5 s, most of it loading the Matrix package). The tests take about 6 s.
-- GitHub Actions, macOS (release), Windows (release), and Ubuntu (devel, release, oldrel-1): 0 errors | 0 warnings | 0 notes.
-- GitHub Actions, Ubuntu 24.04 (release), `R CMD check --as-cran` with the PDF manual, on the built tarball in a folder under `RUNNER_TEMP`, outside the checkout: 0 errors | 0 warnings | 1 note.
-  - "checking HTML version of manual ... NOTE: Skipping checking HTML validation: no command 'tidy' found." The runner has no HTML Tidy, so R skips the HTML validation. The PDF manual builds without problems.
-  - The tests take about 3 s and the slowest example, `reduce_letters`, about 0.8 s.
-- All GitHub Actions jobs fail on a warning.
-- win-builder (R-devel and R-release): to be run by the maintainer before submission; the results go here.
+The NOTE is from CRAN incoming feasibility: `New submission`. This is expected
+for a new package. The PDF manual and HTML manual checks pass. The longest
+example, `reduce_letters`, took 0.336 seconds elapsed. All 310 local testthat
+checks pass without warnings or skips. All 1,505 shared conformance cases and
+the three data comparisons also pass from the repository.
+
+An earlier check of the same archive used the old macOS system `tidy`. It had
+one additional NOTE because that validator was too old. The repeat with Tidy
+5.8.0 removed that NOTE. Do not treat the old validator NOTE as an outstanding
+package defect.
+
+## CI and external checks
+
+CI retains macOS release, Windows release, and Ubuntu devel, release, and
+oldrel-1 checks. A separate Ubuntu job checks the built archive with the PDF
+manual and HTML Tidy. The generated-file job checks help, namespace, and data.
+Record results from the final candidate commit before submission. Earlier PR
+results do not certify a later archive.
+
+Win-builder R-devel and R-release: pending. No archive has been sent. With
+separate authorization, send the frozen archive and record its result links and
+hash here. The proposed maintainer receives the result emails. If packaged bytes
+change, rebuild and repeat the checks before submission.
 
 ## Notes for the reviewer
 
-- The package imports `highs` (GPL >= 2) and `Matrix`, as the sibling package turfLP does. The package itself is MIT licensed.
-- Possibly misspelled words in DESCRIPTION: Ennis, Fayle, and Piepho are author names in the references, and "CLDs" is the common abbreviation for compact letter displays.
+The package imports `highs` and `Matrix`. The package code is MIT licensed.
+Ennis, Fayle, and Piepho in DESCRIPTION are author names. CLDs is the abbreviation
+for compact letter displays.
 
 ## Data
 
-The package includes the data of the wheat yield example (Piepho 2004, as tabulated in Table 7 of Ennis, Fayle, and Ennis 2012): the significance of all 190 pairwise comparisons of 20 treatments. The help page cites the sources.
+The wheat example contains the significance decisions for 190 pairwise
+comparisons of 20 treatments. It comes from Piepho (2004), as reproduced in
+Table 7 of Ennis, Fayle, and Ennis (2012). The simple example contains ten pair
+comparisons and five means. `COPYRIGHTS` records sources, CSV-to-R transformations,
+and the reuse confirmation that is still required. Citations do not establish
+data redistribution rights. Resolve this condition before any submission.

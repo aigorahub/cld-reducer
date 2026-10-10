@@ -36,6 +36,13 @@ John Ennis owns the following release decisions:
 - Confirm the six authors, Aigora's roles, and the proposed CRAN maintainer,
   John Ennis, `john.m.ennis@aigora.com`. They are unchanged from PR #3.
 
+## Python compatibility
+
+Version 0.2.0 moves Python into `python/`. Git installation needs the
+`#subdirectory=python` fragment. It also fixes canonical tie handling, which can
+change letter displays from 0.1.0 when multiple minimum displays exist.
+See the Python section of `NEWS.md` for all API and input changes.
+
 ## Validate the candidate
 
 Keep one unused version in `DESCRIPTION`, `CITATION.cff`, `NEWS.md`, both package
@@ -148,7 +155,7 @@ in an empty project.
 
 For later npm releases, configure trusted publishing for `aigorahub/cld-reducer`,
 workflow `publish-npm.yaml`, environment `npm`, with direct publish permission.
-Configure it near the next authorized upload. Current npm guidance requires a
+Configure it near the next authorized upload. Current [npm guidance](https://docs.npmjs.com/trusted-publishers/) requires a
 new trusted publisher configuration to complete its first successful publication
 within two days. Recheck that guidance at release time. Saving a configuration
 or running `npm whoami` does not test OIDC. Then dispatch only the npm workflow

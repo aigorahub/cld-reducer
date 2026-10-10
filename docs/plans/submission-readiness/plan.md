@@ -6,7 +6,9 @@ Test the built packages and define a release process that works for both a first
 publication and an update.
 
 This PR starts with the plan and its independent review. Implementation follows
-in the same PR after plan approval. Publication is a separate action.
+in the same PR after plan approval. The implementation is now present in
+`b54fb49`; validation and remaining release conditions are recorded in
+[implementation results](implementation.md). Publication is a separate action.
 
 ## Branch and scope
 
@@ -362,7 +364,7 @@ corrections: the unavailable historical PyPI project case, separate wheel and
 source-distribution content checks, and a hash check for the first manual npm
 upload. All three corrections are included above. The host also made the
 workflow dispatch ref check explicit. Fugu rechecked the corrections at
-`78f16ef` and reported no actionable findings. Implementation and its validation
-remain future work in this PR.
+`78f16ef` and reported no actionable findings. Implementation is present in this PR. See
+[implementation results](implementation.md) for validation and remaining conditions.
 
 See [review notes](review.md) for the findings and resolution record.
