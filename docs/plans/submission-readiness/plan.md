@@ -361,6 +361,8 @@ Fugu reviewed plan commit `dfae58d` on 2026-10-09. It found three required
 corrections: the unavailable historical PyPI project case, separate wheel and
 source-distribution content checks, and a hash check for the first manual npm
 upload. All three corrections are included above. The host also made the
-workflow dispatch ref check explicit. A focused recheck is pending.
+workflow dispatch ref check explicit. Fugu rechecked the corrections at
+`78f16ef` and reported no actionable findings. Implementation and its validation
+remain future work in this PR.
 
 See [review notes](review.md) for the findings and resolution record.

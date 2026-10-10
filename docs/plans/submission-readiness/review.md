@@ -21,4 +21,11 @@ The host also required the dispatch workflow and publish environment to use
 
 ## Recheck
 
-Pending a focused review of the corrections. The implementation has not started.
+Fugu rechecked the corrections at commit `78f16ef` on 2026-10-09. The route was
+`fugu/high`, with a 600 second limit. The run completed successfully and returned:
+
+> No actionable findings
+
+It noted that the publication controls and artifact checks still need to be
+implemented and verified. This was a focused plan review. The implementation
+has not started.
