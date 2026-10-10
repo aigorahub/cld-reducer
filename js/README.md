@@ -143,4 +143,4 @@ MIT. See `LICENSE`.
 an empty project, runs the WASM solver, and compiles a TypeScript consumer against
 its installed declarations. The release workflow retains that exact tarball.
 See `docs/releasing.md` in the repository for release steps. `NOTICE` records the
-example data sources and unresolved reuse conditions.
+example data sources and the maintainer approval recorded on 2026-10-10.

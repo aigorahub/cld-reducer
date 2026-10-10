@@ -4,7 +4,8 @@ Status on 2026-10-10.
 
 PR [#4](https://github.com/aigorahub/cld-reducer/pull/4) contains the preparation
 work and follows PR [#3](https://github.com/aigorahub/cld-reducer/pull/3).
-Neither PR has been merged. No version tag or registry upload has been made.
+PR #3 was merged on 2026-10-10 as `9dc3f6a47c4fa8390170ad70cebb8e38eedc16d6`.
+PR #4 now targets `main`. No version tag or registry upload has been made.
 
 ## Checked candidate
 
