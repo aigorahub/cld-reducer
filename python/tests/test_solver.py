@@ -70,12 +70,19 @@ def test_highs_version_is_reported() -> None:
     assert tuple(int(part) for part in version.split(".")[:2]) >= (1, 15)
 
 
-def test_time_limit_is_passed_to_highs(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("method", ["assignment_minimum", "letter_minimum"])
+@pytest.mark.parametrize("clock_value", [None, 500.2], ids=["real", "rounding"])
+def test_time_limit_is_passed_to_highs(
+    monkeypatch: pytest.MonkeyPatch, method: str, clock_value: float | None
+) -> None:
+    if clock_value is not None:
+        monkeypatch.setattr(canonical, "_now", lambda: clock_value)
     seen = record_runs(monkeypatch)
 
-    reduce_from_adjacency(SIMPLE, time_limit=30)
+    reduce_from_adjacency(SIMPLE, method=method, time_limit=30)
 
-    assert 0 < seen[0]["time_limit"] <= 30
+    # Deadline subtraction can round a few ULPs above the input budget.
+    assert 0 < seen[0]["time_limit"] <= 30 + 1e-9
 
 
 def test_time_budget_is_shared_across_solves(monkeypatch: pytest.MonkeyPatch) -> None:
