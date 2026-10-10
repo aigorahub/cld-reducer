@@ -58,7 +58,7 @@ jobs:
       - run: python scripts/release.py version --tag "$RELEASE_TAG"
       - run: npm ci
         working-directory: js
-      - run: npm run typecheck && npm test && npm run test:conformance
+      - run: npm run typecheck && npm run build && npm test && npm run test:conformance
         working-directory: js
       - run: node scripts/check-package.mjs ../bundle/packages
         working-directory: js
