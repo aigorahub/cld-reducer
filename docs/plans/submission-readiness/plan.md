@@ -82,6 +82,11 @@ identity, version, and upload date. Do not search unrelated private records.
 
 - If an existing project with these names is confirmed, retain its identity and
   configure an existing-project trusted publisher.
+- If a receipt confirms a historical upload but the project is now unavailable,
+  record its identity and uploaded versions. Keep code work moving. Block
+  publication until the maintainer establishes whether the same project can be
+  used or restored, or approves a new-project route. A 404 does not authorize
+  recreation, reuse of an uploaded version, or a change of package name.
 - If another name is confirmed, stop the name-dependent release steps for a
   maintainer decision. Do not silently rename the distribution or create a second
   project. The code and test work can proceed.
@@ -131,12 +136,19 @@ Python:
 - Build both wheel and source distribution with `uv build`.
 - Run `twine check` on both. Add Twine to development tooling and refresh the
   existing lock file if required.
-- Inspect archive contents and metadata. Require package modules, license, and
-  expected examples. Reject repository run notes, secrets, and build debris.
+- Inspect archive contents and metadata separately. Require package modules and
+  the license in both archives. Require the expected example scripts and CSVs
+  in the source distribution. The wheel contains the importable package and its
+  metadata; it does not need to contain the example scripts. Reject repository
+  run notes, secrets, and build debris.
 - Install the wheel into a fresh environment outside the checkout. Exercise the
-  API and CLI, including exact CSV labels and the simple and wheat examples.
+  API and CLI, including exact CSV labels and the simple and wheat cases. Use
+  small test inputs created in the temporary folder and data copied there by the
+  test harness. Do not load scripts or data through checkout-relative paths.
 - Unpack the source distribution outside the checkout, build a wheel from it,
   install that wheel into another clean environment, and repeat the smoke tests.
+  Run the included example scripts with the included CSVs from the unpacked
+  source distribution. Keep the working directory outside the checkout.
 - Assert the imported module path belongs to the clean environment. Do not allow
   an editable install or `PYTHONPATH` to hide missing files.
 - Shared conformance remains a repository test. The source distribution currently
@@ -189,6 +201,10 @@ Requirements:
 - Require the commit to be reachable from `origin/main`. Check out that exact
   commit, not the workflow dispatch branch. Compare its R, Python, JS, and Python
   runtime versions with the tag.
+- Run the dispatch workflow itself from `main`. Check the dispatch ref before
+  the build. Configure the external publish environment to accept this workflow
+  from `main` only. Checking the package tag alone does not constrain the workflow
+  code that receives publication authority.
 - Run the relevant tests and artifact checks before upload. Python publication
   currently builds without running tests; repair that gap.
 - Upload only the artifact built and verified in that run. Give build/test jobs
@@ -266,16 +282,22 @@ The instructions must give this order:
 4. With authorization to send the package, run win-builder checks and record
    results for the exact R tarball. The maintainer must receive the result emails.
 5. For npm's first release, publish the verified tarball through an authorized
-   maintainer account with the required second factor. Do not dispatch the npm
-   publishing workflow for that same version afterward. Verify an installation
-   from the public registry in an empty project.
+   maintainer account with the required second factor. Download the tarball from
+   the successful dry run. Compare its SHA-256 hash with that run's saved hash,
+   and stop on any mismatch. Run `npm publish` on that exact tarball path. Do not
+   repack the source or publish from a package directory. Do not dispatch the
+   npm publishing workflow for that same version afterward. Verify an
+   installation from the public registry in an empty project.
 6. For later npm versions, configure the trusted publisher with repository
    `aigorahub/cld-reducer`, file `publish-npm.yaml`, environment `npm`, and direct
    publish permission. Configure it near the next authorized upload: current npm
    guidance gives a new configuration two days to complete its first successful
    publication. A saved configuration or `npm whoami` is not an OIDC test.
 7. For Python, use the confirmed existing project or an explicitly confirmed new
-   project. Configure `publish-python.yaml`, environment `pypi`, and repository
+   project. If only a historical upload is confirmed and the project is now
+   unavailable, stop publication until project access or restoration is resolved,
+   or the maintainer approves a new-project route. Configure
+   `publish-python.yaml`, environment `pypi`, and repository
    `aigorahub/cld-reducer` as the trusted publisher. Dispatch only the Python
    workflow for the tag. Verify metadata and a clean public wheel installation.
    TestPyPI is optional and has separate publisher settings.
@@ -335,4 +357,10 @@ authority.
 
 ## Plan review
 
-Pending Fugu review of this plan. Record the review result and any revisions here.
+Fugu reviewed plan commit `dfae58d` on 2026-10-09. It found three required
+corrections: the unavailable historical PyPI project case, separate wheel and
+source-distribution content checks, and a hash check for the first manual npm
+upload. All three corrections are included above. The host also made the
+workflow dispatch ref check explicit. A focused recheck is pending.
+
+See [review notes](review.md) for the findings and resolution record.
