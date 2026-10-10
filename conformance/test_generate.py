@@ -345,7 +345,7 @@ class SearchAgainstEnumerationTest(unittest.TestCase):
 
 class WitnessTest(unittest.TestCase):
     def test_repository_witness_truth(self):
-        expected = {"c/grok-seven-group-witness": (16,6,5,16),
+        expected = {"c/seven-group-witness": (16,6,5,16),
                     "c/strict-tradeoff-witness": (18,6,5,19),
                     "c/objective-witness": (20,6,5,20)}
         for witness in g.C_WITNESSES:

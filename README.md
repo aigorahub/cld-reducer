@@ -19,7 +19,7 @@ Compact Letter Displays are useful because two products that share at least one 
 
 For large sensory studies, standard maximal-clique CLD algorithms often assign more letters than are needed to preserve those relationships. A sample labeled `ABC`, for example, may only need `AC` if the removed `B` does not change any pairwise significance relationship.
 
-cld-reducer minimizes the total number of group-letter assignments and then checks that the reduced display reconstructs exactly the same relationship matrix as the input.
+The default CLD-sigma method minimizes group-letter assignments. The CLD-C option minimizes distinct letters. Both methods check that the display reconstructs the input relationship matrix.
 
 ## Installation
 

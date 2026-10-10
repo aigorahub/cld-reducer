@@ -76,11 +76,11 @@ A `reduce` case passes when the call returns without error and:
 2. `assignments` and `letters` equal the expected values for every group.
 3. The integer statistics and `objective` equal the expected values, and `solver_status` is `"Optimal"`.
 4. `reduction_pct` equals `(before - after) / before * 100` computed in double precision from `expected.reduction_pct`. No rounding is applied.
-5. `method` is `assignment_minimum` and `relationship_preserved` is true.
+5. `method` equals `expected.method` and `relationship_preserved` is true.
 
 An `errors` case passes when the call fails with an error of the expected kind (Python `InvalidInputError` or `SolverError`; R conditions of class `cldreducer_invalid_input` or `cldreducer_solver_error`; the JavaScript classes `InvalidInputError` or `SolverError`) whose message starts with `message_prefix`. A `labels` case passes when the label list is equal.
 
-**Checkers.** Each runner first builds a result object from each of the three wrong results (the `non_canonical` result of the wheat case, and `loses_relationship` and `not_minimal` from `checker.json`) and checks that its own comparison against the wheat `expected` rejects all three, and accepts `expected` itself. A wrong result is valid in a different way each time: one loses a relationship between two groups, one is a minimal display other than the canonical one, and one is a correct but larger display.
+**Checkers.** Each runner checks three wrong sigma results against the wheat `expected`: its `non_canonical` result and the `loses_relationship` and `not_minimal` results from `checker.json`. It also checks three wrong C results against their matching C cases. The checker must reject every wrong result and accept each expected result. The negative cases cover relationship loss, a noncanonical optimum, and a larger valid display for both methods.
 
 ## Exact search
 
@@ -92,7 +92,7 @@ An `errors` case passes when the call fails with an error of the expected kind (
 
 `manifest.json` lists every excluded case with its reason.
 
-- 16 random candidates are left out because they have more than 70 membership variables (11 with 12 groups, 4 with 11 groups, 1 with 10 groups). The pure Python exact search is too slow on them, and the exclusion rule depends only on the graph, so it is the same on every machine.
+- The sigma fixture excludes 16 random candidates because they have more than 70 membership variables (11 with 12 groups, 4 with 11 groups, 1 with 10 groups). The sigma exact search is too slow on them. The C fixture includes all 16 graphs. The exclusion rule depends only on the graph, so it is the same on every machine.
 - Exhaustive graphs with 6 or more groups are not fixtures (32768 and 2097152 graphs); the cross check in `test_generate.py` covers all graphs with 6 groups.
 - The adjacency rule "at least one group" cannot be reached from JSON (an empty list has no second dimension and gives the square matrix error), so it has no error fixture.
 
