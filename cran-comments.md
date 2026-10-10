@@ -1,10 +1,13 @@
 ## Submission status
 
 Version 0.2.0 is a candidate for a new CRAN package. It has not been submitted.
-Data reuse confirmation and maintainer/author confirmation remain release
-conditions. See `docs/releasing.md` and the installed `COPYRIGHTS` notice.
+Data reuse confirmation remains a release condition. John Ennis is the sole
+package author and maintainer, as directed on 2026-10-09. See `docs/releasing.md` and the installed `COPYRIGHTS` notice.
 
-## Candidate checked locally
+## Previous candidate checked locally
+
+The author metadata changed after this check. This archive is superseded and
+must not be submitted. Rebuild and check the new archive before submission.
 
 - Date: 2026-10-09 in America/New_York (2026-10-10 UTC).
 - Source: `ad2c03f65541c9f0b10af21efcd0048c95fc9dc0`. Later changes to this file

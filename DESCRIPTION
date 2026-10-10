@@ -4,11 +4,6 @@ Version: 0.2.0
 Authors@R:
   c(
     person("John", "Ennis", , "john.m.ennis@aigora.com", role = c("aut", "cre")),
-    person("Carl", "Graham", role = "aut"),
-    person("Luciana", "Castro", role = "aut"),
-    person("Rachel", "Lampert", role = "aut"),
-    person("Ryan", "Jordan", role = "aut"),
-    person("Vanessa", "Rios de Souza", role = "aut"),
     person("Aigora", role = c("cph", "fnd"))
   )
 Description: Reduces compact letter displays (CLDs) of all pairwise

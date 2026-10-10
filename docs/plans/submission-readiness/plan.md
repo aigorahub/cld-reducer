@@ -239,8 +239,9 @@ Files: `cran-comments.md`, `DESCRIPTION`, `R/data.R`, generated help,
 `inst/`, `python/README.md`, `js/README.md`, and package file lists as needed.
 
 - Retain John Ennis and `john.m.ennis@aigora.com` as the proposed CRAN maintainer.
-  Retain the six listed authors and Aigora's recorded roles until confirmed.
-  Do not invent ORCID identifiers or change authorship from memory.
+  The maintainer directed sole package authorship by John Ennis on 2026-10-09.
+  Keep published citations and existing copyright notices intact.
+  Do not invent ORCID identifiers.
 - Record each data set's source, transformation, and confirmed reuse basis.
   A paper citation is not evidence of a data license. Do not copy turfLP's
   unrelated CC licenses or label this data MIT without evidence.

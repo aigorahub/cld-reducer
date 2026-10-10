@@ -8,6 +8,9 @@ Neither PR has been merged. No version tag or registry upload has been made.
 
 ## Checked candidate
 
+These archives precede the sole-author metadata change and are superseded.
+Do not publish them. Fresh archives must pass the checks below.
+
 These files were built from `ad2c03f65541c9f0b10af21efcd0048c95fc9dc0`.
 Later changes to this record and `cran-comments.md` do not change the package
 contents. These are review candidates. Final publication workflows must build
@@ -65,7 +68,9 @@ been created by this work.
   found. R and the Python source archive include both. The npm README includes
   the simple example. The Python wheel omits the CSV files but includes
   simple-example output in its metadata.
-- Confirm the authors and maintainer carried forward from PR #3.
+- The maintainer directed sole package authorship by John Ennis on 2026-10-09.
+  Package metadata and the software citation now use that name. Published work
+  citations and existing copyright notices retain their authors and holders.
 - Record the two win-builder results for the file above.
 - Obtain explicit approval to merge the PRs. Recheck the resulting commit.
 - Configure the confirmed PyPI project's publisher and authorize the version

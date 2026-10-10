@@ -22,11 +22,6 @@ Useful links:
 Authors:
 \itemize{
   \item John Ennis \email{john.m.ennis@aigora.com}
-  \item Carl Graham
-  \item Luciana Castro
-  \item Rachel Lampert
-  \item Ryan Jordan
-  \item Vanessa Rios de Souza
 }
 
 Other contributors:

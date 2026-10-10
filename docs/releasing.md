@@ -36,8 +36,10 @@ John Ennis owns the following release decisions:
   contain the wheat data. The npm archive contains only the simple example in
   its README. The Python wheel omits the CSV files but includes simple-example
   output in its metadata.
-- Confirm the six authors, Aigora's roles, and the proposed CRAN maintainer,
-  John Ennis, `john.m.ennis@aigora.com`. They are unchanged from PR #3.
+- John Ennis is the sole package author and CRAN maintainer,
+  `john.m.ennis@aigora.com`, as directed by the maintainer on 2026-10-09.
+  Published-paper citations and existing copyright notices retain their authors
+  and holders.
 
 ## Python compatibility
 
@@ -193,7 +195,7 @@ Registry account access has not been configured by this work.
 |---|---|---|
 | Python history and identity | John Ennis | Confirmed project and uploaded versions |
 | Data reuse basis | John Ennis | Source and permission for each data set |
-| Authors and maintainer | John Ennis | Approved metadata |
+| Authors and maintainer | Confirmed 2026-10-09 | John Ennis is the sole package author and maintainer |
 | GitHub `npm` and `pypi` environments | Configured 2026-10-09 | Only the `main` branch is allowed |
 | Registry trusted publishers | Registry maintainer | Exact repository, workflow, environment; successful authorized upload |
 | Repository description | Updated 2026-10-09 | Describes R, Python, and JavaScript packages |
