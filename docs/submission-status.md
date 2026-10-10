@@ -9,7 +9,7 @@ Neither PR has been merged. No version tag or registry upload has been made.
 ## Checked candidate
 
 The R and npm files were built from `eaee0e55243577ed3f36cb5c55f3e5ebcb5d22c5`.
-The Python files were built from `deb5db2604f85842af7385a9dca82cdca49c77f5` after
+The Python files were built from `998ccc0a29550438b6eae3d552b3eff0997b1f91` after
 the README quickstart was made self-contained. Later changes to this record
 and `cran-comments.md` do not change package contents. These are review candidates. Final publication workflows must build
 and check the authorized tag on `main`.
@@ -17,8 +17,8 @@ and check the authorized tag on `main`.
 | File | SHA-256 |
 |---|---|
 | `cldreducer_0.2.0.tar.gz` | `3f50237fc8400cd1504590e93d4082b738cbbedb8a5a51d1663b4bcc330a4c73` |
-| `cld_reducer-0.2.0.tar.gz` | `94a185b9102c49ca12a080305bf39b760e4c02ffcb4214d37b52e9938a30fc6f` |
-| `cld_reducer-0.2.0-py3-none-any.whl` | `d4abadfd3f81c62b2e7cda41c9bceca7167a49916a805dbe3d8d76c83f6ac36e` |
+| `cld_reducer-0.2.0.tar.gz` | `692e58da5aaa50ef4c02a95aeb528b269b8730e7012d928b14858a34c9ae11a3` |
+| `cld_reducer-0.2.0-py3-none-any.whl` | `882f06a435a73db0fb4fb1f22b493a0993ce04ba7e6c33f5a112531e9219f379` |
 | `cld-reducer-0.2.0.tgz` | `d61759316082ebebdc696f61fdc85dacf51d9809aea3989b877e07f67b5ccabc` |
 
 The R archive passes `R CMD check --as-cran --timings` with its PDF manual and
