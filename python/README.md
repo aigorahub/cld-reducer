@@ -6,7 +6,7 @@ The solver is HiGHS through `highspy`. The dependencies are `highspy`, NumPy, an
 
 ## Installation
 
-The package is not on PyPI yet. Install it from the repository:
+The current PyPI project lookup returned 404 on 2026-10-09. An earlier Python submission remains unconfirmed. Install this candidate from the repository:
 
 ```sh
 pip install "git+https://github.com/aigorahub/cld-reducer.git#subdirectory=python"
@@ -91,3 +91,19 @@ The 0.2.0 release moved the package to `python/` and the solver to `highspy`, wh
 ## License
 
 MIT. See `LICENSE`.
+
+## Input and release notes
+
+CSV label columns preserve their exact text, including `001`, `NA`, `NaN`, and
+empty strings. A blank CSV label is an empty-string label; missing values in API
+objects still raise `InvalidInputError`. Means must remain finite numbers.
+The means table uses `group` and `mean` when both exist, or its first two columns.
+A list of pair rows preserves each numeric label before conversion to text.
+Uneven adjacency rows raise the package's square-matrix error.
+
+The source distribution contains example scripts and CSV files. The wheel
+contains the importable package and its license and data notice. Shared
+conformance fixtures remain in the repository, so source-distribution tests skip
+those cases when the fixtures are absent. CI tests both installed distributions
+outside the checkout. See `docs/releasing.md` in the repository for release steps.
+Example data reuse remains subject to the conditions in `NOTICE`.

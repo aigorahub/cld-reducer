@@ -1,0 +1,31 @@
+Example data sources and reuse status
+
+The MIT license covers the package code. It does not establish permission to
+redistribute data copied from a publication. Publication is blocked until the
+maintainer records a confirmed reuse basis for the wheat data below.
+
+piepho2004_wheat_pairs.csv / piepho2004_wheat
+Source: Piepho (2004), An Algorithm for a Letter-Based Representation of All-
+Pairwise Comparisons, doi:10.1198/1061860043515; reproduced in Table 7 of
+Ennis, Fayle, and Ennis (2012), Assignment-Minimum Clique Coverings,
+doi:10.1145/2133803.2275596.
+Content: significant/non-significant decisions for the 190 unordered pairs of
+20 wheat treatments. The repository stores these decisions as CSV rows.
+R data-raw/datasets.R reads labels as text and decisions as logical values,
+then saves the same rows as piepho2004_wheat.rda. Python examples copy the CSV.
+Reuse permission: unconfirmed. A citation alone does not grant permission.
+Owner of follow-up: John Ennis, proposed package maintainer.
+
+simple_abc_to_ac_pairs.csv / simple_abc_pairs
+simple_abc_to_ac_means.csv / simple_abc_means
+Source: the five-group illustrative example in this repository. Its relationship
+graph and means reproduce the ABC-to-AC teaching example. No independent source
+or specific data license is recorded in the repository.
+Content: ten pairwise decisions and five numeric means. R data-raw/datasets.R
+reads the CSV files and saves the corresponding data frames. Python examples
+copy the CSV files.
+Reuse basis and origin: maintainer confirmation required before publication.
+Owner of follow-up: John Ennis.
+
+Do not interpret this notice as a new license or as confirmed permission.
+Retain it in every distribution that contains the example data.

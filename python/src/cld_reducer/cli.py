@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 from .api import reduce_letters
+from .validation import _means_columns
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -48,8 +49,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     """Run the CLI."""
     args = build_parser().parse_args(argv)
-    pairs = pd.read_csv(args.pairs)
-    means = pd.read_csv(args.means) if args.means else None
+    pairs = pd.read_csv(
+        args.pairs, dtype={args.group1: str, args.group2: str}, keep_default_na=False
+    )
+    means = None
+    if args.means:
+        label_column, _ = _means_columns(pd.read_csv(args.means, nrows=0).columns)
+        means = pd.read_csv(args.means, dtype={label_column: str}, keep_default_na=False)
     result = reduce_letters(
         pairs,
         means,

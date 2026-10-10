@@ -14,3 +14,4 @@
 ^\.gitignore$
 ^\.elves$
 ^\.elves-session\.json$
+^scripts$

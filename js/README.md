@@ -6,7 +6,7 @@ The solver is HiGHS compiled to WebAssembly (the npm package [`highs`](https://w
 
 ## Installation
 
-The package is not on npm yet. After the first release:
+The npm project lookup returned 404 on 2026-10-09. After publication:
 
 ```sh
 npm install cld-reducer
@@ -136,3 +136,11 @@ npm run test:conformance   # runs every fixture in ../conformance with presolve 
 ## License
 
 MIT. See `LICENSE`.
+
+## Release checks
+
+`npm run check:package` builds one tarball, checks its file list, installs it in
+an empty project, runs the WASM solver, and compiles a TypeScript consumer against
+its installed declarations. The release workflow retains that exact tarball.
+See `docs/releasing.md` in the repository for release steps. `NOTICE` records the
+example data sources and unresolved reuse conditions.

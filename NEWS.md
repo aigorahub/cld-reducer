@@ -14,6 +14,11 @@ First release of the R package. The repository now holds three packages that fol
 
 ## Python package
 
+- Preserve exact CSV labels, including leading zeros, NA-like text, and empty strings.
+- Preserve mixed numeric labels in lists of pair rows and means mappings.
+- Use one means-column rule for group order and values.
+- Report uneven adjacency rows as `InvalidInputError` with the square-matrix message.
+
 - The package moved to `python/`. The import name `cld_reducer`, the public names, the exceptions, and the `cld-reduce` command with its flags are unchanged. Installing from a git URL now needs `#subdirectory=python`:
   `pip install "git+https://github.com/aigorahub/cld-reducer.git#subdirectory=python"`.
 - The solver is HiGHS through `highspy`. The dependencies are `highspy`, `numpy`, and `pandas`; `scipy` and `networkx` are gone.
@@ -28,3 +33,9 @@ First release of the R package. The repository now holds three packages that fol
 - Significance text is trimmed of spaces, tabs, carriage returns, and line feeds only. Other white space, such as a no-break space, makes the value invalid.
 - An empty list of comparisons is a table with zero rows, so the groups come from the means.
 - A solver value that is not within 1e-6 of 0 or 1 is a `SolverError`, also when the value is a whole number.
+
+## Release preparation
+
+- Check installed Python wheels, wheels rebuilt from source distributions, and npm TypeScript consumers outside the checkout.
+- Require manual tag-based publication with dry runs, version checks, artifact hashes, and separate npm/PyPI jobs.
+- Record data reuse conditions and Python publication history as open release requirements.

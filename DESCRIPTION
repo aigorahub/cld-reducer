@@ -22,6 +22,7 @@ Description: Reduces compact letter displays (CLDs) of all pairwise
     solver. The package includes the wheat yield example of Piepho (2004)
     <doi:10.1198/1061860043515>.
 License: MIT + file LICENSE
+Copyright: See file COPYRIGHTS for example data sources and reuse status.
 URL: https://github.com/aigorahub/cld-reducer
 BugReports: https://github.com/aigorahub/cld-reducer/issues
 Depends:

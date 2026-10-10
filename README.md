@@ -11,7 +11,7 @@ cld-reducer reduces compact letter displays (CLDs) while preserving the pairwise
 
 It implements the **assignment-minimum clique covering** problem introduced by Ennis, Fayle, and Ennis (2012): finding a CLD that uses the fewest possible individual letter-to-group assignments. The 2012 paper solves this problem with a backtracking algorithm (FIND-AM); this repository solves the same problem as a binary mixed-integer program with HiGHS. It is the implementation behind the CLD letter-reduction work presented at Sensometrics 2026.
 
-Status: version 0.2.0. None of the packages is on CRAN, PyPI, or npm yet; the installation commands below use the repository.
+Status: version 0.2.0 is a release candidate. Public registry checks on 2026-10-09 found no current package under these names. An earlier Python submission remains unconfirmed. The installation commands below use the repository. See [release instructions and open conditions](docs/releasing.md).
 
 ## Why reduce CLDs?
 

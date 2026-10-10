@@ -72,6 +72,9 @@ jobs:
           extra-packages: any::rcmdcheck
           needs: check
 
+      - name: Install HTML validator
+        run: sudo apt-get update && sudo apt-get install -y tidy
+
       # rcmdcheck builds the tarball and checks it in a folder under RUNNER_TEMP, so the
       # tests run outside the checkout and cannot reach repository files (../../..).
       - name: R CMD check --as-cran on the built tarball
@@ -82,7 +85,11 @@ jobs:
           if (Sys.getenv("_R_CHECK_CRAN_INCOMING_", "") == "") Sys.setenv("_R_CHECK_CRAN_INCOMING_" = "false")
           check_dir <- file.path(Sys.getenv("RUNNER_TEMP"), "check")
           stopifnot(!startsWith(normalizePath(check_dir, mustWork = FALSE), normalizePath(getwd())))
+          tarball <- pkgbuild::build(path = ".", dest_path = Sys.getenv("RUNNER_TEMP"), manual = TRUE)
+          source("scripts/check_r_package.R")
+          check_r_package(tarball)
           rcmdcheck::rcmdcheck(
+            tarball,
             args = c("--as-cran"),
             build_args = character(),
             error_on = "warning",
@@ -94,7 +101,7 @@ jobs:
         shell: bash
         run: |
           find "$RUNNER_TEMP/check" -name 'testthat.Rout*' -exec cat '{}' \; || true
-          find "$RUNNER_TEMP/check" -name '*-Ex.timings' -exec sh -c 'echo "{}"; sort -k2 -n -r "{}" | head -5' \; || true
+          find "$RUNNER_TEMP/check" -name '*-Ex.timings' -exec sh -c 'printf "%s\n" "$1"; sort -k2 -n -r "$1" | head -5' sh '{}' \; || true
 
       - name: Upload the check results
         if: failure()
