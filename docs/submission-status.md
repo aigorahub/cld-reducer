@@ -2,79 +2,96 @@
 
 Status on 2026-10-10.
 
-PR [#3](https://github.com/aigorahub/cld-reducer/pull/3) was merged as
-`9dc3f6a47c4fa8390170ad70cebb8e38eedc16d6`.
-PR [#4](https://github.com/aigorahub/cld-reducer/pull/4) now targets `main`.
-No version tag, registry publication, or CRAN submission has been made.
+Version `v0.2.0` is tagged at package commit
+`8a09915a6ad0dcb1fc0ca17bce4ebaa46ddc2b39`.
+PRs [#3](https://github.com/aigorahub/cld-reducer/pull/3),
+[#4](https://github.com/aigorahub/cld-reducer/pull/4), and
+[#5](https://github.com/aigorahub/cld-reducer/pull/5) are merged.
+The workflow build fix is merge commit
+`be6ad8765077c9bf721758dd57f65f39c9139ec1`. It does not change the tagged package.
 
-## Decisions
+| Registry | Package | Status |
+|---|---|---|
+| PyPI | [`cld-reducer` 0.2.0](https://pypi.org/project/cld-reducer/0.2.0/) | Published and verified |
+| npm | [`cld-reducer` 0.2.0](https://www.npmjs.com/package/cld-reducer) | Published and verified |
+| CRAN | `cldreducer` 0.2.0 | Submitted and confirmed; manual review pending |
+
+The [GitHub release](https://github.com/aigorahub/cld-reducer/releases/tag/v0.2.0)
+records the package files and checksums. CRAN submission does not mean acceptance.
+The R package is not yet available through `install.packages("cldreducer")`.
+
+## Decisions and review
 
 John Ennis confirmed that the example data are public and approved their
-inclusion on 2026-10-10. The three package source notices record this decision
-and the source publications. They do not assign a new license to the papers.
+inclusion on 2026-10-10. The package source notices record the source
+publications and this decision. They do not assign a new license to the papers.
 John Ennis is the sole package author and maintainer. Published-paper citations
 and existing copyright notices retain their authors and holders.
 
-The maintainer approved merging and publication on 2026-10-10, subject to
-thorough review. The plan and implementation received independent review.
-The final implementation review found no remaining defects. The final CI
-checks and exact-commit test record must pass before PR #4 is merged.
+The maintainer approved merging and publication on 2026-10-10 after thorough
+review. The plan and implementation received independent review. Local gates
+and CI passed before the package changes were merged. The workflow build fix
+received a separate review and passed its local gates and CI.
 
-## Checked candidates
+The earlier Python publication was sensPy, a separate project. The maintainer
+approved a new-project trusted publisher for `cld-reducer`. Version 0.2.0 is
+its first verified PyPI release.
+
+## Published files and frozen R candidate
+
+Python and npm workflows built package commit
+`8a09915a6ad0dcb1fc0ca17bce4ebaa46ddc2b39` from the immutable tag.
+Their manifests record that commit and the uploaded file hashes.
+The public registry files match those hashes.
 
 The R archive was built from `54ec3703ae96fc910aab8d7103c36d4798fc49e5`.
-The Python files were built from `2d3472ea0cb88e830a8b0c1548a5f77b8d21eb3a`.
-The npm file was built from `40756a986f0b8f69de875abd82d3e28b114583d0`.
-Later source changes do not change Python or npm package content. Later changes
-to this record and `cran-comments.md` do not enter the R archive.
-The final publication workflows must build and check the authorized tag on `main`.
+Later changes do not change the contents of that archive. The exact file below
+was checked and submitted. It remains frozen while CRAN reviews it.
 
 | File | SHA-256 |
 |---|---|
-| `R/cldreducer_0.2.0.tar.gz` | `11b68758ac001659237998568a8d0d0bf11d27548cf6441851cf07eb7dccbeb0` |
-| `python/cld_reducer-0.2.0.tar.gz` | `751136ee865b036bfd2fdc2cb7d37e2163feded9b8615572c0a49d3f1296baad` |
-| `python/cld_reducer-0.2.0-py3-none-any.whl` | `352d98ccbc83bdf38afe288311f589126b5f76cb5ce8e1d5c2cd9a2b24db48e8` |
-| `npm/cld-reducer-0.2.0.tgz` | `4d85fd6ad5a6836c59a9c64ddfa78ca3bb131f9b4ffde48b5788299e1fcf1937` |
+| `cldreducer_0.2.0.tar.gz` | `11b68758ac001659237998568a8d0d0bf11d27548cf6441851cf07eb7dccbeb0` |
+| `cld_reducer-0.2.0.tar.gz` | `625a957c19532eabbb82c438728cfe5c66ecb3b08e72758145b90de600e8b7f3` |
+| `cld_reducer-0.2.0-py3-none-any.whl` | `48a5c3ea00d281227e7cabbdcaced47b0b1057440b83932885595aa702cd297d` |
+| `cld-reducer-0.2.0.tgz` | `4e6b190c417a926a0e7cf8117c8058544688f26958f0c1f9bc58cbd284ccff0f` |
 
-The R archive passes the complete `R CMD check --as-cran --timings` check,
-including PDF and HTML manuals. Result: zero errors, zero warnings, one
-new-submission NOTE. The longest example takes 0.333 seconds. The source archive
-check rejects development caches. See `cran-comments.md`.
+## Verification
 
-Both Python files pass Twine. The wheel and a wheel rebuilt from the source
-archive pass API, CLI, label, and example checks in separate clean environments.
-The npm archive passes clean installation, WASM execution, and TypeScript use.
-Local suites pass: 3,023 Python tests, 88 JavaScript tests, 310 R checks,
-1,505 shared cases, and 24 generator tests.
+The R archive passed `R CMD check --as-cran --timings`, including PDF and HTML
+manuals: zero errors, zero warnings, one new-submission NOTE. Both win-builder
+checks passed on this frozen file:
+[R-release](https://win-builder.r-project.org/9jgT66qYVvWj/00check.log) and
+[R-devel](https://win-builder.r-project.org/A2g07e6zSost/00check.log).
 
-Both win-builder queues accepted the R archive above on 2026-10-10 at 12:57 UTC.
-Both FTP transfers returned 226. Results are pending. Earlier Windows results
-had zero errors and warnings, but they do not certify this new archive.
+Python publication [run 38065890470](https://github.com/aigorahub/cld-reducer/actions/runs/38065890470)
+succeeded. Its wheel and source archive passed the workflow checks. A fresh
+installation from public PyPI passed the API and canonical label check.
+The public metadata names John Ennis as author.
 
-## Registry setup
+The npm candidate [run 38054826758](https://github.com/aigorahub/cld-reducer/actions/runs/38054826758)
+succeeded. The maintainer published that exact tarball after security key
+verification. A fresh installation from public npm passed WASM solver execution,
+the canonical label check, and TypeScript compilation.
 
-The GitHub `npm` and `pypi` environments exist. Both permit deployments only
-from `main`. The repository description names all three languages.
-The manual publication workflows and their control tests are in place.
+The reviewed local suites passed: 3,023 Python tests, 88 JavaScript tests,
+310 R checks, 1,505 shared cases, and 24 generator tests.
 
-Use turfLP's first npm publication process: sign in as the maintainer, verify
-the tarball from the successful workflow dry run, and publish that exact file.
-The npm browser account is `john-aigora`, which owns `turflp`. The CLI login
-is waiting for the maintainer's security key. Configure trusted publishing for
-later releases. See `docs/releasing.md`.
+## CRAN review
 
-PyPI still needs the maintainer's completed login. Public PyPI and TestPyPI
-metadata return 404 for `cld-reducer`. The earlier Python project's identity
-and versions remain unconfirmed. Check the account's project list before
-creating a pending publisher or choosing a new-project route.
-The publisher settings are repository `aigorahub/cld-reducer`, workflow
-`publish-python.yaml`, environment `pypi`. No publisher has been created.
+The maintainer submitted and confirmed `cldreducer` 0.2.0 on 2026-10-10 at
+13:27:40 UTC. CRAN's automated pretest email at 13:36:14 UTC reports one NOTE
+on both Windows and Debian. The logs contain no errors or warnings:
+[Windows pretest](https://win-builder.r-project.org/incoming_pretest/cldreducer_0.2.0_20261010_152740/Windows/00check.log)
+and [Debian pretest](https://win-builder.r-project.org/incoming_pretest/cldreducer_0.2.0_20261010_152740/Debian/00check.log).
+
+The NOTE covers a new submission and possible spelling flags for CLD, CLDs,
+Ennis, Fayle, and Piepho. The email states that manual inspection is pending
+and that a team member typically responds within 10 working days.
+No acceptance has been received.
 
 ## Remaining steps
 
-- Complete registry login and resolve the earlier Python project record.
-- Finish CI, merge PR #4, and verify the merged commit.
-- Tag the checked release and run both publication workflow dry runs.
-- Record final Windows results for the exact R file to submit.
-- Publish the checked npm and Python artifacts after registry setup.
-- Submit the R archive to CRAN. Record submission and acceptance separately.
+- Respond to CRAN reviewer requests, if any. Record acceptance separately.
+- After CRAN acceptance, verify public installation and update this record.
+- Configure npm trusted publishing near the next authorized release, as described
+  in [release instructions](releasing.md). The PyPI trusted publisher is active.
