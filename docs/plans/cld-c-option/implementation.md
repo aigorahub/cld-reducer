@@ -60,11 +60,12 @@ The v0.2.0 tag and frozen CRAN submission files were not modified.
   PDF and HTML manuals: zero errors, zero warnings, one new-submission NOTE.
   The installed TinyTeX directory must be included in PATH for the PDF check.
 
-## Remaining required evidence
+## Review handoff at the first implementation commit
 
-Mandatory seated Grok and Agy implementation reviews and the remote CI matrix are
-pending. The implementation environment lacks `HERDR_ENV=1`; the Herdr skill
-forbids inspecting or controlling seated agents from outside a managed pane.
+At the implementation handoff, mandatory seated Grok and Agy reviews and the
+remote CI matrix were pending. That environment lacked `HERDR_ENV=1`; the Herdr
+skill forbids control of seated agents from outside a managed pane.
+The PR checks and comments record the later reviews and CI results.
 Reviews must use the exact feature head, the absolute worktree and approved plan,
 with Agy in plan mode and `/boost` before every review, and must wait for children.
 Plan reviews do not establish implementation correctness. No merge or publication

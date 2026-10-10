@@ -11,10 +11,11 @@ One set of fixtures binds the R, Python, and JavaScript implementations of cld-r
 | `manifest.json` | SHA-256 digest of every data file and input, case counts, and the excluded cases with reasons. |
 | `generate.py` | Standard library Python. Builds the inputs, finds the expected results by exact search, and writes `inputs/`, `fixtures/`, and `manifest.json`. |
 | `test_generate.py` | Hand-checked tests of the generator and the cross check against plain enumeration. |
-| `fixtures/reduce.json` | Valid calls and their expected results. |
+| `fixtures/reduce.json` | Valid CLD-sigma calls and their expected results. |
+| `fixtures/reduce_letter_minimum.json` | Valid CLD-C calls and their expected results. |
 | `fixtures/errors.json` | Invalid calls and the expected error kind and message prefix. |
 | `fixtures/labels.json` | Label counts and the expected labels. |
-| `fixtures/checker.json` | Wrong results for the wheat case that every runner's checker must reject. |
+| `fixtures/checker.json` | Wrong wheat and CLD-C results that every runner's checker must reject. |
 | `run_r.R` | Runs every fixture against the R package (added with the R package). |
 | `../python/tests/test_conformance.py` | Runs every fixture against the Python package, with presolve on and off. |
 | `../js/scripts/conformance.mjs` | Runs every fixture against the built JavaScript package, with presolve on and off. |
@@ -34,9 +35,10 @@ On the development host (WSL, Python 3.14), `--check` takes about 22 seconds and
 | Fixture | Cases |
 |---|---|
 | `reduce.json` | 1422: 1099 exhaustive, 264 random, 24 structured, 35 hand-built |
+| `reduce_letter_minimum.json` | 1442: the sigma input families, 16 further random graphs, 3 witnesses, 1 C alias |
 | `errors.json` | 65 |
 | `labels.json` | 18 |
-| `checker.json` | 2 wrong results (a third, the non canonical wheat optimum, is in `reduce.json`) |
+| `checker.json` | 5 wrong results: 2 wheat and 3 C results. The sixth result, the noncanonical wheat optimum, is in `reduce.json`. |
 
 - **Exhaustive.** Every labeled graph with 1 to 5 groups: 1, 2, 8, 64, and 1024 graphs. Adjacency route with default group labels `"1"` to `"n"` and no means.
 - **Random.** Seeded graphs with 6 to 12 groups (splitmix64; the seed and the edge probability are in each input). Forty candidates per size with edge probabilities from 0.25 to 0.85; 264 are kept (40, 40, 40, 40, 39, 36, and 29 for 6 to 12 groups). Labels are `T01`, `T02`, and so on. Even-numbered graphs use the pairs route (every fourth one with shuffled and flipped rows, so the group order comes from first appearance), odd-numbered ones the adjacency route (every fourth one with the means listed in another order than the groups). Two thirds have means.
@@ -50,21 +52,21 @@ Every fixture file has `schema_version` (1), `kind`, and `cases`, with one case 
 
 **Graph inputs** (`inputs/*.json`) are `{"schema_version", "name", "source", "graphs"}`. A graph is `{"id", "n", "edges", "labels", "means", "route", ...}`: `edges` are the non-significant pairs as 0-based index pairs `[i, j]` with `i < j`; `labels` is a list or `null` (default labels); `means` is a list of `{"group", "mean"}` or `null`; `route` is `pairs` or `adjacency`. Random graphs also carry `seed` and `p`.
 
-**`reduce.json`** cases: `{"id", "call", "input", "options", "expected"}`.
+**Reduction cases** (`reduce.json` and `reduce_letter_minimum.json`): `{"id", "call", "input", "options", "expected"}`.
 
 - `call` is `pairs` or `adjacency`.
 - `input` for `pairs` is `{"pairs": [row, ...], "means": ...}`. A row is an object with the keys `group1`, `group2`, `significant` (or the column names given in `options`); extra keys are ignored. The table has one column for every key that occurs in the rows. Group labels may be JSON strings or integers.
 - `input` for `adjacency` is `{"adjacency": [[...]], "groups": ..., "means": ...}`: a matrix of 0 and 1 (and booleans), a list of labels or `null`, and means as above. Means are matched to groups by label.
 - `means` is `null` or a list of `{"group", "mean"}` in the order that gives the group order (pairs route). Python passes a `pandas.DataFrame` with columns `group` and `mean`, R a data frame with those columns, and JavaScript the array.
 - `options` holds only keys the call needs: `group1`, `group2`, `significant` (column names), `method`, `max_cliques` (an integer, or `null` for no cap; absent means the default 10000), `time_limit`.
-- `expected`: `groups` (the group order), `assignments` (group to token list), `letters` (group to display), `stats` (`assignments_before`, `assignments_after`, `num_letters_before`, `num_letters_after`, `num_groups`, `num_edges`), `solver_status` (`"Optimal"`), `objective` (a whole number equal to `assignments_after`), `reduction_pct` (`{"numerator": before - after, "denominator": before}`), `method` (`"assignment_minimum"`), and `relationship_preserved` (true). JSON objects are unordered in some languages, so `groups` is the order.
+- `expected`: `groups` (the group order), `assignments` (group to token list), `letters` (group to display), `stats` (`assignments_before`, `assignments_after`, `num_letters_before`, `num_letters_after`, `num_groups`, `num_edges`), `solver_status` (`"Optimal"`), `objective`, `reduction_pct` (`{"numerator": before - after, "denominator": before}`), `method`, and `relationship_preserved` (true). The normalized `method` is `assignment_minimum` or `letter_minimum`. The integer `objective` equals `assignments_after` for sigma or `num_letters_after` for C. JSON objects are unordered in some languages, so `groups` is the order.
 - The wheat case also has `non_canonical`: a valid, minimal, but not canonical optimum in the same shape as `expected`.
 
 **`errors.json`** cases: `{"id", "call", "input", "options", "expected": {"kind", "message_prefix"}}`. `kind` is `invalid_input` or `solver`. Inputs may hold `null`, strings, and numbers where the rule under test needs them.
 
 **`labels.json`** cases: `{"id", "count", "labels"}`. The runner calls the implementation's label function: Python `cld_reducer.labels.make_letter_labels(count)`, R `make_letter_labels(count)` (internal, reached with `cldreducer:::`), JavaScript `makeLetterLabels(count)` from `dist/labels.js`.
 
-**`checker.json`**: `{"case": "hand/wheat", "bad": [{"name", "result"}, ...]}`. Each `result` has the shape of `expected`.
+**`checker.json`**: `{"case": "hand/wheat", "bad": [{"name", "result"}, ...], "letter_bad": [{"case", "name", "result"}, ...]}`. Each `result` has the shape of `expected`. Wheat negatives use the top-level `case`. Each C negative names its matching C case.
 
 ## Pass rule
 

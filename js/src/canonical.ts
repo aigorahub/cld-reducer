@@ -73,4 +73,3 @@ function checkSolution(
   if (total !== wanted) throw new SolverError(INVALID_SOLUTION);
   return rounded;
 }
-

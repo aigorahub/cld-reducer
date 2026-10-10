@@ -129,6 +129,8 @@ See [js/README.md](js/README.md) for the pairwise input, the options, and loadin
 
 The default method is `assignment_minimum` (CLD-sigma). Use `letter_minimum` for pure CLD-C.
 
+CLD-sigma follows these steps.
+
 1. Build the non-significance graph from the pairwise results.
 2. Find all maximal cliques. Every assignment-minimum covering is a subcovering of the maximal covering, which is the starting point used by the 2012 paper.
 3. Solve a binary mixed-integer program that selects group-letter assignments with the smallest total assignment count.
@@ -137,7 +139,10 @@ The default method is `assignment_minimum` (CLD-sigma). Use `letter_minimum` for
 
 Exact assignment minimization can become expensive for dense or highly structured graphs. All three packages offer a time limit and a cap on the number of maximal cliques (10,000 by default); the call stops with a clear error beyond the cap.
 
-[docs/algorithm.md](docs/algorithm.md) is the normative specification: input rules, error messages, the canonical order, the solver settings, and the API of all three languages. The shared conformance suite in [conformance/](conformance/) has 1,422 reduce cases (plus 65 error cases and 18 label cases) with expected displays that come from an exact search in a standard-library Python script, not from a solver. R, Python, and JavaScript run all of them in CI. The Python and JavaScript runs repeat with HiGHS presolve off.
+[docs/algorithm.md](docs/algorithm.md) defines the input rules, errors, canonical order, solver settings, and APIs.
+The shared suite in [conformance/](conformance/) has 2,864 reduction cases: 1,422 for CLD-sigma and 1,442 for CLD-C.
+It also has 65 error cases and 18 label cases. Expected displays come from exact search in a standard-library Python script.
+R, Python, and JavaScript run all cases in CI. Python and JavaScript repeat with HiGHS presolve off.
 
 ## Repository layout
 
