@@ -42,11 +42,11 @@ FAILED = "failed"
 class Problem:
     """The model of docs/algorithm.md section 4 in row-wise sparse form.
 
-    The first `num_x` columns are the membership variables x; the rest are the y variables.
+    `decision_columns` supplies ordered objective support; auxiliary costs are zero.
     """
 
     num_cols: int
-    num_x: int
+    decision_columns: list[int]
     cost: np.ndarray
     start: np.ndarray
     index: np.ndarray
@@ -75,16 +75,18 @@ def run(
 ) -> Outcome:
     """Solve the model with the given column bounds.
 
-    `sum_limit` adds the row `sum(x) <= sum_limit`. `time_limit` is the HiGHS time limit in
+    `sum_limit` adds the row `sum(decisions) <= sum_limit`. `time_limit` is the HiGHS time limit in
     seconds for this solve.
     """
     start, index, value = problem.start, problem.index, problem.value
     row_lower, row_upper = problem.row_lower, problem.row_upper
     if sum_limit is not None:
-        extra = np.arange(problem.num_x, dtype=np.int32)
-        start = np.concatenate([start, [start[-1] + problem.num_x]]).astype(np.int32)
+        extra = np.asarray(problem.decision_columns, dtype=np.int32)
+        start = np.concatenate([start, [start[-1] + len(problem.decision_columns)]]).astype(
+            np.int32
+        )
         index = np.concatenate([index, extra])
-        value = np.concatenate([value, np.ones(problem.num_x)])
+        value = np.concatenate([value, np.ones(len(problem.decision_columns))])
         row_lower = np.concatenate([row_lower, [-highspy.kHighsInf]])
         row_upper = np.concatenate([row_upper, [float(sum_limit)]])
 

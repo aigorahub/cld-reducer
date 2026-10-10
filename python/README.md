@@ -1,6 +1,6 @@
 # cld-reducer for Python
 
-Reduce compact letter displays (CLDs) while preserving the pairwise statistical relationships they encode. This is the Python package of the [cld-reducer repository](https://github.com/aigorahub/cld-reducer), which also holds an R package and a JavaScript package. All three solve the assignment-minimum clique covering of Ennis, Fayle, and Ennis (2012), <https://doi.org/10.1145/2133803.2275596>, as a mixed-integer program with [HiGHS](https://highs.dev), and they return the same display for the same input. The rules they follow are in `docs/algorithm.md` in the repository.
+Reduce compact letter displays (CLDs) while preserving the pairwise statistical relationships they encode. This is the Python package of the [cld-reducer repository](https://github.com/aigorahub/cld-reducer), which also holds an R package and a JavaScript package. All three provide CLD-C and default to the CLD-sigma assignment-minimum clique covering of Ennis, Fayle, and Ennis (2012), <https://doi.org/10.1145/2133803.2275596>, as a mixed-integer program with [HiGHS](https://highs.dev), and they return the same display for the same input. The rules they follow are in `docs/algorithm.md` in the repository.
 
 The solver is HiGHS through `highspy`. The dependencies are `highspy`, NumPy, and pandas.
 
@@ -128,3 +128,26 @@ conformance fixtures remain in the repository, so source-distribution tests skip
 those cases when the fixtures are absent. CI tests both installed distributions
 outside the checkout. See `docs/releasing.md` in the repository for release steps.
 Example data reuse remains subject to the conditions in `NOTICE`.
+
+## CLD-C option
+
+The default CLD-sigma (`assignment_minimum`, alias `assignment-minimum`) minimizes
+letter-to-group assignments. CLD-C (`letter_minimum`, alias `letter-minimum`)
+minimizes distinct letters by selecting full maximal cliques. It does not minimize
+assignments as a second objective. Equal optima use the lexicographically greatest
+binary selection vector in canonical clique order. Public `method` metadata uses
+the underscore spelling.
+
+For CLD-sigma, `objective` equals the assignments after reduction. For CLD-C it equals
+the number of letters after reduction. Assignment counts and reduction percentage
+remain assignment measures in both methods. For the simple five-group example,
+sigma uses 8 assignments and 3 letters; C uses 9 assignments and 3 letters.
+
+```python
+result = reduce_letters(pairs, means, method="letter_minimum")
+assert result.stats["objective"] == result.stats["num_letters_after"]
+```
+
+```sh
+cld-reduce pairs.csv --method letter-minimum --out reduced.csv
+```

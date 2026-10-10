@@ -1,11 +1,12 @@
 #' Reduce a compact letter display
 #'
 #' `reduce_letters()` and `reduce_from_adjacency()` find a compact letter
-#' display (CLD) with the fewest letter assignments in which two groups share a
+#' display (CLD) minimizing assignments (CLD-sigma, the default) or distinct
+#' letters (CLD-C), in which two groups share a
 #' letter exactly when they are not significantly different. This is the
 #' assignment-minimum clique covering problem of Ennis, Fayle, and Ennis
 #' (2012). The programs are solved with 'HiGHS'. When several displays have the
-#' same, smallest number of assignments, the function returns the canonical one
+#' same minimum objective, the function returns the canonical one
 #' defined in the specification (`docs/algorithm.md` in the source repository),
 #' so the result does not depend on the solver. The same method is available
 #' in Python and JavaScript, and all three return the same display.
@@ -23,8 +24,10 @@
 #'   order of the groups; without means, the groups are in order of first
 #'   appearance in `group1`, then `group2`. Every mean must be finite.
 #' @param group1,group2,significant Names of the columns of `pairs`.
-#' @param method The reduction method. `"assignment_minimum"` is the only one
-#'   (`"assignment-minimum"` is also accepted).
+#' @param method `"assignment_minimum"` (CLD-sigma, default) minimizes assignments;
+#'   `"letter_minimum"` (CLD-C) minimizes full maximal-clique columns, with no
+#'   assignment secondary objective. Hyphenated aliases are also accepted.
+#'   Public result metadata uses the underscore spelling.
 #' @param time_limit One time budget in seconds for all solves of the call, or
 #'   `NULL` for no limit.
 #' @param max_cliques The largest number of maximal cliques to enumerate before
@@ -46,6 +49,11 @@
 #'     `num_groups`, `num_edges`, `solver_status`, and `objective`;
 #'   * `method`, `groups`, `relationship_preserved`, and `adjacency` (a logical
 #'     matrix).
+#'
+#'   `objective` equals `assignments_after` for CLD-sigma and `num_letters_after`
+#'   for CLD-C. `assignments_after` and `reduction_pct` always measure assignments.
+#'   Equal C optima select the lexicographically greatest binary clique vector
+#'   in canonical order, then use the same stable mean/index letter formatting.
 #'
 #'   The `print()` method shows the display and the counts, and
 #'   `as.data.frame()` gives a table with the columns `group`, `letters`, and
@@ -91,67 +99,25 @@ reduce_from_adjacency <- function(adjacency, groups = NULL, means = NULL,
 }
 
 reduce_graph <- function(graph, method, time_limit, max_cliques) {
-  check_method(method)
+  strategy <- check_method(method)
   controls <- check_controls(time_limit, max_cliques)
   groups <- graph$groups
   adjacency <- graph$adjacency
   size <- length(groups)
 
   cliques <- maximal_cliques(adjacency, controls$max_cliques)
-  model <- build_model(adjacency, cliques)
-  solution <- solve_canonical(model, controls$time_limit)
+  model <- strategy$builder(graph_context(graph, cliques))
+  solution <- solve_canonical(model, controls$time_limit, strategy)
 
-  # Section 7: one column per clique, empty columns dropped, sorted and labeled.
-  columns <- lapply(seq_along(cliques), function(c) {
-    model$members[model$members[, "clique"] == c & solution$selected, "group"]
-  })
-  columns <- columns[lengths(columns) > 0L]
-  keys <- t(vapply(columns, function(members) {
-    lowest <- min(members)
-    if (is.null(graph$means)) c(lowest, lowest) else c(-max(graph$means[members]), lowest)
-  }, numeric(2)))
-  order_of <- order(keys[, 1L], keys[, 2L])   # stable: ties keep the clique order
-  labels <- make_letter_labels(length(columns))
-  tokens <- rep(list(character(0)), size)
-  for (k in seq_along(order_of)) {
-    for (g in columns[[order_of[k]]]) tokens[[g]] <- c(tokens[[g]], labels[k])
-  }
-  names(tokens) <- groups
-  display <- vapply(tokens, function(t) {
-    if (all(nchar(t) == 1L)) paste(t, collapse = "") else paste(t, collapse = " ")
-  }, character(1))
-
-  # Section 8: the letters must give back the input relationships.
-  shared <- outer(seq_len(size), seq_len(size), Vectorize(function(i, j) {
-    length(intersect(tokens[[i]], tokens[[j]])) > 0L
-  }))
-  if (!identical(shared, adjacency)) {
-    solver_error("optimized letters did not preserve the input pairwise relationships")
-  }
-
-  before <- nrow(model$members)
-  after <- sum(lengths(tokens))
-  dimnames(adjacency) <- list(groups, groups)
-  structure(
-    list(
-      letters = display,
-      assignments = tokens,
-      stats = list(
-        assignments_before = before,
-        assignments_after = after,
-        reduction_pct = if (before > 0) (before - after) / before * 100 else 0,
-        num_letters_before = length(cliques),
-        num_letters_after = length(columns),
-        num_groups = size,
-        num_edges = nrow(model$edges),
-        solver_status = "Optimal",
-        objective = solution$minimum
-      ),
-      method = "assignment_minimum",
-      groups = groups,
-      relationship_preserved = TRUE,
-      adjacency = adjacency
-    ),
-    class = "cld_reduction"
-  )
+  columns <- strategy$decoder(cliques, model, solution$selected)
+  render_result(graph, cliques, model, solution, columns, strategy)
 }
+
+reduction_methods <- function() list(
+  list(name = "assignment_minimum", aliases = c("assignment_minimum", "assignment-minimum"),
+       failure_prefix = "assignment-minimum MILP failed: ", builder = build_model,
+       coverage = assignment_coverage, decoder = assignment_columns, counts_assignments = TRUE),
+  list(name = "letter_minimum", aliases = c("letter_minimum", "letter-minimum"),
+       failure_prefix = "letter-minimum MILP failed: ", builder = build_letter_model,
+       coverage = letter_coverage, decoder = letter_columns, counts_assignments = FALSE)
+)

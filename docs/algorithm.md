@@ -2,7 +2,7 @@
 
 This document is the normative specification for every cld-reducer implementation: the R package at the repository root, the Python package in `python/`, and the JavaScript package in `js/`. The conformance generator in `conformance/` follows it too, and its fixtures are the observable form of this document. Where an implementation and this document disagree, this document wins until it is changed through the fix protocol of the plan.
 
-The problem is the assignment-minimum clique covering of Ennis, Fayle, and Ennis (2012), <https://doi.org/10.1145/2133803.2275596>. The input is the non-significance graph of a set of groups. The output is a compact letter display (CLD) with the fewest letter-to-group assignments in which two groups share a letter exactly when they are not significantly different.
+The default CLD-sigma problem is the assignment-minimum clique covering of Ennis, Fayle, and Ennis (2012), <https://doi.org/10.1145/2133803.2275596>. The input is the non-significance graph of a set of groups. The output is a compact letter display (CLD) with the fewest letter-to-group assignments in which two groups share a letter exactly when they are not significantly different.
 
 ## Conventions
 
@@ -78,7 +78,7 @@ Used by `reduce_from_adjacency` and `reduceFromAdjacency`. The input is a square
 
 **Means** follow section 1 and are matched to the groups by label. For adjacency input, the group order is the `groups` argument (or the default), not the means order. Missing means for a group are an invalid input error as in section 1.
 
-**Method.** `method` is `assignment_minimum` (the hyphenated spelling `assignment-minimum` is accepted and stored as `assignment_minimum`). Any other value is an invalid input error with the prefix `unsupported CLD reduction method: ` followed by the quoted value. This check comes after the checks above and before the `time_limit` and `max_cliques` checks of section 6. For pairwise input the call reaches this point after section 1 completes.
+**Method.** `method` is `assignment_minimum` (CLD-sigma, default) or `letter_minimum` (CLD-C). The hyphenated aliases `assignment-minimum` and `letter-minimum` are accepted; public results store the underscore spelling. Any other value is an invalid input error with the prefix `unsupported CLD reduction method: ` followed by the quoted value. This check comes after the checks above and before the `time_limit` and `max_cliques` checks of section 6. For pairwise input the call reaches this point after section 1 completes.
 
 ## 3. Maximal cliques
 
@@ -92,7 +92,9 @@ The cover starts from the set of all maximal cliques of the non-significance gra
 
 **Counts.** `assignments_before` is the sum of the clique sizes. `num_letters_before` is `k`.
 
-## 4. Model
+## 4. CLD-sigma model
+
+The alternative pure CLD-C model is specified in section 14.
 
 Let `E` be the edges. Variables, all binary:
 
@@ -111,7 +113,9 @@ Significant pairs have no constraint, and they need none: a membership `x[c, g]`
 
 Variable order for the tie-break of section 5 is the `x` variables sorted by `(c, g)`: clique in canonical order, then group index ascending. The `y` variables have no order requirement; implementations may place them anywhere.
 
-## 5. Canonical solve
+## 5. Common canonical solve
+
+The following describes sigma memberships; for C use z variables in canonical clique order. The common engine visits only the ordered `decision_columns`, caps only their sum, and uses the selected method coverage check. Sigma y variables are excluded.
 
 Many graphs have several optimal coverings (the Piepho 2004 wheat example has 64). To make every implementation return the same one, the result is pinned:
 
@@ -156,19 +160,19 @@ R keeps presolve off because the CRAN `highs` package bundles HiGHS 1.14, where 
 
 **Checks after each solve.**
 
-1. The model status must be optimal. For the re-solves of section 5, infeasible is also allowed and means "cannot set this variable to 1". With presolve on, HiGHS can report "unbounded or infeasible" for an infeasible model; no model here is unbounded, so that status counts as infeasible in the re-solves only. Any other status is a solver error with the prefix `assignment-minimum MILP failed: ` followed by the HiGHS status text. In the first solve, infeasible is also an error with that prefix.
+1. The model status must be optimal. For the re-solves of section 5, infeasible is also allowed and means "cannot set this variable to 1". With presolve on, HiGHS can report "unbounded or infeasible" for an infeasible model; no model here is unbounded, so that status is always mapped to infeasible by the adapter, preserving its text; only the engine accepts infeasible trials. Any other status is a solver error with the prefix `assignment-minimum MILP failed: ` followed by the HiGHS status text. In the first solve, infeasible is also an error with that prefix.
 2. Every `x` must be finite and within 1e-6 of 0 or within 1e-6 of 1. Being integral is not enough: a value such as 2 or -1 is invalid. Then `x` is read as 1 when it is above 0.5.
 3. The rounded `x` must agree with the fixings made so far (fixed to 1 are 1, fixed to 0 are 0).
 4. The rounded `x` must give every group a membership and cover every edge (some clique has both ends set to 1).
-5. `sum(x)` must equal the rounded objective value on the first solve, and `z` on every later solve.
+5. The reported initial objective must be finite before rounding. The counted decisions must equal that rounded objective on the first solve, and the stored integer optimum on every later feasible solve. There is no absolute objective tolerance band.
 
 When check 2 to 5 fails, raise a solver error with the prefix `HiGHS returned an invalid solution`. The status text in check 1 is the text HiGHS uses for its model status (for example `Time limit reached`, `Infeasible`).
 
 ## 7. Letters
 
-From the final `x`:
+From the final decisions (sigma x or C z):
 
-1. **Columns.** One column per clique; the members are the groups with `x[c, g] = 1`. Drop columns with no member. The columns keep the canonical clique order.
+1. **Columns.** One column per clique; the members are the groups with `x[c, g] = 1`. Drop columns with no member. For C retain each selected full maximal clique. The columns keep the canonical clique order.
 2. **Order.** Sort the columns with a stable sort over the canonical order. The key is:
    - with means: `(-m, i)`, where `m` is the highest mean among the column's selected members and `i` is the lowest index among them (ascending: higher highest mean first, then lower lowest index);
    - without means: `(i, i)`, where `i` is the lowest index among the selected members.
@@ -190,7 +194,7 @@ Rebuild the relationships from the tokens: groups `i` and `j` share a letter whe
 | `letters` | group label to display string (section 7) |
 | `assignments` | group label to tokens (section 7) |
 | `groups` | group labels in group order |
-| `method` | `"assignment_minimum"` |
+| `method` | normalized `"assignment_minimum"` or `"letter_minimum"` |
 | `relationship_preserved` | true |
 | `adjacency` | the input matrix as booleans |
 | `stats` | the table below |
@@ -207,7 +211,7 @@ Statistics (R and Python snake case, JavaScript camel case):
 | `num_groups` | `numGroups` | number of groups |
 | `num_edges` | `numEdges` | number of edges `i < j` with adjacency true |
 | `solver_status` | `solverStatus` | the text `Optimal` |
-| `objective` | `objective` | the minimum `z`, a whole number equal to `assignments_after` |
+| `objective` | `objective` | minimum assignments (sigma) or letters (C), a whole number |
 
 `reduction_pct` is not rounded in any language: the IEEE operations give the same double everywhere, and rounding functions differ at ties. R's `print()` method and the example scripts round it to one decimal for display only.
 
@@ -252,7 +256,7 @@ Solver error prefixes and messages:
 - `time_limit must be positive when provided`
 - `max_cliques must be a positive integer or ` followed by `None`, `NULL`, or `null`
 - `maximal clique enumeration exceeded max_cliques=`
-- `assignment-minimum MILP failed: ` followed by the HiGHS status text
+- `assignment-minimum MILP failed: ` or `letter-minimum MILP failed: ` followed by the HiGHS status text
 - `HiGHS returned an invalid solution`
 - `optimized letters did not preserve the input pairwise relationships`
 
@@ -317,7 +321,7 @@ import {
 
 interface ReduceOptions {
   means?: Map<string, number> | ReadonlyArray<{ group: string; mean: number }>;
-  method?: "assignment_minimum" | "assignment-minimum";
+  method?: string; // "assignment_minimum" | "assignment-minimum" | "letter_minimum" | "letter-minimum"
   timeLimit?: number;               // seconds, one budget for all solves
   maxCliques?: number | null;       // default 10000; null removes the cap
   group1?: string; group2?: string; significant?: string;   // pairs only
@@ -371,3 +375,48 @@ function loadSolver(options?: { locateFile?: (file: string) => string;
 ## 13. Conformance
 
 `conformance/` holds the inputs, a standard library Python generator that finds the expected results by exact search (never by a solver), and the fixtures. A result passes when the group order, assignments, letters, integer statistics, `solver_status`, and `objective` are equal to the fixture, `reduction_pct` equals `(before - after) / before * 100` computed from the fixture integers, and each error case matches kind and message prefix. Each runner (`python/tests/test_conformance.py`, `js/scripts/conformance.mjs`, `conformance/run_r.R`) runs the cases and first proves that its checker rejects a display that loses a relationship, a valid but non canonical optimum, and a non minimal display.
+
+## 14. CLD-C and the common framework
+
+`letter_minimum` (alias `letter-minimum`) selects full maximal cliques and minimizes
+their count C. `assignment_minimum` (alias `assignment-minimum`) remains the default
+CLD-sigma. Public results normalize aliases to the underscore names.
+
+For C, one binary z[c] selects each canonical maximal clique. Minimize sum(z).
+Every group and every non-significant edge must occur in at least one selected clique.
+Isolates use singleton cliques. Any valid column can expand to a maximal clique
+without increasing C; duplicate expanded columns can merge. Thus these columns
+attain the unrestricted minimum C. There is no assignment secondary objective.
+Among minimum C solutions choose the lexicographically greatest z vector in
+canonical clique order. Decode each selected clique in full, then use section 7's
+stable mean/index sort and formatting. The simple five-group example has C=3 and
+9 assignments, while sigma has 8 assignments.
+
+Each language has one pipeline, registry, binary-model contract, canonical engine,
+solver adapter, renderer and result checks. The two registry entries supply their
+model builder, decision coverage check and column decoder. Production normalization
+uses this registry; the independent reference has its own allow-list. No foreign
+runtime or generator is needed.
+
+`decision_columns` explicitly specifies both objective support and canonical order:
+unique valid native indices (one-based in R, zero-based in Python/JavaScript).
+These columns have unit costs; auxiliary columns have zero costs. Sigma's y columns
+never enter the cap row or fixing loop. The engine validates vector length, finite
+binary decisions, fixed bounds, strategy coverage and counted objective. Before
+rounding the initial reported objective it must be finite; round(objective) must
+equal the decision count. Store that integer optimum and compare subsequent
+feasible decision counts with it, without an absolute objective tolerance band.
+All canonical solves use one deadline. Adapters always map unbounded-or-infeasible
+to infeasible and retain status text. Only an infeasible trial skips numeric vector
+checks and fixes its decision to zero; initial infeasibility fails. C status errors
+use `letter-minimum MILP failed: `. Other errors and validation order are unchanged.
+
+Reconstructed relationships must match the input before return. The selected
+strategy determines the objective check: assignments_after for sigma,
+num_letters_after for C. assignments_after and reduction_pct remain assignment
+counts/reduction for both methods. The Python historical helper always runs sigma
+and overrides only its method metadata, after sigma result validation.
+
+The documented TypeScript spellings are `assignment_minimum`, `assignment-minimum`,
+`letter_minimum`, `letter-minimum`; the public `method?: string` stays unrestricted
+so unsupported strings receive the established runtime input error.

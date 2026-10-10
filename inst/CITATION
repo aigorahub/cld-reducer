@@ -10,7 +10,7 @@ bibentry(
 
 bibentry(
   bibtype = "Article",
-  header = "cldreducer solves the assignment-minimum clique covering problem of:",
+  header = "The default CLD-sigma method solves the assignment-minimum clique covering problem of:",
   title = "Assignment-Minimum Clique Coverings",
   author = c(
     person(c("John", "M."), "Ennis"),

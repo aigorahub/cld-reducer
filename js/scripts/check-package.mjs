@@ -44,6 +44,8 @@ import { reduceFromAdjacency } from "cld-reducer";
 const matrix = [[1,1,1,0,0],[1,1,1,1,0],[1,1,1,1,1],[0,1,1,1,1],[0,0,1,1,1]];
 const means = new Map([["1", 3.73], ["2", 3.57], ["3", 3.46], ["4", 3.33], ["5", 3.3]]);
 const result = await reduceFromAdjacency(matrix, { means });
+const c = await reduceFromAdjacency(matrix, {means, method:"letter-minimum"});
+if (c.method !== "letter_minimum" || c.stats.objective !== 3 || c.stats.assignmentsAfter !== 9 || c.letters["3"] !== "ABC") throw new Error("installed C behavior differs");
 console.log(JSON.stringify(result.letters));
 `);
 const run = spawnSync(process.execPath, ["example.mjs"], { cwd: project, encoding: "utf8" });
@@ -58,7 +60,9 @@ import { reduceLetters, reduceFromAdjacency, loadSolver,
   CldReducerError, InvalidInputError, SolverError,
   type CldReduction, type CldStats, type LoadOptions,
   type ReduceOptions, type Means } from "cld-reducer";
-const options: ReduceOptions = {};
+const options: ReduceOptions = {method: "letter_minimum"};
+const runtimeString: ReduceOptions = {method: "unsupported-for-runtime-validation"};
+void runtimeString;
 const means: Means = new Map([["a", 1]]);
 const loading: LoadOptions = {};
 const solver = loadSolver(loading);

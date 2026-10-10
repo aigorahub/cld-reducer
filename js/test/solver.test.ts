@@ -2,7 +2,7 @@
 import highsImport from "highs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SolverError, loadSolver, reduceFromAdjacency, reduceLetters } from "../src/index.js";
-import { clock } from "../src/reduce.js";
+import { clock } from "../src/canonical.js";
 import * as solver from "../src/solver.js";
 import { SIMPLE, hasConformance, wheatPairs } from "./helpers.js";
 
@@ -112,7 +112,7 @@ describe("failure paths", () => {
       const out = realRun(problem, lower, upper, sumLimit, t);
       if (sumLimit !== null || !out.values) return out;
       const v = Float64Array.from(out.values);
-      v[v.findIndex((x, k) => k < problem.numX && x > 0.5)] = 0;
+      v[problem.decisionColumns.find(k => v[k] > 0.5)!] = 0;
       return { ...out, values: v };
     };
     await expect(reduceFromAdjacency(SIMPLE)).rejects.toThrow(/HiGHS returned an invalid solution/);
@@ -124,7 +124,7 @@ describe("failure paths", () => {
   const offCanonicalFirstSolve = (): typeof solver.hooks.run => (problem, lower, upper, sumLimit, t) => {
     if (sumLimit === null) {
       const cost = Float64Array.from(problem.cost);
-      for (let k = 0; k < problem.numX; k++) cost[k] = 1 + 1e-3 * (problem.numX - k) / problem.numX;
+      for (let k = 0; k < problem.decisionColumns.length; k++) cost[problem.decisionColumns[k]] = 1 + 1e-3 * (problem.decisionColumns.length - k) / problem.decisionColumns.length;
       return realRun({ ...problem, cost }, lower, upper, sumLimit, t);
     }
     return realRun(problem, lower, upper, sumLimit, t);
@@ -151,7 +151,7 @@ describe("failure paths", () => {
       const out = first(problem, lower, upper, sumLimit, t);
       if (sumLimit !== null && out.status === "optimal") {
         const v = Float64Array.from(out.values!);
-        v[lower.findIndex((x, k) => k < problem.numX && x > 0.5)] = 0;
+        v[problem.decisionColumns.find(k => lower[k] > 0.5)!] = 0;
         return { ...out, values: v };
       }
       return out;

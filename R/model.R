@@ -3,7 +3,9 @@
 # Build the model for the cliques. The first `num_x` columns are the
 # membership variables x[c, g], numbered in canonical (clique, group) order; the
 # rest are the y variables (edge, clique).
-build_model <- function(adjacency, cliques) {
+build_model <- function(context) {
+  adjacency <- context$adjacency
+  cliques <- context$cliques
   size <- nrow(adjacency)
   members <- do.call(rbind, lapply(seq_along(cliques), function(c) {
     cbind(clique = rep(c, length(cliques[[c]])), group = cliques[[c]])
@@ -11,10 +13,9 @@ build_model <- function(adjacency, cliques) {
   num_x <- nrow(members)
   x_index <- matrix(0L, nrow = length(cliques), ncol = size)
   x_index[members] <- seq_len(num_x)
-  cliques_of <- lapply(seq_len(size), function(g) members[members[, "group"] == g, "clique"])
+  cliques_of <- context$cliques_of
 
-  edges <- which(adjacency & upper.tri(adjacency), arr.ind = TRUE)
-  edges <- edges[order(edges[, 1L], edges[, 2L]), , drop = FALSE]
+  edges <- context$edges
   num_edges <- nrow(edges)
 
   y_edge <- integer(0)
@@ -60,7 +61,7 @@ build_model <- function(adjacency, cliques) {
   }
   cost <- c(rep(1, num_x), rep(0, num_y))
   problem <- list(
-    num_cols = num_cols, num_x = num_x, cost = cost,
+    num_cols = num_cols, decision_columns = seq_len(num_x), cost = cost,
     matrix = Matrix::sparseMatrix(i = rows, j = cols, x = vals,
                                   dims = c(length(lower), num_cols)),
     row_lower = lower, row_upper = upper
@@ -77,78 +78,42 @@ build_model <- function(adjacency, cliques) {
   )
 }
 
-# One solve under the shared time budget. Returns the solver outcome; an
-# infeasible outcome is returned only when `sum_limit` is set (a re-solve).
-solve_step <- function(model, col_lower, col_upper, sum_limit, deadline) {
-  remaining <- Inf
-  if (!is.null(deadline)) {
-    remaining <- deadline - elapsed()
-    if (remaining <= 0) {
-      solver_error("assignment-minimum MILP failed: Time limit reached")
-    }
-  }
-  outcome <- solve_lp(model$problem, col_lower, col_upper, sum_limit, remaining)
-  if (identical(outcome$status, "infeasible") && !is.null(sum_limit)) {
-    return(outcome)
-  }
-  if (!identical(outcome$status, "optimal")) {
-    solver_error("assignment-minimum MILP failed: ", outcome$text)
-  }
-  outcome
+assignment_coverage <- function(model, selected) {
+  all(vapply(model$group_columns, function(k) any(selected[k]), logical(1))) &&
+    all(vapply(model$edge_ends, function(ends) {
+      any(selected[ends[, 1L]] & selected[ends[, 2L]])
+    }, logical(1)))
+}
+assignment_columns <- function(cliques, model, selected) {
+  columns <- lapply(seq_along(cliques), function(c) {
+    model$members[model$members[, "clique"] == c & selected, "group"]
+  })
+  columns[lengths(columns) > 0L]
 }
 
-# Section 6, checks 2 to 5. Returns the rounded x as logicals.
-check_solution <- function(model, outcome, col_lower, col_upper, expected_sum) {
-  invalid <- function() solver_error("HiGHS returned an invalid solution")
-  problem <- model$problem
-  values <- outcome$values
-  if (length(values) != problem$num_cols || anyNA(values)) invalid()
-  x <- values[seq_len(problem$num_x)]
-  # Each membership must be 0 or 1 within the tolerance; an integral 2 or -1 is invalid too.
-  binary <- is.finite(x) & (abs(x) <= 1e-6 | abs(x - 1) <= 1e-6)
-  if (!all(binary)) invalid()
-  selected <- x > 0.5
-  if (any(selected & col_upper[seq_len(problem$num_x)] < 0.5) ||
-      any(!selected & col_lower[seq_len(problem$num_x)] > 0.5)) {
-    invalid()
-  }
-  if (!all(vapply(model$group_columns, function(k) any(selected[k]), logical(1)))) invalid()
-  if (!all(vapply(model$edge_ends, function(ends) {
-    any(selected[ends[, 1L]] & selected[ends[, 2L]])
-  }, logical(1)))) {
-    invalid()
-  }
-  wanted <- if (is.null(expected_sum)) round(outcome$objective) else expected_sum
-  if (sum(selected) != wanted) invalid()
-  selected
+graph_context <- function(graph, cliques) {
+  edges <- which(graph$adjacency & upper.tri(graph$adjacency), arr.ind = TRUE)
+  edges <- edges[order(edges[, 1L], edges[, 2L]), , drop = FALSE]
+  c(graph, list(cliques = cliques, edges = edges,
+    cliques_of = lapply(seq_along(graph$groups), function(g) {
+      which(vapply(cliques, function(q) g %in% q, logical(1)))
+    })))
 }
 
-# Solve once for the minimum, then fix the memberships in (clique, group) order
-# (docs/algorithm.md section 5). Returns the selected x and the minimum.
-solve_canonical <- function(model, time_limit) {
-  problem <- model$problem
-  deadline <- if (is.null(time_limit)) NULL else elapsed() + time_limit
-  col_lower <- rep(0, problem$num_cols)
-  col_upper <- rep(1, problem$num_cols)
-
-  outcome <- solve_step(model, col_lower, col_upper, NULL, deadline)
-  selected <- check_solution(model, outcome, col_lower, col_upper, NULL)
-  minimum <- round(outcome$objective)
-
-  for (v in seq_len(problem$num_x)) {
-    if (selected[v]) {
-      col_lower[v] <- 1
-      next
-    }
-    trial <- col_lower
-    trial[v] <- 1
-    outcome <- solve_step(model, trial, col_upper, minimum, deadline)
-    if (identical(outcome$status, "infeasible")) {
-      col_upper[v] <- 0
-      next
-    }
-    selected <- check_solution(model, outcome, trial, col_upper, minimum)
-    col_lower <- trial
-  }
-  list(selected = selected, minimum = minimum)
+build_letter_model <- function(context) {
+  n <- length(context$cliques)
+  edge_columns <- lapply(seq_len(nrow(context$edges)), function(e) {
+    intersect(context$cliques_of[[context$edges[e, 1L]]],
+              context$cliques_of[[context$edges[e, 2L]]])
+  })
+  columns <- c(context$cliques_of, edge_columns)
+  list(problem = list(num_cols = n, decision_columns = seq_len(n), cost = rep(1, n),
+    matrix = Matrix::sparseMatrix(i = rep(seq_along(columns), lengths(columns)),
+      j = unlist(columns), x = 1, dims = c(length(columns), n)),
+    row_lower = rep(1, length(columns)), row_upper = rep(Inf, length(columns))),
+    edges = context$edges, coverage_columns = columns)
 }
+letter_coverage <- function(model, selected) {
+  all(vapply(model$coverage_columns, function(cs) any(selected[cs]), logical(1)))
+}
+letter_columns <- function(cliques, model, selected) cliques[selected]

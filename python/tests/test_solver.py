@@ -9,8 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from cld_reducer import SolverError, _solver, reduce_from_adjacency, reduce_letters
-from cld_reducer.algorithms import assignment_minimum
+from cld_reducer import SolverError, _solver, canonical, reduce_from_adjacency, reduce_letters
 
 WHEAT_CSV = "piepho2004_wheat_pairs.csv"
 
@@ -90,7 +89,7 @@ def test_time_budget_is_shared_across_solves(monkeypatch: pytest.MonkeyPatch) ->
         clock["now"] += 10.0  # every solve "takes" 10 seconds
         return outcome
 
-    monkeypatch.setattr(assignment_minimum, "_now", lambda: clock["now"])
+    monkeypatch.setattr(canonical, "_now", lambda: clock["now"])
     monkeypatch.setattr(_solver, "run", wrapper)
 
     with pytest.raises(SolverError, match="assignment-minimum MILP failed: Time limit reached"):
@@ -202,9 +201,11 @@ def first_solve_off_canonical(monkeypatch: pytest.MonkeyPatch):
 
     def perturbed(problem, col_lower, col_upper, *, sum_limit=None, time_limit=None):
         if sum_limit is None:
-            k = np.arange(problem.num_x)
+            k = np.arange(len(problem.decision_columns))
             cost = problem.cost.copy()
-            cost[: problem.num_x] = 1 + 1e-3 * (problem.num_x - k) / problem.num_x
+            cost[problem.decision_columns] = 1 + 1e-3 * (len(problem.decision_columns) - k) / len(
+                problem.decision_columns
+            )
             problem = dataclasses.replace(problem, cost=cost)
         return real(problem, col_lower, col_upper, sum_limit=sum_limit, time_limit=time_limit)
 
@@ -238,7 +239,9 @@ def test_solution_violating_a_fixing_is_invalid(monkeypatch: pytest.MonkeyPatch)
         outcome = real(problem, col_lower, col_upper, **kwargs)
         if outcome.status == _solver.OPTIMAL and kwargs["sum_limit"] is not None:
             values = outcome.values.copy()
-            fixed = np.flatnonzero(col_lower[: problem.num_x] > 0.5)[0]
+            fixed = problem.decision_columns[
+                np.flatnonzero(col_lower[problem.decision_columns] > 0.5)[0]
+            ]
             values[fixed] = 0.0  # report a membership fixed to one as zero
             return dataclasses.replace(outcome, values=values)
         return outcome
@@ -259,7 +262,9 @@ def test_solution_that_leaves_an_edge_uncovered_is_invalid(
         if kwargs["sum_limit"] is None:
             # Drop the first membership that is selected but not needed to hold a group.
             values = outcome.values.copy()
-            values[np.flatnonzero(values[: problem.num_x] > 0.5)[0]] = 0.0
+            values[
+                problem.decision_columns[np.flatnonzero(values[problem.decision_columns] > 0.5)[0]]
+            ] = 0.0
             return dataclasses.replace(outcome, values=values)
         return outcome
 

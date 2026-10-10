@@ -93,3 +93,25 @@ An `errors` case passes when the call fails with an error of the expected kind (
 - 16 random candidates are left out because they have more than 70 membership variables (11 with 12 groups, 4 with 11 groups, 1 with 10 groups). The pure Python exact search is too slow on them, and the exclusion rule depends only on the graph, so it is the same on every machine.
 - Exhaustive graphs with 6 or more groups are not fixtures (32768 and 2097152 graphs); the cross check in `test_generate.py` covers all graphs with 6 groups.
 - The adjacency rule "at least one group" cannot be reached from JSON (an empty list has no second dimension and gives the square matrix error), so it has no error fixture.
+
+## CLD-C fixtures
+
+`generate.py build()` emits `fixtures/reduce_letter_minimum.json` alongside the
+byte-identical sigma `reduce.json`. All three runners load both files, using each
+record's method. C covers all valid existing input families, including dense random
+graphs excluded from the sigma reference, plus repository-contained witness graphs
+and its alias. Every C expected result stores `letter_minimum`.
+
+The C generator searches set covers over canonically sorted maximal cliques. Its
+independent test enumerates nonempty vertex subsets, filters to maximal cliques,
+then enumerates their covers. It compares cliques, minimum C, canonical decisions,
+full columns, assignments and rendered output on all 33,867 labeled graphs with
+one to six groups. K6 has one maximal clique and two subset states; no six-vertex
+graph has more than nine maximal cliques. It never searches subsets of all
+nonmaximal cliques. These are standard-library searches with no production imports.
+
+`checker.json` retains the wheat negatives and adds C relationship-loss,
+nonminimum-cover and minimum-but-noncanonical-cover records keyed to their matching
+C fixture IDs. Each runner proves those expected records pass its same checker
+before requiring rejection of the negatives. The manifest records C counts and
+method-specific exclusions.

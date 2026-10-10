@@ -9,7 +9,7 @@
 
 cld-reducer reduces compact letter displays (CLDs) while preserving the pairwise statistical relationships they encode. It comes as an R package (`cldreducer`, at the root of this repository), a Python package (`cld-reducer`, in [`python/`](python/)), and a JavaScript and TypeScript package (`cld-reducer`, in [`js/`](js/)). All three solve the problem with the HiGHS solver, follow one specification, and return the same display for the same input.
 
-It implements the **assignment-minimum clique covering** problem introduced by Ennis, Fayle, and Ennis (2012): finding a CLD that uses the fewest possible individual letter-to-group assignments. The 2012 paper solves this problem with a backtracking algorithm (FIND-AM); this repository solves the same problem as a binary mixed-integer program with HiGHS. It is the implementation behind the CLD letter-reduction work presented at Sensometrics 2026.
+Its default CLD-sigma method implements the **assignment-minimum clique covering** problem introduced by Ennis, Fayle, and Ennis (2012): finding a CLD that uses the fewest possible individual letter-to-group assignments. The 2012 paper solves this problem with a backtracking algorithm (FIND-AM); this repository solves the same problem as a binary mixed-integer program with HiGHS. It is the implementation behind the CLD letter-reduction work presented at Sensometrics 2026.
 
 See [submission status](docs/submission-status.md) for registry availability and [release instructions](docs/releasing.md) for the release process. The commands below install from the repository.
 
@@ -127,7 +127,7 @@ See [js/README.md](js/README.md) for the pairwise input, the options, and loadin
 
 ## Method
 
-The method is `assignment_minimum`.
+The default method is `assignment_minimum` (CLD-sigma). Use `letter_minimum` for pure CLD-C.
 
 1. Build the non-significance graph from the pairwise results.
 2. Find all maximal cliques. Every assignment-minimum covering is a subcovering of the maximal covering, which is the starting point used by the 2012 paper.
@@ -168,3 +168,26 @@ See `CITATION.cff` for machine-readable citation metadata.
 ## License
 
 MIT. See `LICENSE.md`.
+
+## CLD-C option
+
+The default CLD-sigma (`assignment_minimum`, alias `assignment-minimum`) minimizes
+letter-to-group assignments. CLD-C (`letter_minimum`, alias `letter-minimum`)
+minimizes distinct letters by selecting full maximal cliques. It does not minimize
+assignments as a second objective. Equal optima use the lexicographically greatest
+binary selection vector in canonical clique order. Public `method` metadata uses
+the underscore spelling.
+
+For CLD-sigma, `objective` equals the assignments after reduction. For CLD-C it equals
+the number of letters after reduction. Assignment counts and reduction percentage
+remain assignment measures in both methods. For the simple five-group example,
+sigma uses 8 assignments and 3 letters; C uses 9 assignments and 3 letters.
+
+```r
+result <- reduce_letters(simple_abc_pairs, simple_abc_means, method = "letter_minimum")
+result$stats$objective            # 3 letters
+result$stats$assignments_after    # 9 assignments
+```
+
+Version 0.3.0 is a development candidate. The published 0.2.0 packages and pending
+frozen CRAN candidate are unchanged.

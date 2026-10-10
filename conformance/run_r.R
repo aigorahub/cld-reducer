@@ -133,7 +133,7 @@ as_actual <- function(result) {
   )
 }
 
-reduce_cases <- read_fixture("reduce")$cases
+reduce_cases <- c(read_fixture("reduce")$cases, read_fixture("reduce_letter_minimum")$cases)
 
 # The checker must accept the expected wheat result and reject the three wrong ones.
 local({
@@ -144,7 +144,12 @@ local({
   wrong <- c(list(wheat$non_canonical), lapply(read_fixture("checker")$bad, `[[`, "result"))
   rejected <- vapply(wrong, function(bad) length(mismatches(as_actual(bad), wheat$expected)) > 0L,
                      logical(1))
-  if (length(wrong) != 3L || !all(rejected)) stop("the conformance checker accepts a wrong result")
+  if (!all(rejected)) stop("the conformance checker accepts a wrong result")
+  for (bad in read_fixture("checker")$letter_bad) {
+    expected <- reduce_cases[[which(vapply(reduce_cases, function(c) c$id, "") == bad$case)]]$expected
+    if (length(mismatches(as_actual(expected), expected)) != 0L ||
+        length(mismatches(as_actual(bad$result), expected)) == 0L) stop("C checker failed")
+  }
 })
 
 counts <- c(reduce = 0L, errors = 0L, labels = 0L, data = 0L)
@@ -156,6 +161,12 @@ for (case in reduce_cases) {
   } else {
     bad <- mismatches(actual_of(result), case$expected)
     if (length(bad) > 0L) fail(case$id, "differs in ", paste(bad, collapse = ", "))
+    if (!is.null(case$sigma_expected)) {
+      sigma <- case
+      sigma$options$method <- "assignment_minimum"
+      bad <- mismatches(actual_of(call_case(sigma)), case$sigma_expected)
+      if (length(bad) > 0L) fail(case$id, "sigma differs in ", paste(bad, collapse = ", "))
+    }
   }
   counts[["reduce"]] <- counts[["reduce"]] + 1L
 }

@@ -29,6 +29,13 @@ for name, count in [("simple_abc_to_ac", 5), ("piepho2004_wheat", 20)]:
     assert len(result.groups) == count
     assert result.relationship_preserved
     assert result.stats["assignments_after"] == (8 if count == 5 else 44)
+    c = reduce_letters(pairs, means, method="letter-minimum")
+    assert c.method == "letter_minimum"
+    assert c.stats["objective"] == c.stats["num_letters_after"]
+    assert c.stats["assignments_after"] == (9 if count == 5 else 56)
+from cld_reducer.algorithms.assignment_minimum import reduce_assignment_minimum
+sigma = reduce_assignment_minimum([[1]], ["001"], method="metadata-only")
+assert sigma.method == "metadata-only" and sigma.stats["objective"] == 1
 from cld_reducer.cli import main
 for labels in [("001", "002"), ("NA", "NaN"), ("", "b")]:
     pairs = pd.DataFrame({"left": [labels[0]], "right": [labels[1]], "different": [False]})
@@ -37,6 +44,8 @@ for labels in [("001", "002"), ("NA", "NaN"), ("", "b")]:
     args = ["pairs.csv", "--means", "means.csv", "--out", "out.csv", "--group1", "left",
             "--group2", "right", "--significant", "different"]
     assert main(args) == 0
+    assert main(args + ["--method", "letter_minimum"]) == 0
+    assert main(args + ["--method", "letter-minimum"]) == 0
     result = pd.read_csv("out.csv", dtype=str, keep_default_na=False)
     assert result["group"].tolist() == list(labels)
 print("installed API, exact CLI labels, simple and wheat cases passed", cld_reducer.__version__)
@@ -59,7 +68,11 @@ def check_contents(wheel, source):
 
     with zipfile.ZipFile(wheel) as archive:
         files = set(archive.namelist())
-        for name in ["cld_reducer/__init__.py", "cld_reducer/cli.py", "cld_reducer/NOTICE"]:
+        for name in [
+            "cld_reducer/__init__.py",
+            "cld_reducer/cli.py",
+            "cld_reducer/NOTICE",
+        ]:
             assert name in files, name
         assert any(name.endswith("/licenses/LICENSE") for name in files), "wheel LICENSE"
         assert all(name.startswith("cld_reducer/") or ".dist-info/" in name for name in files)

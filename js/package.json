@@ -1,6 +1,6 @@
 {
   "name": "cld-reducer",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Reduce compact letter displays while preserving pairwise statistical relationships",
   "keywords": [
     "compact-letter-display",

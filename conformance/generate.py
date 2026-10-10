@@ -250,6 +250,61 @@ class Model:
         return z, sel
 
 
+class LetterModel(Model):
+    """Independent exact set-cover search over full maximal cliques only."""
+
+    def __init__(self, n, edges):
+        super().__init__(n, edges)
+        self.constraints = [
+            [1 << c for c, q in enumerate(self.cliques) if g in q]
+            for g in range(n)
+        ] + [
+            [1 << c for c, q in enumerate(self.cliques) if i in q and j in q]
+            for i, j in self.edges
+        ]
+
+    def search(self, fixed_in=0, fixed_out=0, limit=None):
+        options = [[b for b in row if not b & fixed_out] for row in self.constraints]
+        if any(not row for row in options):
+            return None
+        best = limit + 1 if limit is not None else len(self.cliques) + 1
+        found = None
+        seen = set()
+
+        def visit(selected):
+            nonlocal best, found
+            if selected in seen or selected.bit_count() >= best:
+                return
+            seen.add(selected)
+            lacking = [row for row in options if not any(selected & b for b in row)]
+            if not lacking:
+                best, found = selected.bit_count(), selected
+                return
+            for bit in min(lacking, key=len):
+                visit(selected | bit)
+                if limit is not None and found is not None:
+                    return
+
+        visit(fixed_in)
+        return found
+
+    def canonical(self, order=None):
+        selected = self.search()
+        minimum = selected.bit_count()
+        fixed_in = fixed_out = 0
+        for c in (range(len(self.cliques)) if order is None else order):
+            if selected >> c & 1:
+                fixed_in |= 1 << c
+            else:
+                trial = self.search(fixed_in | 1 << c, fixed_out, minimum)
+                if trial is None:
+                    fixed_out |= 1 << c
+                else:
+                    selected = trial
+                    fixed_in |= 1 << c
+        return minimum, selected
+
+
 # ------------------------------------------------------------ the input rules ----
 
 class SpecError(Exception):
@@ -340,8 +395,9 @@ def match_means(means, groups):
 
 def check_method(options):
     method = options.get("method", "assignment_minimum")
-    if method not in ("assignment_minimum", "assignment-minimum"):
+    if method not in ("assignment_minimum", "assignment-minimum", "letter_minimum", "letter-minimum"):
         raise invalid("unsupported CLD reduction method: %r" % (method,))
+    return method.replace("-", "_")
 
 
 def check_controls(options):
@@ -455,7 +511,7 @@ def build_display(model, groups, means, selected, mean_order=None):
     n = model.n
     columns = []
     for c, clique in enumerate(model.cliques):
-        members = [g for g in clique if selected >> model.index[(c, g)] & 1]
+        members = (list(clique) if selected >> c & 1 else []) if isinstance(model, LetterModel) else [g for g in clique if selected >> model.index[(c, g)] & 1]
         if members:
             columns.append(members)
     if means is not None:
@@ -504,7 +560,7 @@ def result_dict(model, groups, means, selected, z):
         "solver_status": "Optimal",
         "objective": z,
         "reduction_pct": {"numerator": before - after, "denominator": before},
-        "method": "assignment_minimum",
+        "method": "letter_minimum" if isinstance(model, LetterModel) else "assignment_minimum",
         "relationship_preserved": True,
     }
 
@@ -512,7 +568,8 @@ def result_dict(model, groups, means, selected, z):
 def solve_case(case, with_alternatives=False):
     """Expected result of a valid case (raises SpecError for an invalid one)."""
     groups, edges, means, cap = graph_of(case)
-    model = Model(len(groups), edges)
+    model_class = LetterModel if check_method(case["options"]) == "letter_minimum" else Model
+    model = model_class(len(groups), edges)
     if cap is not None and len(model.cliques) > cap:
         raise solver_error("maximal clique enumeration exceeded max_cliques=%d; "
                            "increase max_cliques or pass None to disable the cap" % cap)
@@ -974,6 +1031,72 @@ def error_cases():
     return cases
 
 
+C_WITNESSES = [{'id': 'c/grok-seven-group-witness', 'n': 7, 'edges': [[0, 1], [0, 2], [0, 5], [0, 6], [1, 2], [1, 3], [1, 4], [1, 6], [2, 4], [2, 5], [3, 4], [3, 5], [3, 6], [4, 6], [5, 6]]}, {'id': 'c/strict-tradeoff-witness', 'n': 8, 'edges': [[0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [1, 2], [1, 3], [1, 4], [1, 6], [2, 3], [2, 4], [2, 7], [3, 4], [3, 5], [3, 7], [4, 5], [4, 6], [5, 6], [5, 7], [6, 7]]}, {'id': 'c/objective-witness', 'n': 8, 'edges': [[0, 1], [0, 2], [0, 3], [0, 5], [0, 6], [1, 2], [1, 3], [1, 5], [1, 6], [1, 7], [2, 4], [2, 5], [2, 6], [2, 7], [3, 4], [3, 5], [3, 7], [4, 5], [4, 6], [4, 7], [5, 7], [6, 7]]}]
+
+def letter_cases(cases, files):
+    """All valid input families, including sigma-excluded dense random graphs."""
+    import copy
+    out = []
+    for case in cases:
+        c = copy.deepcopy(case)
+        c.pop("expected", None)
+        c.pop("non_canonical", None)
+        c["id"] = "c/" + c["id"]
+        c["options"]["method"] = "letter_minimum"
+        out.append(c)
+    present = {c["id"] for c in out}
+    for n in RANDOM_SIZES:
+        for rec in random_candidates(n):
+            if "c/" + rec["id"] not in present:
+                c = case_from_record(rec)
+                c["id"] = "c/" + c["id"]
+                c["options"]["method"] = "letter_minimum"
+                out.append(c)
+    for w in C_WITNESSES:
+        out.append({"id": w["id"], "call": "adjacency", "options": {"method": "letter_minimum"},
+                    "input": {"adjacency": adjacency_rows(w["n"], w["edges"]),
+                              "groups": [str(i) for i in range(w["n"])], "means": None}})
+    alias = copy.deepcopy(out[0])
+    alias["id"] = "c/letter-alias"
+    alias["options"]["method"] = "letter-minimum"
+    out.append(alias)
+    for case in out:
+        case["expected"] = solve_case(case)
+        if case["id"] in {w["id"] for w in C_WITNESSES}:
+            sigma = copy.deepcopy(case)
+            sigma["options"]["method"] = "assignment_minimum"
+            case["sigma_expected"] = solve_case(sigma)
+    return out
+
+
+def letter_checker(cases):
+    """C negatives carry the identity of their matching C expected record."""
+    import copy
+    bad = []
+    simple = next(c for c in cases if c["id"] == "c/hand/simple-abc-adjacency")
+    lost = copy.deepcopy(simple["expected"])
+    group = lost["groups"][0]
+    lost["assignments"][group] = []
+    lost["letters"][group] = ""
+    bad.append({"case": simple["id"], "name": "loses_relationship", "result": lost})
+    for case in cases:
+        expected, model, groups, means, selected, z = solve_case(case, True)
+        if z < len(model.cliques):
+            full = (1 << len(model.cliques)) - 1
+            bad.append({"case": case["id"], "name": "not_minimal",
+                        "result": result_dict(model, groups, means, full, len(model.cliques))})
+            break
+    for case in cases:
+        expected, model, groups, means, selected, z = solve_case(case, True)
+        _, other = model.canonical(list(reversed(range(len(model.cliques)))))
+        if other != selected:
+            bad.append({"case": case["id"], "name": "non_canonical",
+                        "result": result_dict(model, groups, means, other, z)})
+            break
+    assert len(bad) == 3
+    return bad
+
+
 def checker_fixture(wheat_expected, model, groups, means, selected, z):
     """Wrong results for the wheat case that every runner's checker must reject."""
     n = model.n
@@ -1052,7 +1175,9 @@ def build(files, excluded):
         else:
             case["expected"] = solve_case(case)
         reduce_cases.append(case)
+    c_cases = letter_cases(cases, files)
     checker = checker_fixture(*wheat)
+    checker["letter_bad"] = letter_checker(c_cases)
     errors = error_cases()
     for case in errors:
         try:
@@ -1069,6 +1194,7 @@ def build(files, excluded):
     fixtures = {
         "reduce.json": dump_records({"schema_version": SCHEMA_VERSION, "kind": "reduce"},
                                     "cases", reduce_cases),
+        "reduce_letter_minimum.json": dump_records({"schema_version": SCHEMA_VERSION, "kind": "reduce"}, "cases", c_cases),
         "errors.json": dump_records({"schema_version": SCHEMA_VERSION, "kind": "errors"},
                                     "cases", errors),
         "labels.json": dump_records({"schema_version": SCHEMA_VERSION, "kind": "labels"},
@@ -1087,13 +1213,15 @@ def build(files, excluded):
         "reduce_hand": sum(1 for c in reduce_cases if c["id"].startswith("hand/")),
         "errors": len(errors),
         "labels": len(labels),
-        "checker_bad_results": len(checker["bad"]) + 1,
+        "checker_bad_results": len(checker["bad"]) + len(checker["letter_bad"]) + 1,
+        "reduce_letter_minimum": len(c_cases),
     }
     manifest = {
         "schema_version": SCHEMA_VERSION,
         "data": {name: {"sha256": sha256(read_text(DATA / name))} for name in DATA_FILES},
         "inputs": manifest_inputs,
         "counts": counts,
+        "method_exclusions": {"assignment_minimum": excluded, "letter_minimum": []},
         "excluded": excluded + [{
             "id": "exhaustive graphs with 6 or more groups",
             "reason": "2^15 graphs on 6 groups and 2^21 on 7 are too many fixtures; "

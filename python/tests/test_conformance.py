@@ -20,7 +20,7 @@ from cld_reducer.labels import make_letter_labels
 
 pytestmark = needs_conformance
 
-REDUCE_CASES = fixture_cases("reduce")
+REDUCE_CASES = fixture_cases("reduce") + fixture_cases("reduce_letter_minimum")
 ERROR_CASES = fixture_cases("errors")
 LABEL_CASES = fixture_cases("labels")
 EXPECTED_KINDS = {"invalid_input": InvalidInputError, "solver": SolverError}
@@ -94,15 +94,21 @@ def test_checker_rejects_wrong_results() -> None:
     assert mismatches(as_actual(expected), expected) == []
     checker = json.loads((CONFORMANCE / "fixtures" / "checker.json").read_text(encoding="utf-8"))
     wrong = [wheat["non_canonical"]] + [b["result"] for b in checker["bad"]]
-    assert len(wrong) == 3
     for bad in wrong:
         assert mismatches(as_actual(bad), expected) != []
+    for bad in checker["letter_bad"]:
+        matching = next(c for c in REDUCE_CASES if c["id"] == bad["case"])["expected"]
+        assert mismatches(as_actual(matching), matching) == []
+        assert mismatches(as_actual(bad["result"]), matching) != []
 
 
 @pytest.mark.parametrize("case", REDUCE_CASES, ids=[c["id"] for c in REDUCE_CASES])
 def test_reduce_fixture(case: dict[str, Any], presolve: str) -> None:
     result = run_case(case)
     assert mismatches(actual_of(result), case["expected"]) == []
+    if "sigma_expected" in case:
+        sigma = {**case, "options": {**case["options"], "method": "assignment_minimum"}}
+        assert mismatches(actual_of(run_case(sigma)), case["sigma_expected"]) == []
 
 
 @pytest.mark.parametrize("case", ERROR_CASES, ids=[c["id"] for c in ERROR_CASES])

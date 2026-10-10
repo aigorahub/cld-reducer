@@ -102,10 +102,10 @@ const OPTION_NAMES = [
 
 export type Status = "optimal" | "infeasible" | "time_limit" | "failed";
 
-/** The model of docs/algorithm.md section 4, row-wise. The first `numX` columns are x. */
+/** The model of docs/algorithm.md section 4, row-wise. `decisionColumns` supplies ordered objective support. */
 export interface Problem {
   numCols: number;
-  numX: number;
+  decisionColumns: number[];
   cost: Float64Array;
   starts: Int32Array;
   indices: Int32Array;
@@ -134,7 +134,7 @@ const STATUS_TEXT: Record<string, string> = {
 
 /**
  * Solve the model with the given column bounds. `sumLimit` adds the row
- * `sum(x) <= sumLimit`; `timeLimit` is the HiGHS time limit in seconds.
+ * `sum(decisions) <= sumLimit`; `timeLimit` is the HiGHS time limit in seconds.
  */
 export function run(
   problem: Problem, colLower: Float64Array, colUpper: Float64Array,
@@ -144,9 +144,9 @@ export function run(
   let { starts, indices, values, rowLower, rowUpper } = problem;
   if (sumLimit !== null) {
     const start = starts[starts.length - 1];
-    starts = Int32Array.from([...starts, start + problem.numX]);
-    indices = Int32Array.from([...indices, ...Array.from({ length: problem.numX }, (_, k) => k)]);
-    values = Float64Array.from([...values, ...new Array<number>(problem.numX).fill(1)]);
+    starts = Int32Array.from([...starts, start + problem.decisionColumns.length]);
+    indices = Int32Array.from([...indices, ...problem.decisionColumns]);
+    values = Float64Array.from([...values, ...new Array<number>(problem.decisionColumns.length).fill(1)]);
     rowLower = Float64Array.from([...rowLower, -h.infinity]);
     rowUpper = Float64Array.from([...rowUpper, sumLimit]);
   }
