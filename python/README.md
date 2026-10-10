@@ -34,16 +34,20 @@ from cld_reducer import reduce_letters
 # One row for each pair. True means the groups differ significantly.
 pairs = pd.DataFrame(
     [
-        ("1", "2", False), ("1", "3", False), ("1", "4", True),
-        ("1", "5", True), ("2", "3", False), ("2", "4", False),
-        ("2", "5", True), ("3", "4", False), ("3", "5", False),
+        ("1", "2", False),
+        ("1", "3", False),
+        ("1", "4", True),
+        ("1", "5", True),
+        ("2", "3", False),
+        ("2", "4", False),
+        ("2", "5", True),
+        ("3", "4", False),
+        ("3", "5", False),
         ("4", "5", False),
     ],
     columns=["group1", "group2", "significant"],
 )
-means = pd.DataFrame(
-    {"group": ["1", "2", "3", "4", "5"], "mean": [3.73, 3.57, 3.46, 3.33, 3.30]}
-)
+means = pd.DataFrame({"group": ["1", "2", "3", "4", "5"], "mean": [3.73, 3.57, 3.46, 3.33, 3.30]})
 
 result = reduce_letters(pairs, means)
 print(result.letters)
