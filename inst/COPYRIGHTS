@@ -18,14 +18,21 @@ Owner of follow-up: John Ennis, proposed package maintainer.
 
 simple_abc_to_ac_pairs.csv / simple_abc_pairs
 simple_abc_to_ac_means.csv / simple_abc_means
-Source: the five-group illustrative example in this repository. Its relationship
-graph and means reproduce the ABC-to-AC teaching example. No independent source
-or specific data license is recorded in the repository.
+Source: Ennis, Fayle, and Ennis (2012), Assignment-Minimum Clique Coverings,
+doi:10.1145/2133803.2275596. The R help pages already attribute the five-group
+ABC-to-AC teaching example and its means to this paper. A specific reuse license
+has not been established.
 Content: ten pairwise decisions and five numeric means. R data-raw/datasets.R
 reads the CSV files and saves the corresponding data frames. Python examples
 copy the CSV files.
-Reuse basis and origin: maintainer confirmation required before publication.
+Reuse basis: maintainer confirmation required before publication.
 Owner of follow-up: John Ennis.
 
 Do not interpret this notice as a new license or as confirmed permission.
 Retain it in every distribution that contains the example data.
+
+Distribution scope
+The R archive contains both example data sets. The Python source archive contains
+their CSV files; the wheel does not. The npm archive contains no wheat data, but
+its README reproduces the simple five-group example. Resolve the reuse record
+for each artifact that includes the corresponding material.

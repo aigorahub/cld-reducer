@@ -32,7 +32,9 @@ John Ennis owns the following release decisions:
 - Confirm the source and reuse basis for all data listed in `inst/COPYRIGHTS`.
   `python/NOTICE` and `js/NOTICE` carry the same record. Rights remain unconfirmed.
   This blocks publication of the affected artifacts. The code's MIT license
-  does not grant rights to third-party data.
+  does not grant rights to third-party data. R and the Python source archive
+  contain the wheat data. The npm archive contains only the simple example in
+  its README; the Python wheel contains neither data set.
 - Confirm the six authors, Aigora's roles, and the proposed CRAN maintainer,
   John Ennis, `john.m.ennis@aigora.com`. They are unchanged from PR #3.
 
@@ -180,16 +182,17 @@ only the failed registry. Update public install claims after each registry works
 
 ## External setup record
 
-These actions are pending. This implementation did not change external accounts.
+The table distinguishes completed repository setup from open release conditions.
+Registry account access has not been configured by this work.
 
 | Action | Owner | Required evidence |
 |---|---|---|
 | Python history and identity | John Ennis | Confirmed project and uploaded versions |
 | Data reuse basis | John Ennis | Source and permission for each data set |
 | Authors and maintainer | John Ennis | Approved metadata |
-| GitHub `npm` and `pypi` environments | Repository maintainer | Restrict dispatch to `main`; review rules |
+| GitHub `npm` and `pypi` environments | Configured 2026-10-09 | Only the `main` branch is allowed |
 | Registry trusted publishers | Registry maintainer | Exact repository, workflow, environment; successful authorized upload |
-| Repository description/topics | Repository maintainer | Describe R, Python, and JavaScript packages |
+| Repository description | Updated 2026-10-09 | Describes R, Python, and JavaScript packages |
 | Tag and release | Repository maintainer | Separate authorization, checked commit, hashes |
 | win-builder | CRAN maintainer | R-release and R-devel results for the frozen file |
 | CRAN submission | CRAN maintainer | Submission receipt, then separate acceptance |
