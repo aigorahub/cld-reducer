@@ -1,38 +1,106 @@
-# Publish the JavaScript package to npm when a GitHub release is published.
-# npm trusted publishing: npm accepts this workflow in this repository, so no
-# token is stored here. It needs npm 11.5.1 or later. The first publish of a new
-# package is done by hand, because trusted publishing needs an existing package.
-on:
-  release:
-    types: [published]
-  workflow_dispatch:
-
 name: publish-npm.yaml
 
-permissions: read-all
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Immutable version tag on main (for example v0.2.0)
+        required: true
+        type: string
+      dry_run:
+        description: Build and verify only
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.tag }}
 
 jobs:
-  publish:
+  resolve:
     runs-on: ubuntu-latest
-    environment: npm
-    permissions:
-      id-token: write
-    defaults:
-      run:
-        working-directory: js
+    outputs:
+      sha: ${{ steps.tag.outputs.sha }}
+      version: ${{ steps.tag.outputs.version }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - id: tag
+        run: python scripts/release.py resolve --tag "$RELEASE_TAG"
+
+  build:
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - run: npm install -g npm@latest
-      - name: Check that the release tag matches the package version
-        if: github.event_name == 'release'
-        run: test "v$(node -p "require('./package.json').version")" = "${{ github.event.release.tag_name }}"
+      - run: python scripts/release.py version --tag "$RELEASE_TAG"
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm run build
-      - run: npm test
-      - run: npm run test:conformance
-      - run: npm publish --access public
+        working-directory: js
+      - run: npm run typecheck && npm test && npm run test:conformance
+        working-directory: js
+      - run: node scripts/check-package.mjs ../bundle/packages
+        working-directory: js
+      - name: Record the verified artifacts
+        env:
+          RELEASE_COMMIT: ${{ needs.resolve.outputs.sha }}
+        run: python scripts/release.py manifest --registry npm --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --bundle bundle
+      - uses: actions/upload-artifact@v7
+        with:
+          name: npm-candidate
+          path: bundle/
+          if-no-files-found: error
+
+  publish:
+    if: ${{ !inputs.dry_run }}
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@11
+      - uses: actions/download-artifact@v8
+        with:
+          name: npm-candidate
+          path: bundle/
+      - name: Verify the exact artifacts and reject an existing version
+        env:
+          RELEASE_COMMIT: ${{ needs.resolve.outputs.sha }}
+        run: |
+          python scripts/release.py verify --registry npm --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --bundle bundle
+          python scripts/release.py available --registry npm --tag "$RELEASE_TAG"
+      - run: npm publish bundle/packages/*.tgz --access public

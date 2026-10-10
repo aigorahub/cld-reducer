@@ -6,20 +6,10 @@ message: >-
   `references` (CSP 2019, Sensometrics 2026).
 title: "cld-reducer"
 version: 0.2.0
-date-released: 2026-10-07
+date-released: 2026-10-10
 authors:
   - family-names: Ennis
     given-names: John
-  - family-names: Graham
-    given-names: Carl
-  - family-names: Castro
-    given-names: Luciana
-  - family-names: Lampert
-    given-names: Rachel
-  - family-names: Jordan
-    given-names: Ryan
-  - family-names: Rios de Souza
-    given-names: Vanessa
 repository-code: "https://github.com/aigorahub/cld-reducer"
 license: MIT
 preferred-citation:

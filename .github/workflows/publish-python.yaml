@@ -1,33 +1,106 @@
-# Publish the Python package to PyPI when a GitHub release is published.
-# PyPI trusted publishing: PyPI accepts this workflow in this repository, so
-# no token is stored here.
-on:
-  release:
-    types: [published]
-  workflow_dispatch:
-
 name: publish-python.yaml
 
-permissions: read-all
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Immutable version tag on main (for example v0.2.0)
+        required: true
+        type: string
+      dry_run:
+        description: Build and verify only
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-pypi
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.tag }}
 
 jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.tag.outputs.sha }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - id: tag
+        run: python scripts/release.py resolve --tag "$RELEASE_TAG"
+
+  build:
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: python scripts/release.py version --tag "$RELEASE_TAG"
+      - run: uv sync --locked --extra dev --python 3.13
+        working-directory: python
+      - run: uv run --locked pytest -q
+        working-directory: python
+      - run: uv run --locked python ../scripts/test_release.py
+        working-directory: python
+      - run: uv build --no-create-gitignore --out-dir ../bundle/packages
+        working-directory: python
+      - run: uv run --locked twine check ../bundle/packages/*
+        working-directory: python
+      - run: uv run --locked python ../scripts/check_python_package.py ../bundle/packages
+        working-directory: python
+      - name: Record the verified artifacts
+        env:
+          RELEASE_COMMIT: ${{ needs.resolve.outputs.sha }}
+        run: python scripts/release.py manifest --registry pypi --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --bundle bundle
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pypi-candidate
+          path: bundle/
+          if-no-files-found: error
+
   publish:
+    if: ${{ !inputs.dry_run }}
+    needs: [resolve, build]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
+      contents: read
       id-token: write
-    defaults:
-      run:
-        working-directory: python
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v10.2.0
-      - name: Check that the release tag matches the package version
-        if: github.event_name == 'release'
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v8
+        with:
+          name: pypi-candidate
+          path: bundle/
+      - name: Verify the exact artifacts and reject an existing version
+        env:
+          RELEASE_COMMIT: ${{ needs.resolve.outputs.sha }}
         run: |
-          version=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
-          test "v$version" = "${{ github.event.release.tag_name }}"
-      - run: uv build
+          python scripts/release.py verify --registry pypi --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --bundle bundle
+          python scripts/release.py available --registry pypi --tag "$RELEASE_TAG"
       - uses: pypa/gh-action-pypi-publish@v1.14.2
         with:
-          packages-dir: python/dist/
+          packages-dir: bundle/packages/

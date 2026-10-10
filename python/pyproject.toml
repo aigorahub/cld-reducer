@@ -12,11 +12,6 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [
   { name = "John Ennis" },
-  { name = "Carl Graham" },
-  { name = "Luciana Castro" },
-  { name = "Rachel Lampert" },
-  { name = "Ryan Jordan" },
-  { name = "Vanessa Rios de Souza" },
 ]
 keywords = [
   "compact-letter-display",
@@ -47,6 +42,9 @@ dev = [
   "build>=1.2",
   "pytest>=8.0",
   "ruff>=0.8",
+  "twine>=6.0",
+  "PyYAML>=6.0",
+  "tomli>=2.0; python_version < '3.11'",
 ]
 
 [project.scripts]
@@ -59,10 +57,13 @@ Source = "https://github.com/aigorahub/cld-reducer/tree/main/python"
 Issues = "https://github.com/aigorahub/cld-reducer/issues"
 
 [tool.hatch.build.targets.sdist]
-include = ["src/cld_reducer", "tests", "examples", "README.md", "LICENSE"]
+include = ["src/cld_reducer", "tests", "examples", "README.md", "LICENSE", "NOTICE"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cld_reducer"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"NOTICE" = "cld_reducer/NOTICE"
 
 [tool.ruff]
 line-length = 100

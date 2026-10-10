@@ -4,11 +4,6 @@ Version: 0.2.0
 Authors@R:
   c(
     person("John", "Ennis", , "john.m.ennis@aigora.com", role = c("aut", "cre")),
-    person("Carl", "Graham", role = "aut"),
-    person("Luciana", "Castro", role = "aut"),
-    person("Rachel", "Lampert", role = "aut"),
-    person("Ryan", "Jordan", role = "aut"),
-    person("Vanessa", "Rios de Souza", role = "aut"),
     person("Aigora", role = c("cph", "fnd"))
   )
 Description: Reduces compact letter displays (CLDs) of all pairwise
@@ -22,6 +17,7 @@ Description: Reduces compact letter displays (CLDs) of all pairwise
     solver. The package includes the wheat yield example of Piepho (2004)
     <doi:10.1198/1061860043515>.
 License: MIT + file LICENSE
+Copyright: See file COPYRIGHTS for example data sources and reuse status.
 URL: https://github.com/aigorahub/cld-reducer
 BugReports: https://github.com/aigorahub/cld-reducer/issues
 Depends:

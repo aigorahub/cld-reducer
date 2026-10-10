@@ -113,3 +113,44 @@ def test_empty_string_label() -> None:
     result = reduce_from_adjacency(np.eye(2, dtype=bool), ["", "b"])
     assert result.letters == {"": "A", "b": "B"}
     assert result.to_frame()["letters"].tolist() == ["A", "B"]
+
+
+@pytest.mark.parametrize("with_means", [False, True])
+def test_mixed_numeric_labels_keep_original_values(with_means):
+    labels = [1, 2, 3.5]
+    rows = all_pairs(labels, {(0, 1), (0, 2), (1, 2)})
+    means = dict(zip(labels, [3.0, 2.0, 1.0], strict=True)) if with_means else None
+    result = reduce_letters(rows, means)
+    assert result.groups == ("1", "2", "3.5")
+    assert result.letters == {"1": "A", "2": "A", "3.5": "A"}
+
+
+def test_numeric_string_label_collision_is_rejected():
+    with pytest.raises(InvalidInputError, match="self-comparisons"):
+        reduce_letters([{"group1": 1, "group2": "1", "significant": False}])
+
+
+@pytest.mark.parametrize(
+    "columns",
+    [
+        {"group": ["a", "b"], "mean": [2.0, 1.0]},
+        {"mean": [2.0, 1.0], "group": ["a", "b"]},
+        {"treatment": ["a", "b"], "group": [2.0, 1.0]},
+        {"treatment": ["a", "b"], "value": [2.0, 1.0]},
+    ],
+)
+def test_means_column_selection_is_consistent(columns):
+    result = reduce_letters(all_pairs(["a", "b"], {(0, 1)}), pd.DataFrame(columns))
+    assert result.groups == ("a", "b")
+    assert result.letters == {"a": "A", "b": "A"}
+
+
+@pytest.mark.parametrize("columns", [{"group": ["a", "b"]}, {"treatment": ["a", "b"]}])
+def test_means_need_two_columns(columns):
+    with pytest.raises(InvalidInputError, match="means DataFrame must have at least two columns"):
+        reduce_letters(all_pairs(["a", "b"], {(0, 1)}), pd.DataFrame(columns))
+
+
+def test_ragged_adjacency_uses_package_error():
+    with pytest.raises(InvalidInputError, match="adjacency must be a square matrix"):
+        reduce_from_adjacency([[1, 0], [0]])

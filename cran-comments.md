@@ -1,32 +1,43 @@
 ## Submission
 
-This is a new package, not yet on CRAN.
+This is the first CRAN submission of cldreducer, version 0.2.0.
+The package has not yet been submitted. John Ennis is the sole package author
+and maintainer. The package code is MIT licensed.
 
 ## Test environments
 
-- Local: Ubuntu 26.04 (WSL), R 4.6.1, `R CMD check --as-cran --no-manual` on the built tarball in a folder outside the source tree
-- GitHub Actions: macOS (release), Windows (release), Ubuntu (devel, release, oldrel-1)
-- GitHub Actions: Ubuntu (release), `R CMD check --as-cran` with the PDF manual, on the built tarball in a folder outside the checkout
-- win-builder (R-devel and R-release): to be run by the maintainer before submission
+- macOS Tahoe 26.6.2, aarch64-apple-darwin23, R 4.6.1 (2026-06-24).
+- GitHub Actions covers macOS release, Windows release, and Ubuntu devel,
+  release, and oldrel-1. Final candidate results must be recorded before submission.
+- Both win-builder queues accepted the candidate below on 2026-10-10 at
+  12:57 UTC. Results are pending. Earlier candidate results do not certify it.
 
 ## R CMD check results
 
-- Local (Ubuntu 26.04 on WSL, R 4.6.1), `--as-cran --no-manual --timings` on the built tarball: 0 errors | 0 warnings | 2 notes.
-  - CRAN incoming feasibility: "New submission". This is expected for a new package.
-  - "Files 'README.md' or 'NEWS.md' cannot be checked without 'pandoc' being installed". This machine has no pandoc; the GitHub Actions jobs install it, so the note does not appear there.
-  - Every example runs in under 2 s (the slowest, `reduce_letters`, takes about 1.5 s, most of it loading the Matrix package). The tests take about 6 s.
-- GitHub Actions, macOS (release), Windows (release), and Ubuntu (devel, release, oldrel-1): 0 errors | 0 warnings | 0 notes.
-- GitHub Actions, Ubuntu 24.04 (release), `R CMD check --as-cran` with the PDF manual, on the built tarball in a folder under `RUNNER_TEMP`, outside the checkout: 0 errors | 0 warnings | 1 note.
-  - "checking HTML version of manual ... NOTE: Skipping checking HTML validation: no command 'tidy' found." The runner has no HTML Tidy, so R skips the HTML validation. The PDF manual builds without problems.
-  - The tests take about 3 s and the slowest example, `reduce_letters`, about 0.8 s.
-- All GitHub Actions jobs fail on a warning.
-- win-builder (R-devel and R-release): to be run by the maintainer before submission; the results go here.
+Local command: `R CMD check --as-cran --timings cldreducer_0.2.0.tar.gz`.
+The complete check reached `* DONE`. PDF and HTML manual checks passed.
+
+0 errors | 0 warnings | 1 NOTE
+
+The NOTE is `New submission`. The longest example, `reduce_letters`, took
+0.333 seconds. All 310 local testthat checks passed without warnings or skips.
+The repository conformance suite passed all 1,505 cases and three data comparisons.
+
+Candidate source: `54ec3703ae96fc910aab8d7103c36d4798fc49e5`.
+Candidate SHA-256:
+`11b68758ac001659237998568a8d0d0bf11d27548cf6441851cf07eb7dccbeb0`.
+Later changes to this file and `docs/` do not enter the R archive.
 
 ## Notes for the reviewer
 
-- The package imports `highs` (GPL >= 2) and `Matrix`, as the sibling package turfLP does. The package itself is MIT licensed.
-- Possibly misspelled words in DESCRIPTION: Ennis, Fayle, and Piepho are author names in the references, and "CLDs" is the common abbreviation for compact letter displays.
+The package imports `highs` and `Matrix`. Ennis, Fayle, and Piepho in
+DESCRIPTION are author names. CLD and CLDs refer to compact letter displays.
 
 ## Data
 
-The package includes the data of the wheat yield example (Piepho 2004, as tabulated in Table 7 of Ennis, Fayle, and Ennis 2012): the significance of all 190 pairwise comparisons of 20 treatments. The help page cites the sources.
+The wheat example contains 190 pairwise significance decisions for 20
+treatments. It comes from Piepho (2004), reproduced in Table 7 of Ennis, Fayle,
+and Ennis (2012). The simple example contains ten pair comparisons and five
+means from Ennis, Fayle, and Ennis (2012). `COPYRIGHTS` records the sources and
+CSV-to-R transformations. On 2026-10-10, John Ennis confirmed that the example
+data are public and approved their inclusion.

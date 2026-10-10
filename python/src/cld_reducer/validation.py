@@ -41,6 +41,16 @@ def normalize_groups(groups: Sequence[Any]) -> list[str]:
     return normalized
 
 
+def _means_columns(columns: Sequence[Any]) -> tuple[Any, Any]:
+    """Select the same label and value columns for inference and normalization."""
+    if {"group", "mean"}.issubset(columns):
+        return "group", "mean"
+    if len(columns) >= 2:
+        return columns[0], columns[1]
+    msg = "means DataFrame must have at least two columns or columns named group and mean"
+    raise InvalidInputError(msg)
+
+
 def normalize_means(
     means: Mapping[Any, float] | pd.Series | pd.DataFrame | None,
     groups: Sequence[str],
@@ -52,15 +62,10 @@ def normalize_means(
     if isinstance(means, pd.Series):
         series = means.copy()
     elif isinstance(means, pd.DataFrame):
-        if {"group", "mean"}.issubset(means.columns):
-            series = means.set_index("group")["mean"]
-        elif len(means.columns) >= 2:
-            series = means.set_index(means.columns[0])[means.columns[1]]
-        else:
-            msg = "means DataFrame must have at least two columns or columns named group and mean"
-            raise InvalidInputError(msg)
+        label_column, value_column = _means_columns(means.columns)
+        series = means.set_index(label_column)[value_column]
     elif isinstance(means, Mapping):
-        series = pd.Series(dict(means))
+        series = pd.Series(list(means.values()), index=pd.Index(list(means), dtype=object))
     else:
         msg = "means must be a mapping, pandas Series, pandas DataFrame, or None"
         raise InvalidInputError(msg)
@@ -100,8 +105,11 @@ def normalize_pairwise_frame(
     if isinstance(post_hoc_results, (list, tuple)) and len(post_hoc_results) == 0:
         # A plain empty list has no column names to check: it is a table with zero rows.
         frame = pd.DataFrame(columns=list(dict.fromkeys([group1, group2, significant])))
-    else:
+    elif isinstance(post_hoc_results, pd.DataFrame):
         frame = pd.DataFrame(post_hoc_results).copy()
+    else:
+        # Preserve original labels before string conversion (for example 1 and 3.5).
+        frame = pd.DataFrame(post_hoc_results, dtype=object)
     required = {group1, group2, significant}
     missing = sorted(required.difference(frame.columns))
     if missing:
@@ -138,10 +146,8 @@ def groups_from_pairs(
         if isinstance(means, pd.Series):
             return normalize_groups(means.index.tolist())
         if isinstance(means, pd.DataFrame):
-            if "group" in means.columns:
-                return normalize_groups(means["group"].tolist())
-            if len(means.columns) >= 1:
-                return normalize_groups(means.iloc[:, 0].tolist())
+            label_column, _ = _means_columns(means.columns)
+            return normalize_groups(means[label_column].tolist())
         if isinstance(means, Mapping):
             return normalize_groups(list(means.keys()))
 
@@ -216,7 +222,11 @@ def validate_adjacency(
 
 
 def _coerce_adjacency_matrix(adjacency: Any) -> np.ndarray:
-    raw = np.asarray(adjacency)
+    try:
+        raw = np.asarray(adjacency)
+    except ValueError as exc:
+        msg = "adjacency must be a square matrix"
+        raise InvalidInputError(msg) from exc
     matrix = np.empty(raw.shape, dtype=bool)
     try:
         missing = pd.isna(raw)
