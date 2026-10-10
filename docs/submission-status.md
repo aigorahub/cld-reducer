@@ -61,7 +61,8 @@ been created by this work.
   example and its means come from the 2012 paper. The wheat decisions come from
   Piepho (2004), reproduced in the 2012 paper. No explicit reuse license was
   found. R and the Python source archive include both. The npm README includes
-  the simple example. The Python wheel includes neither data set.
+  the simple example. The Python wheel omits the CSV files but includes
+  simple-example output in its metadata.
 - Confirm the authors and maintainer carried forward from PR #3.
 - Record the two win-builder results for the file above.
 - Obtain explicit approval to merge the PRs. Recheck the resulting commit.

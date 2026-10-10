@@ -33,6 +33,7 @@ Retain it in every distribution that contains the example data.
 
 Distribution scope
 The R archive contains both example data sets. The Python source archive contains
-their CSV files; the wheel does not. The npm archive contains no wheat data, but
-its README reproduces the simple five-group example. Resolve the reuse record
+their CSV files. The Python wheel omits the CSV files but includes simple-example
+output from the README in its metadata. The npm archive contains no wheat data,
+but its README reproduces the simple five-group example. Resolve the reuse record
 for each artifact that includes the corresponding material.

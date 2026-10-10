@@ -34,7 +34,8 @@ John Ennis owns the following release decisions:
   This blocks publication of the affected artifacts. The code's MIT license
   does not grant rights to third-party data. R and the Python source archive
   contain the wheat data. The npm archive contains only the simple example in
-  its README; the Python wheel contains neither data set.
+  its README. The Python wheel omits the CSV files but includes simple-example
+  output in its metadata.
 - Confirm the six authors, Aigora's roles, and the proposed CRAN maintainer,
   John Ennis, `john.m.ennis@aigora.com`. They are unchanged from PR #3.
 
