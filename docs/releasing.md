@@ -1,11 +1,13 @@
 # Package releases
 
-Version 0.2.0 is a release candidate. The repository follows the turfLP layout:
-R at the root, Python in `python/`, and JavaScript in `js/`. PR #4 follows PR #3.
-Merge PR #3 first. Then update PR #4 against `main` and repeat its required checks.
-Neither a green check nor these instructions grant permission to merge or publish.
+The repository follows the turfLP layout: R at the root, Python in `python/`,
+and JavaScript in `js/`. Version 0.2.0 is tagged and published on PyPI and npm.
+CRAN review is pending.
+See [submission status](submission-status.md) for the current evidence.
+These instructions describe future releases. Checks do not grant permission
+to merge or publish.
 
-## Package identity and open conditions
+## Package identity and release decisions
 
 | Package | Name | Public record |
 |---|---|---|
@@ -14,21 +16,16 @@ Neither a green check nor these instructions grant permission to merge or publis
 | Python import | `cld_reducer` | Included in the Python distribution |
 | npm | `cld-reducer` | <https://www.npmjs.com/package/cld-reducer> |
 
-On 2026-10-09, public metadata for npm, PyPI, and TestPyPI returned 404. The CRAN
-index had no `cldreducer`. These checks do not prove that Python was never
-published. John recalls an earlier Python submission. Its identity, uploaded
-versions, and date remain unconfirmed.
+The earlier Python publication was sensPy, a separate project.
+Version 0.2.0 is the first verified `cld-reducer` PyPI release.
+Its trusted publisher is configured for this repository. Do not create a new
+pending publisher or change the package name for later releases.
 
 John Ennis owns the following release decisions:
 
-- Confirm the Python project from the maintainer's project record, an upload
-  receipt, or the old project URL. Record only the name, versions, date, and
-  public evidence. Do not place account details or credentials in this repo.
-- If the project exists, retain its identity and use its existing-project
-  trusted publisher. If an old upload is confirmed but the project is now
-  unavailable, resolve access or restoration before publication. A 404 does not
-  authorize name reuse, version reuse, or recreation. A new-project route needs
-  explicit maintainer approval. A different historical name also needs a decision.
+- Keep the existing package names and publisher settings. Check the current
+  registry versions before choosing a new release version. Never replace a
+  published version.
 - John Ennis confirmed that the example data are public and approved their
   inclusion on 2026-10-10. `inst/COPYRIGHTS`, `python/NOTICE`, and `js/NOTICE`
   record the sources, transformations, distribution scope, and that approval.
@@ -47,10 +44,11 @@ See the Python section of `NEWS.md` for all API and input changes.
 
 ## Validate the candidate
 
-Keep one unused version in `DESCRIPTION`, `CITATION.cff`, `NEWS.md`, both package
-manifests and locks, and Python's `__version__`. `scripts/release.py version`
-checks agreement. If 0.2.0 has been used, choose the next unused common version,
-at least 0.2.1. Never replace an uploaded version.
+Version 0.2.0 is already used. Choose the next unused common version for a
+future release, at least 0.2.1. Keep that version in `DESCRIPTION`,
+`CITATION.cff`, `NEWS.md`, both package manifests and locks, and Python's
+`__version__`. `scripts/release.py version` checks agreement. Never replace an
+uploaded version.
 
 Run from the repository root unless a block changes directory:
 
@@ -112,13 +110,15 @@ above. Set the planned release date in `CITATION.cff` in a reviewed commit.
 If the date changes, update it before tagging. Recheck all registries for the
 selected version. Obtain separate authorization to tag and publish.
 
-Create an immutable `v0.2.0` tag from the checked commit on `main` and push that
-tag only after authorization. Both publication workflows are manual. Run each
-from `main`, with that tag and `dry_run=true`:
+Create an immutable tag for the new version from the checked commit on `main`.
+Push it only after authorization. Both publication workflows are manual.
+The examples below use `v0.2.1`; confirm it is unused and substitute the selected
+version where needed. Run each workflow from `main`, with that tag and
+`dry_run=true`:
 
 ```sh
-gh workflow run publish-npm.yaml --ref main -f tag=v0.2.0 -F dry_run=true
-gh workflow run publish-python.yaml --ref main -f tag=v0.2.0 -F dry_run=true
+gh workflow run publish-npm.yaml --ref main -f tag=v0.2.1 -F dry_run=true
+gh workflow run publish-python.yaml --ref main -f tag=v0.2.1 -F dry_run=true
 ```
 
 The workflows reject invalid tags, commits outside `origin/main`, version
@@ -141,14 +141,14 @@ checks. R-devel CI does not replace win-builder evidence.
 
 ## Publish each registry
 
-For the first npm release, use an authorized maintainer account and the required
-second factor. Download `npm-candidate` from the successful dry run. Verify its
+The first npm release, 0.2.0, used the maintainer account and a second factor.
+For an authorized manual upload of a future version, use the same process. Download `npm-candidate` from the successful dry run. Verify its
 commit and tag, then compare the downloaded tarball's SHA-256 with the saved
 manifest. Stop on a mismatch. Publish that exact path:
 
 ```sh
-shasum -a 256 downloaded/npm-candidate/packages/cld-reducer-0.2.0.tgz
-npm publish downloaded/npm-candidate/packages/cld-reducer-0.2.0.tgz --access public
+shasum -a 256 downloaded/npm-candidate/packages/cld-reducer-0.2.1.tgz
+npm publish downloaded/npm-candidate/packages/cld-reducer-0.2.1.tgz --access public
 ```
 
 Do not repack the source or publish from a directory. Do not run the npm workflow
@@ -163,10 +163,9 @@ within two days. Recheck that guidance at release time. Saving a configuration
 or running `npm whoami` does not test OIDC. Then dispatch only the npm workflow
 with the new tag and `dry_run=false`.
 
-For Python, first resolve the historical identity above. Configure the confirmed
-project's publisher for `aigorahub/cld-reducer`, `publish-python.yaml`, environment
-`pypi`. A pending publisher is an option only after explicit confirmation of a
-new-project route. Dispatch only that workflow with the tag and `dry_run=false`.
+For Python, retain the existing trusted publisher for `aigorahub/cld-reducer`,
+workflow `publish-python.yaml`, environment `pypi`. Dispatch only that workflow
+with the new tag and `dry_run=false`.
 Check public metadata and install its wheel in a clean environment. TestPyPI is
 optional and uses separate publisher settings.
 
@@ -181,24 +180,26 @@ uploads. A partial release stays partial until each registry is verified. Retry
 only the failed registry. Update public install claims after each registry works.
 
 See [submission status](submission-status.md) for the checked files, hashes,
-Windows check requests, and remaining account work.
+Windows checks, registry verification, and remaining CRAN work.
 
 ## External setup record
 
 The table distinguishes completed repository setup from open release conditions.
-Registry account access has not been configured by this work.
+PyPI access is configured. The first npm upload uses the maintainer account.
+Configure npm trusted publishing near the next authorized release.
 
 | Action | Owner | Required evidence |
 |---|---|---|
-| Python history and identity | John Ennis | Confirmed project and uploaded versions |
+| Python history and identity | Resolved 2026-10-10 | Earlier publication was sensPy; `cld-reducer` 0.2.0 is live |
 | Data reuse basis | John Ennis | Source and permission for each data set |
 | Authors and maintainer | Confirmed 2026-10-09 | John Ennis is the sole package author and maintainer |
 | GitHub `npm` and `pypi` environments | Configured 2026-10-09 | Only the `main` branch is allowed |
-| Registry trusted publishers | Registry maintainer | Exact repository, workflow, environment; successful authorized upload |
+| PyPI trusted publisher | Configured and verified 2026-10-10 | `publish-python.yaml`, environment `pypi`; release workflow succeeded |
+| npm trusted publisher | Registry maintainer, next release | Configure near the next authorized upload and verify it with that release |
 | Repository description | Updated 2026-10-09 | Describes R, Python, and JavaScript packages |
-| Tag and release | Repository maintainer | Separate authorization, checked commit, hashes |
-| win-builder | Current archive accepted by both queues on 2026-10-10 | R-release and R-devel results pending |
-| CRAN submission | CRAN maintainer | Submission receipt, then separate acceptance |
+| Tag and release | `v0.2.0` created 2026-10-10 | Immutable package commit `8a09915a6ad0dcb1fc0ca17bce4ebaa46ddc2b39`; see submission status for release notes |
+| win-builder | Both passed 2026-10-10 | Zero errors, zero warnings, one NOTE on the frozen R archive |
+| CRAN submission | Submitted and confirmed 2026-10-10 | Automated Windows and Debian pretests: one NOTE each; manual review pending |
 
 References: [npm trusted publishers](https://docs.npmjs.com/trusted-publishers/),
 [PyPI trusted publishers](https://docs.pypi.org/trusted-publishers/),
