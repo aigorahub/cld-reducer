@@ -1,7 +1,7 @@
 """Run the Piepho (2004) CIMMYT wheat yield experiment example.
 
 Source: 20-treatment multi-environment wheat yield trial reported by Piepho
-(2004), reproduced in Table 7 of Ennis, Fayle, & Ennis (2012),
+(2004), reproduced in Table VIII of Ennis, Fayle, & Ennis (2012),
 "Assignment-Minimum Clique Coverings", ACM JEA 17, Art. 1.5
 (https://doi.org/10.1145/2133803.2275596). The maximal covering has 4 cliques
 and 56 letter assignments; the assignment-minimum reduction has 4 cliques and
@@ -20,7 +20,7 @@ from cld_reducer import reduce_letters
 def main() -> None:
     example_dir = Path(__file__).resolve().parent
     pairs = pd.read_csv(example_dir / "piepho2004_wheat_pairs.csv")
-    result = reduce_letters(pairs)
+    result = reduce_letters(pairs, method="assignment_minimum")
 
     print(result.to_frame().to_string(index=False))
     print()

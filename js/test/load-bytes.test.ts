@@ -11,6 +11,6 @@ const require = createRequire(import.meta.url);
 it("loads from the bytes of highs.wasm and does not read the file", async () => {
   const bytes = readFileSync(require.resolve("highs/runtime"));
   await loadSolver({ wasmBinary: new Uint8Array(bytes), locateFile: () => "/nonexistent/highs.wasm" });
-  const result = await reduceFromAdjacency(SIMPLE);
+  const result = await reduceFromAdjacency(SIMPLE, { method: "assignment_minimum" });
   expect(result.letters).toEqual(SIMPLE_LETTERS);
 });

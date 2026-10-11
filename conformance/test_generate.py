@@ -150,6 +150,50 @@ def selection_set(model, mask):
     return {model.xs[k] for k in range(len(model.xs)) if mask >> k & 1}
 
 
+def plain_letter_optimum(n, edges):
+    """Enumerate vertex subsets, filter to maximal cliques, then enumerate covers."""
+    cliques = brute_force_cliques(n, edges)
+    best = None
+    for vector in itertools.product((0, 1), repeat=len(cliques)):
+        columns = [q for q, on in zip(cliques, vector) if on]
+        if not all(any(g in q for q in columns) for g in range(n)):
+            continue
+        if not all(any(i in q and j in q for q in columns) for i, j in edges):
+            continue
+        key = (sum(vector), tuple(-on for on in vector))
+        if best is None or key < best[0]:
+            best = (key, vector, columns)
+    return cliques, sum(best[1]), best[1], best[2]
+
+
+class LetterEnumerationTest(unittest.TestCase):
+    def test_all_33867_graphs(self):
+        total = 0
+        for n in range(1, 7):
+            for edges in all_graphs(n):
+                cliques, minimum, vector, columns = plain_letter_optimum(n, edges)
+                model = g.LetterModel(n, edges)
+                z, selected = model.canonical()
+                self.assertEqual(model.cliques, cliques)
+                self.assertLessEqual(len(cliques), 9)
+                self.assertEqual(z, minimum)
+                self.assertEqual(tuple(selected >> c & 1 for c in range(len(cliques))), vector)
+                groups = [str(i) for i in range(n)]
+                expected = g.result_dict(model, groups, None, selected, z)
+                ordered = sorted(columns, key=lambda q: (min(q), min(q)))
+                # Render independently, with independent labels for these <=9 columns.
+                tokens = {str(i): [chr(65+k) for k, q in enumerate(ordered) if i in q]
+                          for i in range(n)}
+                self.assertEqual(expected["assignments"], tokens)
+                self.assertEqual(expected["letters"], {i: "".join(t) for i, t in tokens.items()})
+                self.assertEqual(expected["stats"]["assignments_after"], sum(map(len, columns)))
+                self.assertEqual(g.build_display(model, groups, None, selected)[0],
+                                 [list(q) for q in ordered])
+                total += 1
+        self.assertEqual(total, 33867)
+        self.assertEqual(len(g.LetterModel(6, list(itertools.combinations(range(6), 2))).cliques), 1)
+
+
 # --------------------------------------------------------------------- tests ----
 
 class SplitmixTest(unittest.TestCase):
@@ -193,7 +237,7 @@ class CliqueTest(unittest.TestCase):
 class HandCheckedTest(unittest.TestCase):
     def solve(self, call, inputs, options=None):
         case = {"id": "t", "call": call, "input": inputs, "options": options or {}}
-        return g.solve_case(case)
+        return g.solve_case(case, default_method="assignment_minimum")
 
     def test_simple_abc_display(self):
         means = g.data_means("simple_abc_to_ac_means.csv")
@@ -264,7 +308,7 @@ class WheatTest(unittest.TestCase):
         self.assertEqual(len(pairs), 190)
         case = {"id": "t", "call": "pairs", "input": {"pairs": pairs, "means": None},
                 "options": {}}
-        expected, model, groups, means, selected, z = g.solve_case(case, True)
+        expected, model, groups, means, selected, z = g.solve_case(case, True, default_method="assignment_minimum")
         self.assertEqual(len(model.cliques), 4)
         self.assertEqual(len(model.xs), 56)
         self.assertEqual(z, 44)
@@ -297,6 +341,25 @@ class SearchAgainstEnumerationTest(unittest.TestCase):
                 self.check(n, edges)
                 total += 1
         self.assertEqual(total, 1 + 2 + 8 + 64 + 1024 + 32768)
+
+
+class WitnessTest(unittest.TestCase):
+    def test_repository_witness_truth(self):
+        expected = {"c/seven-group-witness": (16,6,5,16),
+                    "c/strict-tradeoff-witness": (18,6,5,19),
+                    "c/objective-witness": (20,6,5,20)}
+        for witness in g.C_WITNESSES:
+            n, edges = witness["n"], [tuple(e) for e in witness["edges"]]
+            model = g.LetterModel(n, edges)
+            cliques, z, vector, columns = plain_letter_optimum(n, edges)
+            minimum, selected = model.canonical()
+            self.assertEqual(model.cliques, cliques)
+            self.assertEqual(minimum, z)
+            self.assertEqual(tuple(selected >> k & 1 for k in range(len(cliques))), vector)
+            sigma = g.Model(n, edges)
+            sz, ss = sigma.canonical()
+            sigma_columns, _ = g.build_display(sigma, list(range(n)), None, ss)
+            self.assertEqual((sz, len(sigma_columns), z, sum(map(len,columns))), expected[witness["id"]])
 
 
 class InputRuleTest(unittest.TestCase):

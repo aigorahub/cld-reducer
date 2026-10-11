@@ -1,6 +1,6 @@
 Package: cldreducer
 Title: Reduce Compact Letter Displays
-Version: 0.2.0
+Version: 0.3.0
 Authors@R:
   c(
     person("John", "Ennis", , "john.m.ennis@aigora.com", role = c("aut", "cre")),
@@ -9,11 +9,13 @@ Authors@R:
 Description: Reduces compact letter displays (CLDs) of all pairwise
     comparisons. A CLD gives two groups a common letter exactly when they are
     not significantly different. The package finds a display with the fewest
-    letter assignments that keeps every one of these relationships. This is the
-    assignment-minimum clique covering problem of Ennis, Fayle, and Ennis
+    letter assignments or distinct letters that keeps every relationship.
+    The optional CLD-sigma objective is the assignment-minimum clique covering
+    problem of Ennis, Fayle, and Ennis
     (2012) <doi:10.1145/2133803.2275596>, solved as a mixed-integer linear
-    program with 'HiGHS'. Among the displays with the fewest assignments, it
-    returns one fixed canonical display, so the result does not depend on the
+    program with 'HiGHS'. The default CLD-C method selects full maximal
+    cliques with the fewest letters. Among displays with the selected minimum objective, it returns
+    one fixed canonical display, so the result does not depend on the
     solver. The package includes the wheat yield example of Piepho (2004)
     <doi:10.1198/1061860043515>.
 License: MIT + file LICENSE

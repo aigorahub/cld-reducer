@@ -44,11 +44,13 @@ import { reduceFromAdjacency } from "cld-reducer";
 const matrix = [[1,1,1,0,0],[1,1,1,1,0],[1,1,1,1,1],[0,1,1,1,1],[0,0,1,1,1]];
 const means = new Map([["1", 3.73], ["2", 3.57], ["3", 3.46], ["4", 3.33], ["5", 3.3]]);
 const result = await reduceFromAdjacency(matrix, { means });
+const c = await reduceFromAdjacency(matrix, {means, method:"letter-minimum"});
+if (c.method !== "letter_minimum" || c.stats.objective !== 3 || c.stats.assignmentsAfter !== 9 || c.letters["3"] !== "ABC") throw new Error("installed C behavior differs");
 console.log(JSON.stringify(result.letters));
 `);
 const run = spawnSync(process.execPath, ["example.mjs"], { cwd: project, encoding: "utf8" });
 if (run.status !== 0) throw new Error(`the installed package failed:\n${run.stderr}`);
-const expected = '{"1":"A","2":"AB","3":"AC","4":"BC","5":"C"}';
+const expected = '{"1":"A","2":"AB","3":"ABC","4":"BC","5":"C"}';
 if (run.stdout.trim() !== expected) throw new Error(`unexpected display: ${run.stdout}`);
 console.log(`clean install prints ${run.stdout.trim()}`);
 
@@ -58,7 +60,9 @@ import { reduceLetters, reduceFromAdjacency, loadSolver,
   CldReducerError, InvalidInputError, SolverError,
   type CldReduction, type CldStats, type LoadOptions,
   type ReduceOptions, type Means } from "cld-reducer";
-const options: ReduceOptions = {};
+const options: ReduceOptions = {method: "letter_minimum"};
+const runtimeString: ReduceOptions = {method: "unsupported-for-runtime-validation"};
+void runtimeString;
 const means: Means = new Map([["a", 1]]);
 const loading: LoadOptions = {};
 const solver = loadSolver(loading);

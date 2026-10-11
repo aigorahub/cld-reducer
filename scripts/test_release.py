@@ -14,7 +14,7 @@ import yaml
 
 class ReleaseChecks(unittest.TestCase):
     def test_metadata_and_tag(self):
-        self.assertEqual(release.version(tag="v0.2.0"), "0.2.0")
+        self.assertEqual(release.version(tag="v0.3.0"), "0.3.0")
         with self.assertRaisesRegex(ValueError, "versions differ"):
             release.version(tag="v99.0.0")
         for tag in ["main", "v1.2", "v01.2.3", "v1.2.3; echo bad", "v1.2.3\n"]:
@@ -91,13 +91,13 @@ class ReleaseChecks(unittest.TestCase):
             bundle = Path(directory)
             packages = bundle / "packages"
             packages.mkdir()
-            package = packages / "cld-reducer-0.2.0.tgz"
+            package = packages / "cld-reducer-0.3.0.tgz"
             package.write_bytes(b"candidate")
-            args = (bundle, "npm", "v0.2.0", "a" * 40)
+            args = (bundle, "npm", "v0.3.0", "a" * 40)
             release.manifest(*args)
             release.manifest(*args, verify=True)
             with self.assertRaises(ValueError):
-                release.manifest(bundle, "npm", "v0.2.0", "b" * 40, verify=True)
+                release.manifest(bundle, "npm", "v0.3.0", "b" * 40, verify=True)
             package.write_bytes(b"changed")
             with self.assertRaisesRegex(ValueError, "mismatch"):
                 release.manifest(*args, verify=True)

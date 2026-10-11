@@ -21,6 +21,8 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function call(c) {
   const o = c.options;
   const options = {};
+  // Historical sigma fixtures predate the C default. Keep their inputs frozen.
+  if (!("method" in o) && c.expected?.method === "assignment_minimum") options.method = "assignment_minimum";
   if (c.input.means != null) options.means = c.input.means;
   for (const key of ["group1", "group2", "significant", "method"]) {
     if (key in o) options[key] = o[key];
@@ -75,7 +77,7 @@ function ordered(e) {
   };
 }
 
-const reduceCases = cases("reduce");
+const reduceCases = [...cases("reduce"), ...cases("reduce_letter_minimum"), ...cases("reduce_weighted")];
 
 // The checker must reject the three wrong wheat results and accept the right one.
 {
@@ -86,8 +88,14 @@ const reduceCases = cases("reduce");
     throw new Error("the conformance checker rejects the expected wheat result");
   }
   const wrong = [wheat.non_canonical, ...read("fixtures/checker.json").bad.map((b) => b.result)];
-  if (wrong.length !== 3 || wrong.some((bad) => mismatches(asActual(bad), expected).length === 0)) {
+  if (wrong.some((bad) => mismatches(asActual(bad), expected).length === 0)) {
     throw new Error("the conformance checker accepts a wrong result");
+  }
+  for (const bad of read("fixtures/checker.json").letter_bad) {
+    const matching = ordered(reduceCases.find(c => c.id === bad.case).expected);
+    if (mismatches(asActual(matching), matching).length || !mismatches(asActual(bad.result), matching).length) {
+      throw new Error(`C checker failed: ${bad.case} ${bad.name}`);
+    }
   }
 }
 
@@ -101,6 +109,11 @@ for (const presolve of ["on", "off"]) {
       const actual = actualOf(await call(c));
       const bad = mismatches(actual, ordered(c.expected));
       if (bad.length) failures.push(`${c.id} (presolve ${presolve}): differs in ${bad.join(", ")}`);
+      if (c.sigma_expected) {
+        const sigma = {...c, options:{...c.options,method:"assignment_minimum"}};
+        const badSigma = mismatches(actualOf(await call(sigma)), ordered(c.sigma_expected));
+        if (badSigma.length) failures.push(`${c.id} sigma: differs in ${badSigma.join(", ")}`);
+      }
     } catch (e) {
       failures.push(`${c.id} (presolve ${presolve}): threw ${e}`);
     }

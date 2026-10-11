@@ -10,7 +10,6 @@ docs/algorithm.md section 5 so that every implementation returns the same displa
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
 from math import isfinite
 from numbers import Integral, Real
@@ -20,22 +19,12 @@ import pandas as pd
 from highspy import kHighsInf
 
 from .. import _solver
-from ..cliques import maximal_cliques
 from ..exceptions import SolverError
-from ..labels import make_letter_labels
 from ..result import CLDReductionResult
 from ..validation import (
-    count_assignments,
     normalize_means,
-    reconstruct_adjacency_from_assignments,
     validate_adjacency,
 )
-
-# The clock behind the shared time budget. Tests replace it.
-_now = time.monotonic
-
-_INTEGRALITY_TOLERANCE = 1e-6
-_INVALID_SOLUTION = "HiGHS returned an invalid solution"
 
 
 @dataclass(frozen=True)
@@ -56,69 +45,15 @@ def reduce_assignment_minimum(
     time_limit: float | None = None,
     max_cliques: int | None = 10_000,
 ) -> CLDReductionResult:
-    """Reduce a CLD by minimizing total letter assignments.
+    """Run sigma; method remains an unchanged metadata label for compatibility."""
+    from dataclasses import replace
 
-    Parameters
-    ----------
-    adjacency:
-        Symmetric boolean matrix where `True` means two groups are not
-        significantly different and may share a letter.
-    groups:
-        Group labels in matrix order.
-    means:
-        Optional group means used only to produce stable, mean-ordered letters.
-    method:
-        Method label stored in the result metadata.
-    time_limit:
-        Optional time budget in seconds, shared by all solves of this call.
-    max_cliques:
-        Optional cap on maximal cliques to enumerate before failing with a
-        controlled `SolverError`. Pass `None` to disable the cap.
-    """
+    from ..reduction import METHODS, reduce_validated
+
     adjacency, groups = validate_adjacency(adjacency, groups)
     means = normalize_means(means, groups)
-    time_limit, max_cliques = _validate_solver_controls(time_limit, max_cliques)
-
-    cliques = maximal_cliques(adjacency, max_cliques=max_cliques)
-    model = _build_model(adjacency, cliques)
-    selected, minimum = _solve_canonical(model, time_limit)
-    columns = _selected_columns(cliques, model, selected)
-    tokens = _assign_letter_tokens(columns, len(groups), means, groups)
-    assignments = {group: tokens[index] for index, group in enumerate(groups)}
-    letters = {group: _format_letter_tokens(value) for group, value in assignments.items()}
-    reconstructed = reconstruct_adjacency_from_assignments(assignments, groups)
-    if not np.array_equal(reconstructed, adjacency):
-        msg = "optimized letters did not preserve the input pairwise relationships"
-        raise SolverError(msg)
-
-    assignments_before = len(model.members)
-    assignments_after = count_assignments(assignments)
-    reduction_pct = (
-        (assignments_before - assignments_after) / assignments_before * 100
-        if assignments_before
-        else 0.0
-    )
-    stats = {
-        "assignments_before": assignments_before,
-        "assignments_after": int(assignments_after),
-        "reduction_pct": reduction_pct,
-        "num_letters_before": len(cliques),
-        "num_letters_after": len(columns),
-        "num_groups": len(groups),
-        "num_edges": len(model.edges),
-        "solver_status": "Optimal",
-        "objective": minimum,
-    }
-
-    return CLDReductionResult(
-        letters=letters,
-        assignments=assignments,
-        stats=stats,
-        method=method,
-        groups=tuple(groups),
-        relationship_preserved=True,
-        adjacency=tuple(tuple(bool(value) for value in row) for row in adjacency),
-    )
+    result = reduce_validated(adjacency, groups, means, METHODS[0], time_limit, max_cliques)
+    return replace(result, method=method)
 
 
 def _validate_solver_controls(
@@ -143,16 +78,14 @@ def _validate_solver_controls(
     )
 
 
-def _build_model(adjacency: np.ndarray, cliques: list[tuple[int, ...]]) -> _Model:
+def _build_model(context) -> _Model:
     """Build the model of docs/algorithm.md section 4."""
+    adjacency, cliques = context.adjacency, context.cliques
     num_groups = adjacency.shape[0]
     members = [(c, g) for c, clique in enumerate(cliques) for g in clique]
     x_index = {member: k for k, member in enumerate(members)}
-    cliques_of: list[list[int]] = [[] for _ in range(num_groups)]
-    for c, clique in enumerate(cliques):
-        for g in clique:
-            cliques_of[g].append(c)
-    edges = [(i, j) for i in range(num_groups) for j in range(i + 1, num_groups) if adjacency[i, j]]
+    cliques_of = context.cliques_of
+    edges = context.edges
 
     num_x = len(members)
     y_pairs: list[tuple[int, int]] = []  # (edge, clique)
@@ -194,10 +127,10 @@ def _build_model(adjacency: np.ndarray, cliques: list[tuple[int, ...]]) -> _Mode
         start.append(len(index))
     num_cols = num_x + len(y_pairs)
     cost = np.zeros(num_cols)
-    cost[:num_x] = 1.0
+    cost[:num_x] = [context.weights[g] for _, g in members]
     problem = _solver.Problem(
         num_cols=num_cols,
-        num_x=num_x,
+        decision_columns=list(range(num_x)),
         cost=cost,
         start=np.asarray(start, dtype=np.int32),
         index=np.asarray(index, dtype=np.int32),
@@ -217,94 +150,10 @@ def _build_model(adjacency: np.ndarray, cliques: list[tuple[int, ...]]) -> _Mode
     )
 
 
-def _solve_canonical(model: _Model, time_limit: float | None) -> tuple[np.ndarray, int]:
-    """Solve once for the minimum, then fix the memberships in (clique, group) order.
-
-    This is the sequential fixing procedure of docs/algorithm.md section 5. Returns the
-    selected x variables (a boolean array) and the minimum number of assignments.
-    """
-    problem = model.problem
-    num_x = problem.num_x
-    deadline = _now() + time_limit if time_limit is not None else None
-    col_lower = np.zeros(problem.num_cols)
-    col_upper = np.ones(problem.num_cols)
-
-    outcome = _solve(model, col_lower, col_upper, None, deadline)
-    selected = _check_solution(model, outcome, col_lower, col_upper, None)
-    minimum = int(round(float(outcome.objective)))
-    selected_x = selected
-
-    for v in range(num_x):
-        if selected_x[v]:
-            col_lower[v] = 1.0
-            continue
-        trial_lower = col_lower.copy()
-        trial_lower[v] = 1.0
-        outcome = _solve(model, trial_lower, col_upper, minimum, deadline)
-        if outcome.status == _solver.INFEASIBLE:
-            col_upper[v] = 0.0
-            continue
-        selected_x = _check_solution(model, outcome, trial_lower, col_upper, minimum)
-        col_lower = trial_lower
-    return selected_x, minimum
-
-
-def _solve(
-    model: _Model,
-    col_lower: np.ndarray,
-    col_upper: np.ndarray,
-    sum_limit: int | None,
-    deadline: float | None,
-) -> _solver.Outcome:
-    remaining = None
-    if deadline is not None:
-        remaining = deadline - _now()
-        if remaining <= 0:
-            msg = "assignment-minimum MILP failed: Time limit reached"
-            raise SolverError(msg)
-    outcome = _solver.run(
-        model.problem, col_lower, col_upper, sum_limit=sum_limit, time_limit=remaining
+def _coverage(model: _Model, selected: np.ndarray) -> bool:
+    return all(any(selected[k] for k in columns) for columns in model.group_columns) and all(
+        any(selected[a] and selected[b] for a, b in ends) for ends in model.edge_ends
     )
-    if outcome.status == _solver.INFEASIBLE and sum_limit is not None:
-        return outcome
-    if outcome.status != _solver.OPTIMAL:
-        msg = f"assignment-minimum MILP failed: {outcome.text}"
-        raise SolverError(msg)
-    return outcome
-
-
-def _check_solution(
-    model: _Model,
-    outcome: _solver.Outcome,
-    col_lower: np.ndarray,
-    col_upper: np.ndarray,
-    expected_sum: int | None,
-) -> np.ndarray:
-    """Docs/algorithm.md section 6, checks 2 to 5. Returns the rounded x as booleans."""
-    num_x = model.problem.num_x
-    values = outcome.values
-    if values is None or len(values) != model.problem.num_cols:
-        raise SolverError(_INVALID_SOLUTION)
-    x = np.asarray(values[:num_x], dtype=np.float64)
-    # Each membership must be 0 or 1 within the tolerance; an integral 2 or -1 is invalid too.
-    near_zero = np.abs(x) <= _INTEGRALITY_TOLERANCE
-    near_one = np.abs(x - 1.0) <= _INTEGRALITY_TOLERANCE
-    if not np.all(np.isfinite(x) & (near_zero | near_one)):
-        raise SolverError(_INVALID_SOLUTION)
-    rounded = x > 0.5
-    if np.any(rounded & (col_upper[:num_x] < 0.5)) or np.any(~rounded & (col_lower[:num_x] > 0.5)):
-        raise SolverError(_INVALID_SOLUTION)
-    for columns in model.group_columns:
-        if not any(rounded[k] for k in columns):
-            raise SolverError(_INVALID_SOLUTION)
-    for ends in model.edge_ends:
-        if not any(rounded[a] and rounded[b] for a, b in ends):
-            raise SolverError(_INVALID_SOLUTION)
-    total = int(rounded.sum())
-    wanted = expected_sum if expected_sum is not None else int(round(float(outcome.objective)))
-    if total != wanted:
-        raise SolverError(_INVALID_SOLUTION)
-    return rounded
 
 
 def _selected_columns(
@@ -316,36 +165,3 @@ def _selected_columns(
         if selected[k]:
             columns[c].append(g)
     return [column for column in columns if column]
-
-
-def _assign_letter_tokens(
-    columns: list[list[int]],
-    num_groups: int,
-    means: pd.Series | None,
-    groups: list[str],
-) -> list[tuple[str, ...]]:
-    order = sorted(range(len(columns)), key=lambda c: _column_sort_key(columns[c], groups, means))
-    labels = make_letter_labels(len(order))
-    tokens: list[list[str]] = [[] for _ in range(num_groups)]
-    for label, column in zip(labels, order, strict=True):
-        for group_index in columns[column]:
-            tokens[group_index].append(label)
-    return [tuple(value) for value in tokens]
-
-
-def _format_letter_tokens(tokens: tuple[str, ...]) -> str:
-    if all(len(token) == 1 for token in tokens):
-        return "".join(tokens)
-    return " ".join(tokens)
-
-
-def _column_sort_key(
-    members: list[int],
-    groups: list[str],
-    means: pd.Series | None,
-) -> tuple[float, int]:
-    lowest = min(members)
-    if means is not None:
-        highest_mean = max(float(means[groups[index]]) for index in members)
-        return (-highest_mean, lowest)
-    return (float(lowest), lowest)
