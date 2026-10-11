@@ -20,7 +20,7 @@ Review the profiles before selecting a runtime change. The current `freeze` comm
 python benchmarks/run.py freeze --manifest "$evidence_dir/pilot/manifest.json" --profiles "$evidence_dir/baseline-profiles" --capture "$evidence_dir/baseline-capture" --calibration "$evidence_dir/calibration" --output "$evidence_dir/frozen.json"
 ```
 
-Calibration compares the same source to itself. Each case's 95 percent interval must stay between 1/1.05 and 1.05. This rejects large false gains as well as large slowdowns. Set the sampling design before candidate timing. If calibration is inconclusive, increase the baseline sampling effort and repeat calibration. The harness permits at most 16 process pairs and 36 measured batches. A larger design requires a separate documented change before candidate timing. Keep the graph inputs fixed. Do not adjust the design after candidate results are known.
+Calibration compares the same source to itself. Each case's 95 percent interval must stay between 1/1.05 and 1.05. Freeze also checks this band for every complete eligible target group. This rejects large false gains as well as large slowdowns. Set the sampling design before candidate timing. If calibration is inconclusive, increase the baseline sampling effort and repeat calibration. The harness permits at most 16 process pairs and 36 measured batches. A larger design requires a separate documented change before candidate timing. Keep the graph inputs fixed. Do not adjust the design after candidate results are known.
 
 After the candidate passes its correctness suites, capture its actual decisions and resource outcomes. Run the two timing comparisons in sequence on an otherwise idle host. Keep other test and build jobs stopped during these runs.
 

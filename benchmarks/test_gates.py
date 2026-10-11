@@ -505,7 +505,12 @@ def make_evidence(
         directories["calibration"], calibration_metadata, calibration_results, "compare"
     )
     write_rows(directories["calibration"] / "results.jsonl", calibration_results)
-    calibration_report = analyze(calibration_manifest, calibration_metadata, calibration_samples)
+    calibration_report = analyze(
+        calibration_manifest,
+        calibration_metadata,
+        calibration_samples,
+        calibration_targets=manifest["gain_targets"],
+    )
     assert calibration_report["pass"], calibration_report["reasons"]
     for name, value in (
         ("manifest", calibration_manifest),
@@ -652,7 +657,9 @@ def bind_calibration_files(manifest, directories):
         calibration_manifest_sha256=digest(design),
         calibration_metadata_sha256=digest(metadata),
         calibration_samples_sha256=digest(samples),
-        calibration_sha256=digest(analyze(design, metadata, samples)),
+        calibration_sha256=digest(
+            analyze(design, metadata, samples, calibration_targets=manifest["gain_targets"])
+        ),
     )
     bind_decision_manifest(manifest, directories)
 

@@ -401,7 +401,7 @@ def check_design(manifest):
     return reasons
 
 
-def analyze(manifest, metadata, records):
+def analyze(manifest, metadata, records, *, calibration_targets=None):
     reasons, per_case, groups = check_design(manifest), {}, {}
     try:
         manifest_hash, inputs_hash = digest(manifest), input_digest(manifest)
@@ -524,6 +524,11 @@ def analyze(manifest, metadata, records):
     if not per_case:
         reasons.append("No successful measured cases")
     targets = manifest.get("gain_targets")
+    if calibration_targets is not None:
+        if not aa:
+            reasons.append("Target overrides are only valid for A/A calibration")
+        else:
+            targets = calibration_targets
     if not aa and manifest.get("frozen") is not True:
         reasons.append("Candidate manifest is not frozen")
     if not isinstance(targets, dict) or (not aa and not targets):
@@ -559,15 +564,17 @@ def analyze(manifest, metadata, records):
             if any(key not in per_case for key in members):
                 reasons.append(f"Incomplete target group: {group}/{split}")
                 continue
-            if aa:
-                continue
             point = math.exp(
                 sum(math.log(per_case[key]["ratio"]) for key in members) / len(members)
             )
             # Calls to estimate use identical grouped resamples for every case.
             samples = np.mean([log_draws[key] for key in members], axis=0)
             interval = np.exp(np.quantile(samples, [0.025, 0.975])).tolist()
-            passed = at_most(point, 0.90) and interval[1] < 1
+            passed = (
+                at_most(interval[1], 1.05) and at_most(1 / 1.05, interval[0])
+                if aa
+                else at_most(point, 0.90) and interval[1] < 1
+            )
             groups[f"{group}/{split}"] = {
                 "ratio": point,
                 "interval_95": interval,
@@ -575,6 +582,7 @@ def analyze(manifest, metadata, records):
                 "pass": passed,
             }
             if not passed:
-                reasons.append(f"Gain not established: {group}/{split}")
+                kind = "A/A target equivalence" if aa else "Gain"
+                reasons.append(f"{kind} not established: {group}/{split}")
     report["pass"] = not reasons
     return report

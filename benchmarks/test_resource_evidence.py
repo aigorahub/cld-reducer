@@ -366,7 +366,7 @@ def test_freeze_requires_baseline_profile_capture_and_calibration_receipts(
     manifest = json.loads((directories["calibration"] / "manifest.json").read_text())
     monkeypatch.setattr(run, "load_manifest", lambda _: copy.deepcopy(manifest))
     monkeypatch.setattr(
-        run, "analyze", lambda m, *_: {"pass": True, "manifest_sha256": common.digest(m)}
+        run, "analyze", lambda m, *_, **__: {"pass": True, "manifest_sha256": common.digest(m)}
     )
     args = SimpleNamespace(
         manifest="unused",

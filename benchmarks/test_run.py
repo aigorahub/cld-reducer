@@ -207,7 +207,7 @@ def test_freeze_rechecks_pilot_binding(tmp_path, monkeypatch, fault):
     (calibration / "samples.jsonl").write_text("")
     # Isolate freeze's own check from analysis's independent pilot check.
     monkeypatch.setattr(
-        run, "analyze", lambda *_: {"pass": True, "manifest_sha256": run.digest(manifest)}
+        run, "analyze", lambda *_, **__: {"pass": True, "manifest_sha256": run.digest(manifest)}
     )
     with pytest.raises(ValueError, match="Pilot source"):
         run.freeze(SimpleNamespace(manifest=path, calibration=calibration))
@@ -344,7 +344,7 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
     path, output = tmp_path / "manifest.json", tmp_path / "frozen.json"
     run.save(path, manifest)
     monkeypatch.setattr(
-        run, "analyze", lambda *_: {"pass": True, "manifest_sha256": run.digest(manifest)}
+        run, "analyze", lambda *_, **__: {"pass": True, "manifest_sha256": run.digest(manifest)}
     )
     args = SimpleNamespace(
         manifest=path,

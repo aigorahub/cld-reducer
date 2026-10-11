@@ -784,3 +784,26 @@ def test_target_upper_bound_requires_strict_gain():
     assert all(value["ratio"] <= 0.90 for value in report["groups"].values())
     assert all(value["interval_95"][1] == 1.0 for value in report["groups"].values())
     assert not report["pass"]
+
+
+def test_calibration_checks_joint_target_interval_even_when_each_case_passes():
+    manifest, metadata, rows = evidence(1.0, targets=False)
+    calibration(metadata)
+    targets = {"python|letter_minimum": list(manifest["iterations"])}
+    for row in rows:
+        outlier_process = int(row["key"].rsplit("-", 1)[1])
+        if row["process"] == outlier_process:
+            row["candidate_ns"] = 100 * row["baseline_ns"]
+    original_hash = digest(manifest)
+    report = analyze(manifest, metadata, rows, calibration_targets=targets)
+    assert all(case["pass"] for case in report["cases"].values())
+    assert not report["pass"]
+    assert any("A/A target equivalence not established" in reason for reason in report["reasons"])
+    assert report["manifest_sha256"] == original_hash == digest(manifest)
+
+
+def test_candidate_cannot_override_frozen_targets():
+    manifest, metadata, rows = evidence()
+    report = analyze(manifest, metadata, rows, calibration_targets={})
+    assert not report["pass"]
+    assert "Target overrides are only valid for A/A calibration" in report["reasons"]

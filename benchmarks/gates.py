@@ -448,7 +448,10 @@ def audit(
         calibration_metadata = _read(calibration_dir, "metadata.json")
         calibration_samples = _rows(calibration_dir, "samples.jsonl")
         calibration_report = analyze(
-            calibration_manifest, calibration_metadata, calibration_samples
+            calibration_manifest,
+            calibration_metadata,
+            calibration_samples,
+            calibration_targets=manifest.get("gain_targets"),
         )
         calibration_resources = validate_resources(
             calibration_dir,

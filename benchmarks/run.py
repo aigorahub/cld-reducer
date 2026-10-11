@@ -758,6 +758,9 @@ def freeze(args):
     ):
         raise ValueError("Baseline canonical vectors are missing or duplicated")
     eligible = select_gain_targets(m, rows)
+    calibration = analyze(calibration_manifest, metadata, samples, calibration_targets=eligible)
+    if not calibration["pass"]:
+        raise ValueError("A/A calibration must establish equivalence for every target group")
     m["gain_targets"] = eligible
     m["candidate"] = "essential-cover-certificate"
     m["eligibility_rule"] = (
