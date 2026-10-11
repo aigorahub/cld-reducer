@@ -15,6 +15,9 @@
 - Scan the full maximal cover for essential decisions before HiGHS. Fix required
   sigma memberships or C clique selections to 1. Preserve the minimum and
   canonical result. Include scan time in the shared solver deadline.
+- Certify the unique optimum when the essential decisions alone cover every
+  required vertex and edge. Use the same proof for C and weighted sigma. Keep
+  HiGHS as the fallback. Preserve the full display, statistics, and deadline.
 - Add independent C reference searches, a 33,867-graph census, cross-language fixtures,
   solver failures, and installed-package checks.
 
