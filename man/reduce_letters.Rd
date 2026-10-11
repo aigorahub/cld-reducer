@@ -11,7 +11,7 @@ reduce_letters(
   group1 = "group1",
   group2 = "group2",
   significant = "significant",
-  method = "assignment_minimum",
+  method = "letter_minimum",
   time_limit = NULL,
   max_cliques = 10000L
 )
@@ -20,7 +20,7 @@ reduce_from_adjacency(
   adjacency,
   groups = NULL,
   means = NULL,
-  method = "assignment_minimum",
+  method = "letter_minimum",
   time_limit = NULL,
   max_cliques = 10000L
 )
@@ -42,8 +42,8 @@ appearance in \code{group1}, then \code{group2}. Every mean must be finite.}
 
 \item{group1, group2, significant}{Names of the columns of \code{pairs}.}
 
-\item{method}{\code{"assignment_minimum"} (CLD-sigma, default) minimizes assignments;
-\code{"letter_minimum"} (CLD-C) minimizes full maximal-clique columns, with no
+\item{method}{\code{"assignment_minimum"} (CLD-sigma) minimizes assignments;
+\code{"letter_minimum"} (CLD-C, default) minimizes full maximal-clique columns, with no
 assignment secondary objective. Hyphenated aliases are also accepted.
 Public result metadata uses the underscore spelling.}
 
@@ -86,9 +86,9 @@ The \code{print()} method shows the display and the counts, and
 }
 \description{
 \code{reduce_letters()} and \code{reduce_from_adjacency()} find a compact letter
-display (CLD) minimizing assignments (CLD-sigma, the default) or distinct
-letters (CLD-C), in which two groups share a
-letter exactly when they are not significantly different. The default
+display (CLD) minimizing distinct letters (CLD-C, the default) or
+assignments (CLD-sigma), in which two groups share a
+letter exactly when they are not significantly different. The optional
 CLD-sigma method solves the assignment-minimum clique covering problem of
 Ennis, Fayle, and Ennis (2012). Both methods use 'HiGHS'.
 When several displays have the same minimum objective, the function returns
