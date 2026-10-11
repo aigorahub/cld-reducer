@@ -13,6 +13,7 @@ from cases import job_key, jobs, multipartite
 from common import digest, input_digest
 from gates import audit
 from profile_outcomes import PREPROCESS_PHASES, UNUSED_PHASES, freeze_preprocess_failures
+from test_pilot_evidence import write_pilot_fixture
 from test_resource_evidence import write_resource_fixture
 
 recorded_driver_hashes = gates._driver_hashes
@@ -280,6 +281,7 @@ def make_evidence(
         memory_growth_tolerance_mb=memory_growth_tolerance_mb,
         candidate="essential-cover-certificate",
         processes=8,
+        batch_target_ns=50000000,
         warmup_batches=3,
         batches=9,
         bootstrap_resamples=10000,
@@ -301,6 +303,7 @@ def make_evidence(
     manifest["gain_targets"] = {language + "|letter_minimum": keys[:10]}
     if baseline_failure:
         manifest["baseline_failures"] = [keys[-1]]
+        manifest["iterations"].pop(keys[-1])
         manifest["baseline_failure_classes"] = {keys[-1]: "solver_time_limit"}
     failure = dict(
         ok=False,
@@ -317,6 +320,7 @@ def make_evidence(
             "run-1",
             "run-2",
             "calibration",
+            "pilot",
         )
     }
     captures, profiles, metadata = {}, {}, {}
@@ -438,6 +442,10 @@ def make_evidence(
         manifest, profiles["baseline"]
     )
     manifest["gain_targets"] = select_gain_targets(manifest, profiles["baseline"])
+    pilot_evidence = write_pilot_fixture(
+        directories["pilot"], manifest, captures["baseline"], metadata["baseline"]
+    )
+    manifest["pilot_evidence_sha256"] = pilot_evidence["sha256"]
     calibration_manifest = copy.deepcopy(manifest)
     for name in (
         "baseline_source",
@@ -490,7 +498,18 @@ def make_evidence(
         finished_unix=200,
         run_id="calibration",
     )
+    calibration_captures = {job_key(language, row["case"]): row for row in captures["baseline"]}
     calibration_results = [
+        dict(
+            key=key,
+            process=process,
+            responses=[dict(ok=True, action="measure", result=calibration_captures[key]["result"])]
+            * 2,
+        )
+        for key in keys
+        if key not in manifest["baseline_failures"]
+        for process in range(manifest["processes"])
+    ] + [
         dict(
             key=key,
             process=0,
@@ -507,6 +526,8 @@ def make_evidence(
         )
         for index, key in enumerate(manifest["baseline_failures"])
     ]
+    for row in calibration_samples:
+        row["result_hashes"] = [digest(calibration_captures[row["key"]]["result"])] * 2
     calibration_resources = write_resource_fixture(
         directories["calibration"], calibration_metadata, calibration_results, "compare"
     )
@@ -529,6 +550,7 @@ def make_evidence(
         calibration_manifest_sha256=digest(calibration_manifest),
         calibration_metadata_sha256=digest(calibration_metadata),
         calibration_samples_sha256=digest(calibration_samples),
+        calibration_results_sha256=digest(calibration_results),
         calibration_sha256=digest(calibration_report),
         calibration_resource_sha256=digest(calibration_resources),
     )
@@ -624,6 +646,7 @@ def run_audit(manifest, directories, runs=None):
         directories["baseline-profiles"],
         directories["candidate-profiles"],
         directories["calibration"],
+        directories["pilot"],
     )
 
 
@@ -663,6 +686,9 @@ def bind_calibration_files(manifest, directories):
         calibration_manifest_sha256=digest(design),
         calibration_metadata_sha256=digest(metadata),
         calibration_samples_sha256=digest(samples),
+        calibration_results_sha256=digest(
+            [json.loads(line) for line in (path / "results.jsonl").read_text().splitlines()]
+        ),
         calibration_sha256=digest(
             analyze(design, metadata, samples, calibration_targets=manifest["gain_targets"])
         ),
@@ -695,7 +721,7 @@ def test_audit_recomputes_calibration_and_rejects_spurious_aa_speedup(tmp_path):
     )
 
 
-@pytest.mark.parametrize("part", ["samples", "metadata", "manifest"])
+@pytest.mark.parametrize("part", ["samples", "results", "metadata", "manifest"])
 def test_raw_calibration_hashes_must_match_freeze(tmp_path, part):
     manifest, directories = make_evidence(tmp_path)
     path = directories["calibration"]
@@ -704,6 +730,8 @@ def test_raw_calibration_hashes_must_match_freeze(tmp_path, part):
             path / "samples.jsonl",
             lambda rows: rows[0].update(candidate_ns=rows[0]["baseline_ns"] * 1.001),
         )
+    elif part == "results":
+        change_rows(path / "results.jsonl", lambda rows: rows[0].update(extra="changed"))
     else:
         change_json(path / f"{part}.json", lambda value: value.update(extra="changed after freeze"))
     report = run_audit(manifest, directories)
@@ -1523,3 +1551,146 @@ def test_candidate_cannot_change_a_frozen_solve_resource_class(tmp_path):
     report = run_audit(manifest, directories)
     assert not report["pass"]
     assert any("failure class changed" in reason for reason in report["reasons"])
+
+
+@pytest.mark.parametrize("stage", ["freeze", "audit"])
+@pytest.mark.parametrize(
+    "fault", ["empty", "missing", "duplicate", "action", "result", "last_hash"]
+)
+def test_raw_calibration_results_are_required_and_match_every_batch(
+    tmp_path, monkeypatch, stage, fault
+):
+    from types import SimpleNamespace
+
+    import run
+
+    manifest, directories = make_evidence(tmp_path)
+    calibration = directories["calibration"]
+    if fault == "last_hash":
+        change_rows(
+            calibration / "samples.jsonl",
+            lambda rows: rows[-1]["result_hashes"].__setitem__(0, "f" * 64),
+        )
+    else:
+
+        def change(rows):
+            if fault == "empty":
+                rows.clear()
+            elif fault == "missing":
+                rows.pop()
+            elif fault == "duplicate":
+                rows.append(copy.deepcopy(rows[0]))
+            elif fault == "action":
+                rows[0]["responses"][0]["action"] = "capture"
+            else:
+                rows[0]["responses"][0]["result"]["stats"]["objective"] = 2
+
+        change_rows(calibration / "results.jsonl", change)
+    # Rebind hashes to prove the semantic gate rejects the changed evidence.
+    bind_calibration_files(manifest, directories)
+    if stage == "audit":
+        report = run_audit(manifest, directories)
+        assert not report["pass"]
+        assert any(
+            "Comparison result inventory" in r
+            or "Recorded API output" in r
+            or "full-output hash" in r
+            for r in report["reasons"]
+        ), report["reasons"]
+    else:
+        design = json.loads((calibration / "manifest.json").read_text())
+        monkeypatch.setattr(run, "load_manifest", lambda _: copy.deepcopy(design))
+        args = SimpleNamespace(
+            manifest="unused",
+            calibration=calibration,
+            pilot=directories["pilot"],
+            profiles=directories["baseline-profiles"],
+            capture=directories["baseline-capture"],
+            output=tmp_path / "frozen.json",
+        )
+        with pytest.raises(
+            ValueError, match="Comparison result inventory|Recorded API output|full-output hash"
+        ):
+            run.freeze(args)
+        assert not args.output.exists()
+
+
+@pytest.mark.parametrize("stage", ["freeze", "audit"])
+@pytest.mark.parametrize("fault", ["receipt", "rows", "selection"])
+def test_raw_pilot_evidence_is_required_at_freeze_and_audit(tmp_path, monkeypatch, stage, fault):
+    from types import SimpleNamespace
+
+    import run
+
+    manifest, directories = make_evidence(tmp_path)
+    pilot = directories["pilot"]
+    if fault == "receipt":
+        next(pilot.glob("*.resource.json")).unlink()
+    elif fault == "rows":
+        change_rows(pilot / "pilot.jsonl", lambda rows: rows.pop())
+    else:
+        change_rows(pilot / "pilot.jsonl", lambda rows: rows[0].update(iterations=2))
+    if stage == "audit":
+        report = run_audit(manifest, directories)
+        assert not report["pass"]
+        assert any("receipt" in r or "Pilot evidence" in r for r in report["reasons"]), report[
+            "reasons"
+        ]
+    else:
+        design = json.loads((directories["calibration"] / "manifest.json").read_text())
+        monkeypatch.setattr(run, "load_manifest", lambda _: copy.deepcopy(design))
+        args = SimpleNamespace(
+            manifest="unused",
+            calibration=directories["calibration"],
+            pilot=pilot,
+            profiles=directories["baseline-profiles"],
+            capture=directories["baseline-capture"],
+            output=tmp_path / "frozen.json",
+        )
+        with pytest.raises(ValueError, match="receipt|Pilot evidence"):
+            run.freeze(args)
+        assert not args.output.exists()
+
+
+def test_freeze_binds_raw_pilot_and_calibration_result_digests(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import run
+
+    _, directories = make_evidence(tmp_path)
+    calibration = directories["calibration"]
+    design = json.loads((calibration / "manifest.json").read_text())
+    monkeypatch.setattr(run, "load_manifest", lambda _: copy.deepcopy(design))
+    args = SimpleNamespace(
+        manifest="unused",
+        calibration=calibration,
+        pilot=directories["pilot"],
+        profiles=directories["baseline-profiles"],
+        capture=directories["baseline-capture"],
+        output=tmp_path / "frozen.json",
+    )
+    run.freeze(args)
+    frozen = json.loads(args.output.read_text())
+    responses = [
+        json.loads(line) for line in (calibration / "results.jsonl").read_text().splitlines()
+    ]
+    assert frozen["calibration_results_sha256"] == digest(responses)
+    assert set(frozen["pilot_evidence_sha256"]) == {
+        "input_manifest",
+        "manifest",
+        "metadata",
+        "rows",
+        "resources",
+    }
+    assert all(len(value) == 64 for value in frozen["pilot_evidence_sha256"].values())
+
+
+def test_audit_binds_raw_pilot_even_when_selection_is_unchanged(tmp_path):
+    manifest, directories = make_evidence(tmp_path)
+    change_rows(
+        directories["pilot"] / "pilot.jsonl",
+        lambda rows: rows[0]["versions"].update(module_load_ns=1000),
+    )
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert "Pilot evidence differs from the frozen evidence" in report["reasons"]

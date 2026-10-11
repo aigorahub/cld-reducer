@@ -158,6 +158,7 @@ def rss_evidence(tolerance=0):
         "methods": ["letter_minimum"],
         "cases": [{"id": "case", "tier": "solve", "options": {}}],
         "processes": 2,
+        "batches": 2,
         "baseline_failures": [],
         "memory_limit_mb": 128,
         "memory_growth_tolerance_mb": tolerance,
@@ -166,10 +167,11 @@ def rss_evidence(tolerance=0):
         {
             "key": "python|letter_minimum|case",
             "process": process,
+            "batch": index // 2,
             "rss": [1024, 1024],
             "peak_rss": [1024, 1024],
         }
-        for process in (0, 1, 0, 1)
+        for index, process in enumerate((0, 1, 0, 1))
     ]
     return manifest, rows
 
@@ -262,3 +264,97 @@ def test_solve_capture_memory_exclusion_fails_closed_under_current_receipt_polic
     row["response"]["error"]["message"] = "Driver memory limit exceeded"
     with pytest.raises(ValueError, match="Unsupported solve capture memory failure"):
         validate_solve_captures(manifest, [row])
+
+
+def comparison_evidence():
+    manifest = {
+        "languages": ["python"],
+        "methods": ["letter_minimum"],
+        "cases": [{"id": "one", "tier": "solve", "options": {}}],
+        "baseline_failures": [],
+        "processes": 2,
+        "batches": 3,
+    }
+    captured = {
+        "language": "python",
+        "method": "letter_minimum",
+        "id": "one",
+        "result": {"value": 1, "rows": ["full output"]},
+    }
+    key = "python|letter_minimum|one"
+    rows = [
+        {
+            "key": key,
+            "process": process,
+            "responses": [
+                {"ok": True, "action": "measure", "result": copy.deepcopy(captured["result"])}
+                for _ in range(2)
+            ],
+        }
+        for process in range(2)
+    ]
+    samples = [
+        {
+            "key": key,
+            "process": process,
+            "batch": batch,
+            "ok": True,
+            "correct": True,
+            "result_hashes": [digest(captured["result"])] * 2,
+        }
+        for process in range(2)
+        for batch in range(3)
+    ]
+    return manifest, rows, samples, [captured]
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "empty",
+        "missing",
+        "duplicate",
+        "extra_process",
+        "action",
+        "ok",
+        "error",
+        "result",
+        "numeric_type",
+        "last_hash",
+        "missing_batch",
+        "duplicate_batch",
+    ],
+)
+def test_shared_comparison_gate_binds_every_result_and_batch(fault):
+    from solve_outcomes import validate_comparison_results
+
+    manifest, rows, samples, captures = comparison_evidence()
+    if fault == "empty":
+        rows.clear()
+    elif fault == "missing":
+        rows.pop()
+    elif fault == "duplicate":
+        rows.append(copy.deepcopy(rows[0]))
+    elif fault == "extra_process":
+        rows[0]["process"] = 2
+    elif fault == "action":
+        rows[0]["responses"][0]["action"] = "capture"
+    elif fault == "ok":
+        rows[0]["responses"][0]["ok"] = 1
+    elif fault == "error":
+        rows[0]["responses"][0]["error"] = {"kind": "ignored"}
+    elif fault in ("result", "numeric_type"):
+        rows[0]["responses"][0]["result"]["value"] = True if fault == "numeric_type" else 2
+    elif fault == "last_hash":
+        samples[-1]["result_hashes"][1] = "f" * 64
+    elif fault == "missing_batch":
+        samples.pop()
+    elif fault == "duplicate_batch":
+        samples.append(copy.deepcopy(samples[0]))
+    if fault:
+        with pytest.raises(ValueError):
+            validate_comparison_results(manifest, rows, samples, captures)
+    else:
+        validate_comparison_results(manifest, rows, samples, captures)
+        validate_comparison_results(manifest, rows, samples, captures, captures)

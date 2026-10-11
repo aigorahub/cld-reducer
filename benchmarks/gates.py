@@ -24,11 +24,13 @@ from analysis import (
 )
 from cases import job_key, jobs
 from common import digest
+from pilot_evidence import validate_pilot
 from profile_outcomes import validate_preprocess_outcomes
 from profile_settings import validate_solver_settings
 from resource_evidence import validate_resources
 from solve_outcomes import (
     validate_calibration_failures,
+    validate_comparison_results,
     validate_solve_captures,
     validate_solve_profiles,
 )
@@ -343,6 +345,7 @@ def audit(
     baseline_profiles_dir,
     candidate_profiles_dir,
     calibration_dir,
+    pilot_dir,
 ):
     """Return pass/reasons/evidence. Invalid, missing or stale evidence fails closed."""
     reasons, evidence = [], {"runs": [], "captures": {}, "profiles": {}}
@@ -482,6 +485,7 @@ def audit(
             ("calibration_manifest_sha256", calibration_manifest),
             ("calibration_metadata_sha256", calibration_metadata),
             ("calibration_samples_sha256", calibration_samples),
+            ("calibration_results_sha256", calibration_results),
             ("calibration_sha256", calibration_report),
         ):
             require(digest(value) == manifest.get(name), f"Calibration evidence differs: {name}")
@@ -581,6 +585,17 @@ def audit(
                 validate_calibration_failures(
                     manifest, calibration_results, baseline_failure_classes
                 )
+                validate_comparison_results(
+                    manifest, calibration_results, calibration_samples, capture_rows
+                )
+                pilot_evidence = validate_pilot(
+                    pilot_dir, manifest, capture_rows, baseline_failure_classes
+                )
+                require(
+                    pilot_evidence["sha256"] == manifest.get("pilot_evidence_sha256"),
+                    "Pilot evidence differs from the frozen evidence",
+                )
+                evidence["pilot"] = pilot_evidence
             capture_resources = validate_resources(
                 path, manifest, metadata, capture_rows, "capture"
             )
@@ -729,6 +744,7 @@ def audit(
         context(capture_meta["baseline"], "baseline capture")
         context(capture_meta["candidate"], "candidate capture")
         context(calibration_metadata, "calibration")
+        context(pilot_evidence["metadata"], "pilot")
         profiles, solver_settings = {}, {}
         for label, path in (
             ("baseline", baseline_profiles_dir),
@@ -963,31 +979,19 @@ def audit(
                 },
                 f"{label}: missing fresh processes",
             )
-            for row in samples:
-                if row.get("key") not in solve_specs or row["key"] in failures:
-                    require(False, f"{label}: unexpected scored case {row.get('key')}")
-                    continue
-                language, method, identifier = row["key"].split("|", 2)
-                key = (language, identifier, method)
-                wanted_hashes = [
-                    digest(captures[variant][key].get("result"))
-                    for variant in ("baseline", "candidate")
-                ]
-                require(
-                    row.get("result_hashes") == wanted_hashes,
-                    f"{label}: sample result hash differs {row['key']}",
-                )
             growth = rss_growth(manifest, samples)
             response_rows = _rows(path, "results.jsonl")
             run_resources = validate_resources(path, manifest, metadata, response_rows, "compare")
-            seen_results = set()
+            validate_comparison_results(
+                manifest,
+                response_rows,
+                samples,
+                list(captures["baseline"].values()),
+                list(captures["candidate"].values()),
+            )
             for row in response_rows:
                 index = (row["key"], row["process"])
-                require(index not in seen_results, f"{label}: duplicate recorded result {index}")
-                seen_results.add(index)
                 language, method, identifier = row["key"].split("|", 2)
-                pair = row.get("responses", [])
-                require(len(pair) == 2, f"{label}: missing recorded response pair {index}")
                 if row["key"] in failures:
                     require(
                         row.get("baseline_failure") is True and row["process"] == 0,
@@ -1015,33 +1019,6 @@ def audit(
                             f"{label}: missing or reused failure process ID",
                         )
                         pids.add(pid)
-                for variant, response in zip(("baseline", "candidate"), pair, strict=True):
-                    captured = captures[variant].get((language, identifier, method), {})
-                    if "response" in captured:
-                        require(
-                            response == captured["response"],
-                            f"{label}: baseline failure response changed {index}",
-                        )
-                    else:
-                        require(
-                            response.get("ok") is True
-                            and response.get("result") == captured.get("result")
-                            and (
-                                row["key"] not in failures
-                                or response.get("canonical") == captured.get("canonical")
-                            ),
-                            f"{label}: recorded API output differs {index}",
-                        )
-            expected_results = {
-                (key, process)
-                for key in solve_specs
-                if key not in failures
-                for process in range(manifest["processes"])
-            } | {(key, 0) for key in failures}
-            require(
-                seen_results == expected_results,
-                f"{label}: missing recorded API results or baseline failures",
-            )
             report = analyze(manifest, metadata, samples)
             require(
                 report.get("scope") == "single_run", f"{label}: analysis is not scoped to one run"

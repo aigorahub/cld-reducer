@@ -26,11 +26,13 @@ from common import (
     source_identity,
     version_identity,
 )
+from pilot_evidence import validate_pilot
 from profile_outcomes import freeze_preprocess_failures, validate_preprocess_outcomes
 from profile_settings import validate_solver_settings
 from resource_evidence import closed_response, record_driver, validate_resources
 from solve_outcomes import (
     validate_calibration_failures,
+    validate_comparison_results,
     validate_solve_captures,
     validate_solve_profiles,
 )
@@ -413,6 +415,7 @@ def pilot(args):
         manifest_sha256=digest(m), input_sha256=input_digest(m), complete=False, versions={}
     )
     save(out / "metadata.json", metadata)
+    save(out / "input-manifest.json", m)
     with (out / "pilot.jsonl").open("w") as f:
         for language in m["languages"]:
             for index, c in enumerate(jobs(m)):
@@ -432,6 +435,7 @@ def pilot(args):
                         d, {"action": "measure", "case": c, "iterations": 1}, c["wall_seconds"]
                     )
                     warm = first
+                    warmups = []
                     if first["ok"]:
                         for _ in range(m["warmup_batches"]):
                             warm = bounded_request(
@@ -439,6 +443,7 @@ def pilot(args):
                                 {"action": "measure", "case": c, "iterations": 1},
                                 c["wall_seconds"],
                             )
+                            warmups.append(warm)
                             if not warm["ok"]:
                                 break
                 warm = closed_response(d, warm, "measure")
@@ -448,6 +453,7 @@ def pilot(args):
                     "versions": version,
                     "first": first,
                     "warm": warm,
+                    "warmups": warmups,
                     "peak_rss": d.peak_rss,
                 }
                 if not warm["ok"]:
@@ -747,6 +753,8 @@ def freeze(args):
         for line in (Path(args.calibration) / "results.jsonl").read_text().splitlines()
     ]
     validate_calibration_failures(m, calibration_results, baseline_failure_classes)
+    validate_comparison_results(m, calibration_results, samples, captures_data)
+    pilot_evidence = validate_pilot(args.pilot, m, captures_data, baseline_failure_classes)
     profile_resources = validate_resources(args.profiles, m, profile_meta, rows, "profiles")
     capture_resources = validate_resources(args.capture, m, capture_meta, captures_data, "capture")
     calibration_resources = validate_resources(
@@ -782,6 +790,8 @@ def freeze(args):
     m["calibration_metadata_sha256"] = digest(metadata)
     m["calibration_manifest_sha256"] = digest(calibration_manifest)
     m["calibration_samples_sha256"] = digest(samples)
+    m["calibration_results_sha256"] = digest(calibration_results)
+    m["pilot_evidence_sha256"] = pilot_evidence["sha256"]
     m["calibration_harness"] = metadata["harness"]
     m["baseline_capture_sha256"] = digest(captures_data)
     m["baseline_failure_classes"] = baseline_failure_classes
@@ -796,6 +806,9 @@ def freeze(args):
 def final_audit(args):
     from gates import audit
 
+    audit_harness = source_binding(ROOT)
+    if not valid_source(audit_harness):
+        raise ValueError("Audit harness must have a valid clean source binding")
     report = audit(
         load_manifest(args.manifest),
         args.runs,
@@ -804,7 +817,13 @@ def final_audit(args):
         args.baseline_profiles,
         args.candidate_profiles,
         args.calibration,
+        args.pilot,
     )
+    report["audit_harness"] = audit_harness
+    report["audit_harness_after"] = source_binding(ROOT)
+    if report["audit_harness_after"] != audit_harness:
+        report["pass"] = False
+        report["reasons"].append("Audit harness changed during validation")
     save_artifact(args.output, report)
     print(json.dumps({"pass": report["pass"], "reasons": report["reasons"]}), flush=True)
     if not report["pass"]:
@@ -829,7 +848,7 @@ def main():
         p.add_argument("--" + arg, required=True)
     p.add_argument("--kind", choices=("calibration", "candidate"), required=True)
     p = sub.add_parser("freeze")
-    for arg in ("manifest", "profiles", "capture", "calibration", "output"):
+    for arg in ("manifest", "profiles", "capture", "calibration", "pilot", "output"):
         p.add_argument("--" + arg, required=True)
     p = sub.add_parser("audit")
     for arg in (
@@ -839,6 +858,7 @@ def main():
         "baseline-profiles",
         "candidate-profiles",
         "calibration",
+        "pilot",
         "output",
     ):
         p.add_argument("--" + arg, required=True)

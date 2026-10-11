@@ -9,6 +9,7 @@ import pytest
 import run
 from cases import frozen_manifest, job_key, jobs
 from test_gates import preprocess_response, solver_observations
+from test_pilot_evidence import write_pilot_fixture
 from test_profile_settings import sample as settings_sample
 from test_resource_evidence import write_resource_fixture
 
@@ -231,14 +232,22 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
     baseline = javascript_source()
     manifest["pilot_source"] = dict(copy.deepcopy(baseline), path="/pilot-checkout")
     settings = settings_sample("js")[0]
+    settings["presolve"] = manifest["presolve"]["js"]
     manifest["baseline_versions"] = {
         "js": {
             "language": "javascript",
             "runtime": "synthetic",
+            "ok": True,
+            "action": "version",
+            "source_head": baseline["head"],
+            "dependencies": {"highs": "1.14"},
+            "solver": {"name": "HiGHS", "version": "1.14"},
             "settings": settings,
         }
     }
     harness = dict(copy.deepcopy(baseline), path="/harness", head="e" * 40)
+    manifest["pilot_harness"] = copy.deepcopy(harness)
+    manifest["iterations"] = {job_key("js", case): 1 for case in jobs(manifest)}
     calibration = tmp_path / "calibration"
     run.save(calibration / "manifest.json", manifest)
     run.save(
@@ -246,7 +255,10 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
         {
             "kind": "calibration",
             "source_before": {"baseline": baseline, "candidate": baseline},
-            "versions": [{"language": "js", "pids": [1, 2]}],
+            "versions": [
+                {"language": "js", "process": process, "pids": [2 * process + 1, 2 * process + 2]}
+                for process in range(manifest["processes"])
+            ],
             "harness": harness,
             "harness_after": harness,
         },
@@ -259,15 +271,33 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
     profiles, capture = tmp_path / "profiles", tmp_path / "capture"
     calibration_samples = [
         {
-            "key": job_key("js", next(jobs(manifest))),
+            "key": job_key("js", case),
             "process": process,
+            "batch": batch,
+            "ok": True,
+            "correct": True,
+            "result_hashes": [run.digest({"value": case["id"]})] * 2,
             "rss": [1024, 1024],
             "peak_rss": [1024, 1024],
         }
+        for case in jobs(manifest)
         for process in range(manifest["processes"])
+        for batch in range(manifest["batches"])
     ]
     (calibration / "samples.jsonl").write_text(
         "".join(json.dumps(row) + "\n" for row in calibration_samples)
+    )
+    calibration_results = [
+        {
+            "key": job_key("js", case),
+            "process": process,
+            "responses": [{"ok": True, "action": "measure", "result": {"value": case["id"]}}] * 2,
+        }
+        for case in jobs(manifest)
+        for process in range(manifest["processes"])
+    ]
+    (calibration / "results.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in calibration_results)
     )
     profile_rows = [
         {
@@ -321,7 +351,13 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
             dict(key=job_key("js", case), case=case, response=response, peak_rss=peak)
         )
     capture_rows = [
-        {"language": "js", "id": case["id"], "method": case["options"]["method"], "mismatch": []}
+        {
+            "language": "js",
+            "id": case["id"],
+            "method": case["options"]["method"],
+            "mismatch": [],
+            "result": {"value": case["id"]},
+        }
         for case in jobs(manifest)
     ]
     metadata = {
@@ -353,6 +389,8 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
         )
         run.save(directory / "metadata.json", stage_metadata)
         (directory / name).write_text("".join(json.dumps(row) + "\n" for row in rows))
+    write_pilot_fixture(tmp_path / "pilot", manifest, capture_rows, metadata)
+    run.save(calibration / "manifest.json", manifest)
     path, output = tmp_path / "manifest.json", tmp_path / "frozen.json"
     run.save(path, manifest)
     monkeypatch.setattr(
@@ -361,6 +399,7 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
     args = SimpleNamespace(
         manifest=path,
         calibration=calibration,
+        pilot=tmp_path / "pilot",
         profiles=profiles,
         capture=capture,
         output=output,
@@ -636,3 +675,102 @@ def test_new_artifact_output_is_valid_json(tmp_path):
     output = tmp_path / "nested" / "new.json"
     run.save_artifact(output, {"pass": False, "reasons": ["inconclusive"]})
     assert run.read(output) == {"pass": False, "reasons": ["inconclusive"]}
+
+
+@pytest.mark.parametrize("stage", ["freeze", "audit"])
+def test_freeze_and_audit_cli_require_raw_pilot(monkeypatch, capsys, stage):
+    fields = ["manifest", "calibration", "output"]
+    if stage == "freeze":
+        fields += ["profiles", "capture"]
+    else:
+        fields += [
+            "baseline-capture",
+            "candidate-capture",
+            "baseline-profiles",
+            "candidate-profiles",
+        ]
+    argv = ["run.py", stage]
+    for name in fields:
+        argv.extend(["--" + name, "unused"])
+    if stage == "audit":
+        argv.extend(["--runs", "one", "two"])
+    monkeypatch.setattr("sys.argv", argv)
+    with pytest.raises(SystemExit) as error:
+        run.main()
+    assert error.value.code == 2
+    assert "--pilot" in capsys.readouterr().err
+
+
+def test_pilot_retains_original_input_and_all_warm_calls(tmp_path, monkeypatch):
+    args, manifest, requests = setup_collection(tmp_path, monkeypatch)
+    run.pilot(args)
+    assert run.read(args.output / "input-manifest.json") == manifest
+    selected = run.read(args.output / "manifest.json")
+    rows = [json.loads(line) for line in (args.output / "pilot.jsonl").read_text().splitlines()]
+    assert len(rows) == len(list(jobs(manifest)))
+    for row in rows:
+        assert len(row["warmups"]) == manifest["warmup_batches"]
+        assert row["warm"] == row["warmups"][-1]
+        assert row["iterations"] == selected["iterations"][row["key"]] == 100000
+    assert len([r for r, _ in requests if r["action"] == "measure"]) == len(rows) * (
+        1 + manifest["warmup_batches"]
+    )
+
+
+@pytest.mark.parametrize("fault", [None, "dirty", "changed"])
+def test_final_audit_binds_its_own_clean_executing_harness(tmp_path, monkeypatch, fault):
+    import gates
+
+    binding = dict(
+        path="/audit-harness",
+        head="e" * 40,
+        tree="f" * 40,
+        status="",
+        build_files={},
+        lock_files={},
+    )
+    if fault == "dirty":
+        binding["status"] = " M benchmarks/gates.py"
+    after = dict(binding, head="d" * 40) if fault == "changed" else copy.deepcopy(binding)
+    observed = iter((binding, after))
+    checks = []
+    monkeypatch.setattr(
+        run, "source_binding", lambda path: (checks.append(path), next(observed))[1]
+    )
+    monkeypatch.setattr(run, "load_manifest", lambda _: {"baseline_source": {"head": "a" * 40}})
+    audits = []
+
+    def audit(*args):
+        audits.append(args)
+        return {"pass": True, "reasons": [], "scope": "two_run_acceptance"}
+
+    monkeypatch.setattr(gates, "audit", audit)
+    args = SimpleNamespace(
+        manifest="manifest",
+        runs=["one", "two"],
+        baseline_capture="base-cap",
+        candidate_capture="candidate-cap",
+        baseline_profiles="base-profile",
+        candidate_profiles="candidate-profile",
+        calibration="calibration",
+        pilot="pilot",
+        output=tmp_path / "acceptance.json",
+    )
+    if fault:
+        with pytest.raises(ValueError, match="clean source binding|Final acceptance gate failed"):
+            run.final_audit(args)
+    else:
+        run.final_audit(args)
+    if fault == "dirty":
+        assert not args.output.exists()
+        assert audits == []
+        assert checks == [run.ROOT]
+    else:
+        report = run.read(args.output)
+        assert report["audit_harness"] == binding
+        assert report["audit_harness_after"] == after
+        assert report["pass"] is (fault is None)
+        assert checks == [run.ROOT, run.ROOT]
+        assert len(audits) == 1
+        if fault == "changed":
+            assert report["reasons"] == ["Audit harness changed during validation"]

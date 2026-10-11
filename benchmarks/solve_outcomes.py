@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from cases import job_key, jobs
+from common import digest
 
 EXTERNAL_FAILURES = {
     ("ExternalLimit", "Driver external wall limit exceeded"): "external_wall_timeout",
@@ -146,3 +147,86 @@ def validate_calibration_failures(manifest, rows, baseline_classes):
                 raise ValueError(f"Calibration solve failure class changed: {key}")
     if seen != failures:
         raise ValueError("Calibration excluded outcome inventory is incomplete")
+
+
+def validate_comparison_results(manifest, rows, samples, baseline_rows, candidate_rows=None):
+    """Bind every measured batch to a raw response and the full captured output.
+
+    A/A uses the baseline capture for both sides. Candidate comparisons use
+    separate captures; their independent correctness checks remain mandatory.
+    """
+    specs, failures = _specs(manifest)
+    captures = [
+        {"|".join((row["language"], row["method"], row["id"])): row for row in values}
+        for values in (baseline_rows, baseline_rows if candidate_rows is None else candidate_rows)
+    ]
+    expected = {
+        (key, process)
+        for key in specs
+        if key not in failures
+        for process in range(manifest["processes"])
+    } | {(key, 0) for key in failures}
+    seen, hashes = set(), {}
+    for row in rows:
+        key, process = row.get("key"), row.get("process")
+        index = (key, process)
+        if type(process) is not int or index not in expected or index in seen:
+            raise ValueError("Comparison result inventory is incomplete, duplicated, or unexpected")
+        seen.add(index)
+        excluded = key in failures
+        if (excluded and row.get("baseline_failure") is not True) or (
+            not excluded and "baseline_failure" in row
+        ):
+            raise ValueError(f"Invalid comparison failure record: {index}")
+        pair = row.get("responses")
+        if not isinstance(pair, list) or len(pair) != 2:
+            raise ValueError(f"Missing recorded API pair: {index}")
+        for response, captured in zip(pair, captures, strict=True):
+            reference = captured.get(key, {})
+            if "response" in reference:
+                if not (
+                    excluded
+                    and isinstance(response, dict)
+                    and response.get("ok") is False
+                    and response.get("action") == "capture"
+                    and response == reference["response"]
+                ):
+                    raise ValueError(f"Comparison failure response changed: {index}")
+            elif not (
+                isinstance(response, dict)
+                and response.get("ok") is True
+                and response.get("action") == ("capture" if excluded else "measure")
+                and "error" not in response
+                and "result" in reference
+                and response.get("result") == reference["result"]
+                and digest(response["result"]) == digest(reference["result"])
+                and (not excluded or response.get("canonical") == reference.get("canonical"))
+            ):
+                raise ValueError(f"Recorded API output differs from capture: {index}")
+        if not excluded:
+            hashes[index] = [digest(response["result"]) for response in pair]
+    if seen != expected:
+        raise ValueError("Comparison result inventory is incomplete")
+    expected_samples = {
+        (key, process, batch) for key, process in hashes for batch in range(manifest["batches"])
+    }
+    seen_samples = set()
+    for row in samples:
+        key, process, batch = row.get("key"), row.get("process"), row.get("batch")
+        index = (key, process, batch)
+        if (
+            type(process) is not int
+            or type(batch) is not int
+            or index not in expected_samples
+            or index in seen_samples
+        ):
+            raise ValueError("Comparison sample inventory is incomplete, duplicated, or unexpected")
+        seen_samples.add(index)
+        if (
+            row.get("ok") is not True
+            or row.get("correct") is not True
+            or row.get("result_hashes") != hashes[(key, process)]
+        ):
+            raise ValueError(f"Timed full-output hash differs from recorded API result: {index}")
+    if seen_samples != expected_samples:
+        raise ValueError("Comparison sample inventory is incomplete")
