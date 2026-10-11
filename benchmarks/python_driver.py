@@ -122,6 +122,8 @@ class Runtime:
                 "highspy import precedes package import; module_load_ns excludes it",
                 "No solver instance or reduction is created by version",
             ],
+            "settings_kind": "declared_contract",
+            "settings_notes": "Profiles record actual native solver options",
             "settings": {
                 "presolve": self.presolve,
                 "threads": 1,
@@ -247,6 +249,20 @@ class HighsProxy:
             counters[name] = value
         counters["unavailable"] = unavailable
         self.profile.native_counters.append(counters)
+        values = {}
+        for name in (*self.profile.runtime.solver.OPTION_NAMES, "output_flag"):
+            option = self.native.getOptionValue(name)
+            values[name] = option[1] if isinstance(option, tuple) else option
+        time_limit = values.pop("time_limit")
+        self.profile.native_settings.append(
+            {
+                "solve": len(self.profile.native_settings) + 1,
+                "values": values,
+                "excluded_values": {
+                    "time_limit": time_limit if time_limit != float("inf") else None
+                },
+            }
+        )
         return result
 
 
@@ -270,6 +286,7 @@ class Profile:
         self.native_totals = {"model_load": 0, "native_optimization": 0}
         self.native_calls = dict.fromkeys(self.native_totals, 0)
         self.native_counters = []
+        self.native_settings = []
         self.solve_records = []
         self.model = self.context = self.original_adjacency = self.reduced = None
         self.required = None
@@ -394,6 +411,12 @@ class Profile:
     def execute(self, prepared):
         call, args, kwargs = prepared
         result = None
+        reference_ns = None
+        reference = None
+        if not self.preprocess:
+            started = time.perf_counter_ns()
+            reference = call(*args, **kwargs)
+            reference_ns = time.perf_counter_ns() - started
         with patch_attributes(self.hooks()):
             self.started = time.perf_counter_ns()
             try:
@@ -422,6 +445,20 @@ class Profile:
             "profile_notes": {
                 "source_head": self.runtime.source_head,
                 "source_patch": None,
+                "full_call_overhead": None
+                if self.preprocess
+                else {
+                    "instrumented_ns": self.phases["total"],
+                    "uninstrumented_calls": 1,
+                    "reference_ns": reference_ns,
+                    "instrumented_minus_reference_ns": self.phases["total"] - reference_ns,
+                    "ratio": self.phases["total"] / reference_ns if reference_ns else None,
+                    "note": (
+                        "One preceding uninstrumented full call. "
+                        "The signed difference includes runtime noise and probe cost; "
+                        "no subtraction is applied."
+                    ),
+                },
                 "instrumentation": "Temporary Python wrappers and a forwarding highspy proxy",
                 "phase_unavailable": missing,
                 "metric_unavailable": (
@@ -448,6 +485,10 @@ class Profile:
         }
         if not self.preprocess:
             response.update(result=normalize(result), canonical=self.canonical)
+            if normalize(reference) != response["result"]:
+                raise RuntimeError(
+                    "Profile and uninstrumented reference returned different results"
+                )
         return response
 
     def metrics(self):
@@ -507,6 +548,12 @@ class Profile:
             else self.canonical["selected"].count(0),
             "selected": None if self.canonical is None else self.canonical["selected"],
             "objective": None if self.canonical is None else self.canonical["objective"],
+            "solver_settings": {
+                "available": bool(self.native_settings),
+                "records": self.native_settings,
+                "source": "Native Highs.getOptionValue after each actual optimization",
+                "excluded": "time_limit varies with the shared deadline; null means infinite",
+            },
             "solver_counters": counters,
             "solve_records": self.solve_records,
         }

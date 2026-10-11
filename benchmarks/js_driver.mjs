@@ -84,7 +84,7 @@ function collector() {
   const state = {
     phases, model: null, context: null, required: null, canonical: null,
     verticesBefore: null, edgesBefore: null, solves: 0, feasible: 0, infeasible: 0,
-    feasibleNs: 0, infeasibleNs: 0, solverTotalNs: 0, counters: [], nativeRuns: 0,
+    feasibleNs: 0, infeasibleNs: 0, solverTotalNs: 0, counters: [], nativeRuns: 0, solverSettings: [],
     add(key, duration) { phases[key] = (phases[key] ?? 0) + duration; },
     timed(key, callback) {
       const start = now();
@@ -184,6 +184,12 @@ function instrumentSolver(runtime, state, restores) {
       try { outcome = run.apply(this, values); return outcome; }
       finally {
         const duration = elapsed(start);
+        const keys = ['presolve', 'output_flag', 'mip_rel_gap', 'mip_abs_gap',
+          'primal_feasibility_tolerance', 'mip_feasibility_tolerance'];
+        state.solverSettings.push({ solve: state.nativeRuns,
+          values: Object.fromEntries(keys.map(key => [key, model.options.get(key)])),
+          excluded_values: { time_limit: Number.isFinite(model.options.get('time_limit'))
+            ? model.options.get('time_limit') : null } });
         if (first) state.add('initial_optimization', duration);
         state.counters.push({ run: state.nativeRuns, model_status: outcome?.modelStatus ?? null,
           elapsed_ns: duration, values: readCounters(model) });
@@ -203,8 +209,8 @@ function metricsOf(runtime, state) {
   return {
     vertices_before: state.verticesBefore,
     vertices_after: state.context.adjacency.length,
-    edges: state.context.edges.length,
-    edges_before: state.edgesBefore,
+    edges: state.edgesBefore,
+    edges_after: state.context.edges.length,
     maximal_cliques: state.context.cliques.length,
     decision_variables: decisions.length,
     auxiliary_variables: model.problem.numCols - decisions.length,
@@ -219,6 +225,11 @@ function metricsOf(runtime, state) {
     final_zero_decisions: selected ? selected.filter(value => value === 0).length : null,
     selected,
     objective: state.canonical?.objective ?? null,
+    solver_settings: { available: state.solverSettings.length > 0, records: state.solverSettings,
+      source: 'Native model.options.get after each actual optimization',
+      excluded: 'time_limit varies with the shared deadline; null means infinite',
+      thread_constraint: { kind: 'single_threaded_api', threads: 1, native_option: false },
+      thread_control: 'The single-threaded data-only API rejects threads and parallel options' },
     solver_counters: state.counters.length ? { available: true, runs: state.counters }
       : unavailable('No native solver run occurred'),
   };
@@ -278,13 +289,13 @@ function profileNotes(state, patch, preprocessing = false) {
       output_expansion: 'Decoder, expansion, letter ordering, assignments and letter maps; result-object assembly remains in total',
       final_validation: 'Relationship reconstruction, before/after counts and objective check',
     },
-    edges: 'edges is the reduced graph edge count; edges_before is the original graph edge count',
+    edges: 'edges is the input graph edge count; edges_after is the reduced graph edge count',
     unavailable_phases: reasons,
     unavailable_metrics: preprocessing ? { selected: 'No optimization was requested', objective: 'No optimization was requested',
       final_zero_decisions: 'No optimization was requested' } : {},
     canonical_feasible_trials_ns: state.feasibleNs,
     canonical_infeasible_trials_ns: state.infeasibleNs,
-    overhead: 'Probe overhead is included and is not estimated or subtracted. Use measure for acceptance timing.',
+    full_call_overhead: preprocessing ? null : state.overhead,
   };
 }
 
@@ -327,6 +338,8 @@ export class Driver {
       package_version: packageJson.version, dependencies: { highs: highsPackage.version },
       solver_version: solverVersion.string, solver: { ...solverVersion }, source_head: this.sourceHead,
       module_load_ns: this.moduleLoadNs, solver_load_ns: this.solverLoadNs,
+      settings_kind: 'declared_contract',
+      settings_notes: 'Profiles record native options from actual solves',
       settings: { presolve: this.presolve, output_flag: false, mip_rel_gap: 0, mip_abs_gap: 0,
         primal_feasibility_tolerance: 1e-9, mip_feasibility_tolerance: 1e-9,
         threads: 1, thread_setting: 'WebAssembly build is single threaded; no thread option is set',
@@ -380,6 +393,15 @@ export class Driver {
   async capture(prepared, profile) {
     const copy = profile ? await this.getProfileRuntime() : null;
     const runtime = copy?.runtime ?? this.runtime;
+    // Repeated profile requests warm both the production module and the same
+    // disposable profile module. The coordinator discards the warmup records.
+    let referenceNs = null;
+    let referenceResult = null;
+    if (profile) {
+      const start = now();
+      referenceResult = await invoke(this.runtime, prepared);
+      referenceNs = elapsed(start);
+    }
     const state = collector();
     const restores = [];
     let result;
@@ -402,6 +424,13 @@ export class Driver {
       state.phases.canonical_trials ??= 0;
       response.metrics = metricsOf(runtime, state);
       response.phases_ns = state.phases;
+      if (JSON.stringify(normalizeResult(referenceResult)) !== JSON.stringify(response.result)) {
+        throw new Error('Profile and uninstrumented reference returned different results');
+      }
+      state.overhead = { reference_ns: referenceNs, instrumented_ns: state.phases.total, uninstrumented_calls: 1,
+        instrumented_minus_reference_ns: state.phases.total - referenceNs,
+        ratio: referenceNs > 0 ? state.phases.total / referenceNs : null,
+        note: 'One preceding uninstrumented full call. The signed difference includes runtime noise and probe cost; no subtraction is applied. Warmup requests use this same profile module.' };
       response.profile_notes = profileNotes(state, copy.notes);
     }
     return response;

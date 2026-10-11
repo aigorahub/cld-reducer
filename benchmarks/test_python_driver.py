@@ -350,3 +350,41 @@ def test_capture_matches_public_conformance_values(runtime, fixture):
         assert result["stats"]["solver_status"] == expected["solver_status"]
         assert result["method"] == expected["method"]
         assert result["relationship_preserved"] is expected["relationship_preserved"]
+
+
+def test_profile_records_actual_solver_settings_and_overhead(runtime, monkeypatch):
+    native = runtime.highspy.Highs
+
+    class ChangedOptions(native):
+        def setOptionValue(self, name, value):
+            return super().setOptionValue(name, 0.025 if name == "mip_rel_gap" else value)
+
+    monkeypatch.setattr(runtime.highspy, "Highs", ChangedOptions)
+    declared = runtime.versions()
+    assert declared["settings_kind"] == "declared_contract"
+    assert declared["settings"]["mip_rel_gap"] == 0
+    response = runtime.profile(runtime.prepare(graph_case()))
+    settings = response["metrics"]["solver_settings"]
+    assert settings["available"] is True
+    assert len(settings["records"]) == response["metrics"]["solve_count"]
+    assert [r["solve"] for r in settings["records"]] == list(range(1, len(settings["records"]) + 1))
+    for record in settings["records"]:
+        assert record["values"]["mip_rel_gap"] == 0.025
+        assert record["values"]["threads"] == 1
+        assert record["values"]["presolve"] == "on"
+        assert "time_limit" not in record["values"]
+    overhead = response["profile_notes"]["full_call_overhead"]
+    assert overhead["reference_ns"] > 0
+    assert overhead["instrumented_ns"] == response["phases_ns"]["total"]
+    assert (
+        overhead["instrumented_minus_reference_ns"]
+        == overhead["instrumented_ns"] - overhead["reference_ns"]
+    )
+    assert overhead["ratio"] == overhead["instrumented_ns"] / overhead["reference_ns"]
+
+
+def test_preprocessing_has_no_solver_settings_or_full_call_reference(runtime):
+    response = runtime.profile(runtime.prepare(graph_case()), preprocess=True)
+    assert response["metrics"]["solver_settings"]["available"] is False
+    assert response["metrics"]["solver_settings"]["records"] == []
+    assert response["profile_notes"]["full_call_overhead"] is None

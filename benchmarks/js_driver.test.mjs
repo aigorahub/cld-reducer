@@ -289,3 +289,50 @@ test('profile source patches fail closed and target dist remains unchanged', asy
   try { check(await call(driver, 'profile')); } finally { await driver.close(); }
   for (const [name, data] of before) assert.deepEqual(await readFile(join(repo, 'js/dist', name)), data);
 });
+
+
+test('profile observes changed native options and records input and reduced edges', async () => {
+  const driver = new Driver(repo);
+  await driver.load();
+  const highs = driver.runtime.solver.loadedSolver();
+  const original = highs.createModel;
+  highs.createModel = function (...args) {
+    const model = original.apply(this, args);
+    const set = model.options.set;
+    model.options.set = function (values) { return set.call(this, { ...values, mip_rel_gap: 0.025 }); };
+    return model;
+  };
+  try {
+    const c = { call: 'adjacency', options: { method: 'assignment_minimum' },
+      input: { adjacency: [[1,1,1,0], [1,1,1,1], [1,1,1,1], [0,1,1,1]] } };
+    assert.equal(driver.versionInfo.settings.mip_rel_gap, 0);
+    assert.equal(driver.versionInfo.settings_kind, 'declared_contract');
+    let copy;
+    for (let i = 0; i < 4; i++) {
+      const response = check(await call(driver, 'profile', c));
+      copy ??= driver.profileRuntime;
+      assert.equal(driver.profileRuntime, copy);
+      assert.equal(response.metrics.edges, 5);
+      assert.equal(response.metrics.edges_after, 2);
+      const settings = response.metrics.solver_settings;
+      assert.equal(settings.available, true);
+      assert.equal(settings.records.length, response.metrics.solve_count);
+      for (const [index, record] of settings.records.entries()) {
+        assert.equal(record.solve, index + 1);
+        assert.equal(record.values.mip_rel_gap, 0.025);
+        assert.equal(record.values.presolve, 'on');
+        assert.equal(Object.hasOwn(record.values, 'time_limit'), false);
+      }
+      const overhead = response.profile_notes.full_call_overhead;
+      assert.ok(overhead.reference_ns > 0);
+      assert.equal(overhead.instrumented_ns, response.phases_ns.total);
+      assert.equal(overhead.instrumented_minus_reference_ns, overhead.instrumented_ns - overhead.reference_ns);
+      assert.equal(overhead.ratio, overhead.instrumented_ns / overhead.reference_ns);
+      assert.equal(driver.profileRuntime.probe.current, null);
+    }
+    const pre = check(await call(driver, 'preprocess', c));
+    assert.equal(pre.metrics.solver_settings.available, false);
+    assert.deepEqual(pre.metrics.solver_settings.records, []);
+    assert.equal(pre.profile_notes.full_call_overhead, null);
+  } finally { highs.createModel = original; await driver.close(); }
+});
