@@ -1,0 +1,27 @@
+# Benchmark driver protocol
+
+This is development code. Runtime source remains unchanged in this PR. Each driver accepts `--repo ABSOLUTE_PATH` and optional `--presolve on|off` (R supports off only). Python: python_driver.py. R: r_driver.R. JavaScript: js_driver.mjs. The JavaScript source repository must have js/dist built. Drivers resolve runtime code and data from --repo, never from the current directory.
+
+Use UTF-8 JSON lines on stdin and stdout. One response per request, no other stdout. Send diagnostics to stderr. Flush after each response. Continue after a package error; malformed requests return an error. EOF stops. Do not open output files. The coordinator supplies an explicit external output directory.
+
+## Requests
+
+All solve requests carry `case`, using the existing conformance shape: `{id, call: "adjacency"|"pairs", input: {adjacency?, groups?, pairs?, means?}, options: {method, max_cliques?, time_limit?, group1?, group2?, significant?}}`. Method is always explicit, letter_minimum or assignment_minimum. Input conversion to language-native containers happens before timing. The public API's own normalization and validation remain inside timing.
+
+- `{"action":"version"}` loads the package and solver without a reduction. Return runtime, dependency and solver versions, `module_load_ns`, `solver_load_ns`, settings, and language. Module and solver load are separate where supported; otherwise mark the unavailable split with a reason.
+- `{"action":"measure","case":CASE,"iterations":N}` times N consecutive complete public API calls with a monotonic clock. Return `elapsed_ns`, `iterations`, and the final normalized `result`. No profiling, captures, monkeypatches, result serialization, comparisons or assertions inside the timed region. The first such call after version is the first solve after loading. Later calls are steady state.
+- `{"action":"capture","case":CASE}` calls the real API with a temporary internal hook to capture the final canonical decision vector and primary minimum. Return normalized `result`, and `canonical: {selected:[0,1,...], objective:INTEGER}`. Restore all hooks even on error. Capture no auxiliary decisions.
+- `{"action":"profile","case":CASE}` returns result, canonical, `metrics` and `phases_ns`. Profiles may use temporary wrappers or a disposable instrumented build, never shipped runtime edits. Record unavailable details with a reason; never fabricate zero for an unobserved metric. Separate profile results from uninstrumented measurement.
+- `{"action":"preprocess","case":CASE}` builds and scans through graph reduction, clique enumeration and model construction, without optimization. Return metrics and phases. This bounds the multipartite 6 to 8 part cases. It must honor the production clique cap.
+
+## Responses
+
+Success: `{ok:true, action:ACTION, ...}`. Failure: `{ok:false, action:ACTION, error:{kind:CLASS_NAME, message:TEXT}}`. Errors must never carry a successful result.
+
+Normalized result contains every public value in a common shape: groups array; assignments and letters as arrays in group order (avoid empty-key JSON object hazards); adjacency boolean rows; method; relationship_preserved; stats with snake_case keys including objective, solver_status and reduction_pct; rows array with group, letters and space-joined assignments (from JS rows or corresponding R/Python frame helper). Keep numeric values unrounded.
+
+Metrics: vertices_before, vertices_after, edges, maximal_cliques, decision_variables, auxiliary_variables, constraints, nonzeros, essential_decisions, solve_count, canonical_feasible_trials, canonical_infeasible_trials, final_zero_decisions, essential_cover (boolean coverage of the essential-only vector), selected, objective, solver_counters (unavailable with reason if unsupported). Collect model structure from the actual builders, not an independent approximate model.
+
+Phase keys: input, vertex_reduction, enumeration, model_construction, essential_scan, adapter_setup, model_load, initial_optimization, canonical_trials, output_expansion, final_validation, total. Units are integer nanoseconds. For nested inclusive timings state that fact in `profile_notes`; do not sum overlapping stages. Report missing phases as null with a reason. Use monotonic high-resolution timers; R can use an available monotonic timer or proc.time elapsed with documented resolution. Do not change presolve or thread settings between profile and measurement.
+
+A profile-only temporary source patch must have its hash and source head in profile_notes. The measurement build must stay unmodified. Drivers must also work on the later runtime branch.
