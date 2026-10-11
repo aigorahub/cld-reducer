@@ -520,6 +520,26 @@ def test_target_selection_rejects_invalid_probe_correction(probe):
         select_gain_targets(manifest, profiles)
 
 
+@pytest.mark.parametrize("solver,probe", [(90, 80), (101, 0), (97, 4)])
+@pytest.mark.parametrize("cover", [True, False])
+def test_target_selection_rejects_solver_and_probe_time_beyond_total(solver, probe, cover):
+    manifest, _, _ = evidence()
+    profiles = target_profiles(manifest)
+    profiles[0]["response"]["metrics"].update(
+        essential_cover=cover, solver_total_ns=solver, probe_ns=probe
+    )
+    with pytest.raises(ValueError, match="eligibility metrics"):
+        select_gain_targets(manifest, profiles)
+
+
+def test_target_selection_accepts_solver_and_probe_time_equal_to_total():
+    manifest, _, _ = evidence()
+    profiles = target_profiles(manifest)
+    for row in profiles:
+        row["response"]["metrics"].update(solver_total_ns=96, probe_ns=4)
+    assert select_gain_targets(manifest, profiles) == manifest["gain_targets"]
+
+
 def test_target_selection_counts_input_digests_not_case_ids():
     manifest, _, _ = evidence()
     for case in manifest["cases"]:

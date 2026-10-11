@@ -233,6 +233,7 @@ def select_gain_targets(manifest, profiles):
             or not math.isfinite(probe)
             or probe < 0
             or total - probe <= 0
+            or solver > total - probe
         ):
             raise ValueError(f"Missing or invalid target eligibility metrics: {key}")
         if cover and solver / (total - probe) >= 0.25:

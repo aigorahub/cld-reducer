@@ -10,7 +10,7 @@ The first collection produced 240 records. All 216 full solve profiles succeeded
 
 These records are diagnostic history. The first collection warmed the production JavaScript module but used a cold copy for its profile. It also lacks native memory receipts and observed solver settings. Recollect all evidence with the corrected harness before calibration or candidate acceptance. Keep the 30 second preprocessing limit. Freeze each observed preprocessing resource failure by its exact case key and failure class. A continuing failure is not a successful profile or a speed result. A new failure rejects the candidate.
 
-The first profiles support the essential cover certificate as a candidate. Confirm this choice with the corrected profiles. Its eligibility rule is fixed before candidate timing: the essential decisions cover the graph, and inclusive solver adapter calls consume at least 25 percent of the profiled full API time. Every case that meets this rule belongs to its eligible group. A declared gain group needs at least five distinct inputs in each split. Other combinations still need to pass all regression checks.
+The first profiles support the essential cover certificate as a candidate. Confirm this choice with the corrected profiles. Its eligibility rule is fixed before candidate timing: the essential decisions cover the graph, and solver adapter calls consume at least 25 percent of the profiled full API time. The current rule removes measured diagnostic probe time from both times. The drivers already remove probes from `solver_total_ns`. Selection uses `solver_total_ns / (phases_ns.total - probe_ns)`. Solver time plus probe time must not exceed the full API total. Every case that meets this rule belongs to its eligible group. A declared gain group needs at least five distinct inputs in each split. Other combinations still need to pass all regression checks.
 
 | Language | Method | Development inputs | Validation inputs |
 | --- | --- | ---: | ---: |
@@ -21,7 +21,7 @@ The first profiles support the essential cover certificate as a candidate. Confi
 | JavaScript | C | 16 | 13 |
 | JavaScript | Sigma | 13 | 12 |
 
-The first collection gives at least five inputs in each split for all six groups. These counts are provisional. The first canonical collection passed 8,907 checks. Corrected profiles, canonical captures, pilot records, A/A calibration, and the final frozen manifest are required before candidate timing.
+The first collection gives at least five inputs in each split for all six groups. These historical counts are provisional. Recompute them with the current probe correction and corrected profiles. The first canonical collection passed 8,907 checks. Corrected profiles, canonical captures, pilot records, A/A calibration, and the final frozen manifest are required before candidate timing.
 
 The four part multipartite sigma cases need about 291 to 292 solver calls in Python and R. Their profiled full API costs range from about 2.6 to 4.0 seconds. These cases remain in the regression set. The certificate will fall through to the existing BIP when essential decisions do not cover the graph.
 
