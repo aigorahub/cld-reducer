@@ -33,7 +33,7 @@ def checkout(tmp_path):
     (repo / "js/src").mkdir(parents=True)
     (repo / "js/dist").mkdir()
     (repo / "python").mkdir()
-    (repo / ".gitignore").write_text("js/dist/\npoetry.lock\n")
+    (repo / ".gitignore").write_text("js/dist/\nnode_modules/\npoetry.lock\n")
     (repo / "js/src/index.ts").write_text("export const value = 1;\n")
     (repo / "js/src/solver.ts").write_text("export const solver = 1;\n")
     (repo / "js/dist/index.js").write_text("export const value = 1;\n")
@@ -55,11 +55,43 @@ def checkout(tmp_path):
     return repo
 
 
-def test_bindings_hash_built_code_and_lockfiles(checkout):
+@pytest.fixture
+def compile_mock(checkout, monkeypatch):
+    """Use a deterministic compiler stand-in; real TypeScript has a separate smoke test."""
+    compiler = checkout / "js/node_modules/typescript/bin/tsc"
+    compiler.parent.mkdir(parents=True)
+    compiler.write_text("fixture compiler version 1\n")
+    highs = checkout / "js/node_modules/highs"
+    (highs / "build").mkdir(parents=True)
+    (highs / "package.json").write_text('{"name":"highs","version":"1.15.3"}\n')
+    (highs / "build/highs.mjs").write_text("export default function fixture() {}\n")
+    (highs / "build/highs.wasm").write_bytes(b"fixture wasm version 1")
+    destinations = []
+
+    def tools(repo):
+        root = repo / "js/node_modules"
+        return root / "typescript/bin/tsc", root / "highs", root / "highs/build/highs.mjs"
+
+    def compile_source(repo, compiler, destination):
+        assert destination != repo / "js/dist"
+        destinations.append(destination)
+        destination.mkdir(parents=True)
+        for source in (repo / "js/src").glob("*.ts"):
+            (destination / source.with_suffix(".js").name).write_bytes(source.read_bytes())
+
+    monkeypatch.setattr(common, "_javascript_tools", tools)
+    monkeypatch.setattr(common, "_compile_javascript", compile_source)
+    return destinations
+
+
+def test_bindings_hash_built_code_and_lockfiles(checkout, compile_mock):
     bound = source_binding(checkout, languages=["js"])
     assert bound["path"] == str(checkout.resolve())
     assert len(bound["head"]) == len(bound["tree"]) == 40
     assert bound["status"] == ""
+    assert bound["build_verified"] is True
+    assert bound["dependency_files"]
+    assert bound["compiler_files"]
     for category in ("build_files", "lock_files"):
         assert len(bound[category]) == 2
         for name, value in bound[category].items():
@@ -68,6 +100,129 @@ def test_bindings_hash_built_code_and_lockfiles(checkout):
     shutil.copytree(checkout, other)
     assert source_identity(bound) == source_identity(source_binding(other, require_js=True))
     assert source_identity(bound) == {key: value for key, value in bound.items() if key != "path"}
+    assert all(not path.exists() for path in compile_mock)
+
+
+@pytest.mark.parametrize("mutation", ["change", "extra", "missing"])
+def test_required_js_rejects_stale_or_extra_build_without_changing_it(
+    checkout, compile_mock, mutation
+):
+    if mutation == "change":
+        (checkout / "js/dist/index.js").write_text("export const value = 2;\n")
+    elif mutation == "extra":
+        (checkout / "js/dist/stale-module.js").write_text("export const stale = true;\n")
+    else:
+        (checkout / "js/dist/solver.js").unlink()
+    before = {path.name: path.read_bytes() for path in (checkout / "js/dist").iterdir()}
+    with pytest.raises(ValueError, match="fresh source compilation|requires built js/dist"):
+        source_binding(checkout, languages=["js"])
+    assert {path.name: path.read_bytes() for path in (checkout / "js/dist").iterdir()} == before
+    assert all(not path.exists() for path in compile_mock)
+
+
+def test_new_source_commit_with_old_dist_is_rejected(checkout, compile_mock):
+    (checkout / "js/src/index.ts").write_text("export const value = 2;\n")
+    git(checkout, "add", "js/src/index.ts")
+    git(
+        checkout,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-qm",
+        "Change source",
+    )
+    with pytest.raises(ValueError, match="changed=.*index.js"):
+        source_binding(checkout, require_js=True)
+
+
+@pytest.mark.parametrize(
+    "artifact", ["highs/build/highs.mjs", "highs/build/highs.wasm", "typescript/bin/tsc"]
+)
+def test_same_version_altered_installed_bytes_change_identity(checkout, compile_mock, artifact):
+    before = source_binding(checkout, require_js=True)
+    package = (checkout / "js/node_modules/highs/package.json").read_bytes()
+    target = checkout / "js/node_modules" / artifact
+    target.write_bytes(target.read_bytes() + b"changed\n")
+    after = source_binding(checkout, require_js=True)
+    assert package == (checkout / "js/node_modules/highs/package.json").read_bytes()
+    assert before["head"] == after["head"]
+    assert before["build_files"] == after["build_files"]
+    assert source_identity(before) != source_identity(after)
+    key = "compiler_files" if artifact.startswith("typescript/") else "dependency_files"
+    assert before[key] != after[key]
+
+
+def test_build_verification_rejects_dependency_change_during_compile(
+    checkout, compile_mock, monkeypatch
+):
+    compile_source = common._compile_javascript
+
+    def mutate(repo, compiler, destination):
+        compile_source(repo, compiler, destination)
+        (repo / "js/node_modules/highs/build/highs.wasm").write_bytes(b"changed during compile")
+
+    monkeypatch.setattr(common, "_compile_javascript", mutate)
+    with pytest.raises(ValueError, match="changed during build verification"):
+        source_binding(checkout, require_js=True)
+    assert all(not path.exists() for path in compile_mock)
+
+
+def test_build_verification_rejects_dist_change_during_compile(checkout, compile_mock, monkeypatch):
+    compile_source = common._compile_javascript
+
+    def mutate(repo, compiler, destination):
+        compile_source(repo, compiler, destination)
+        (repo / "js/dist/index.js").write_text("changed during compilation")
+
+    monkeypatch.setattr(common, "_compile_javascript", mutate)
+    with pytest.raises(ValueError, match="dist changed during build verification"):
+        source_binding(checkout, require_js=True)
+
+
+def test_real_typescript_build_and_resolved_solver_smoke(tmp_path):
+    installed = Path(__file__).resolve().parents[1] / "js"
+    if not (installed / "node_modules/typescript/bin/tsc").is_file() or not shutil.which("node"):
+        pytest.skip("Install JavaScript development dependencies for the real build smoke check")
+    repo = tmp_path / "real-source"
+    (repo / "js").mkdir(parents=True)
+    (repo / ".gitignore").write_text("node_modules/\njs/dist/\n")
+    shutil.copytree(installed / "src", repo / "js/src")
+    for name in ("package.json", "package-lock.json", "tsconfig.json", "tsconfig.build.json"):
+        shutil.copyfile(installed / name, repo / "js" / name)
+    (repo / "js/node_modules").symlink_to(installed / "node_modules", target_is_directory=True)
+    common._compile_javascript(
+        repo, installed / "node_modules/typescript/bin/tsc", repo / "js/dist"
+    )
+    git(repo, "init", "-q")
+    git(repo, "add", ".")
+    git(
+        repo,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-qm",
+        "Fixture",
+    )
+    before = {
+        path.relative_to(repo): path.read_bytes()
+        for path in (repo / "js/dist").rglob("*")
+        if path.is_file()
+    }
+    binding = source_binding(repo, languages=["js"])
+    assert binding["build_verified"] is True
+    assert "highs/build/highs.mjs" in binding["dependency_files"]
+    assert "highs/build/highs.wasm" in binding["dependency_files"]
+    assert "typescript/bin/tsc" in binding["compiler_files"]
+    assert "typescript/lib/_tsc.js" in binding["compiler_files"]
+    assert before == {
+        path.relative_to(repo): path.read_bytes()
+        for path in (repo / "js/dist").rglob("*")
+        if path.is_file()
+    }
 
 
 @pytest.mark.parametrize("mutation", ["change", "add", "remove", "lock"])

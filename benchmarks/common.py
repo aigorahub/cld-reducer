@@ -14,6 +14,7 @@ import sys
 import time
 from contextlib import suppress
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import psutil
 
@@ -65,11 +66,133 @@ def _file_hash(path):
     return sha.hexdigest()
 
 
+def _javascript_tools(repo):
+    """Resolve the ESM solver from the same location as the production import."""
+    compiler = repo / "js/node_modules/typescript/bin/tsc"
+    if not compiler.is_file():
+        raise ValueError("JavaScript build verification requires installed TypeScript")
+    script = (
+        'import {fileURLToPath} from "node:url";'
+        'process.stdout.write(fileURLToPath(import.meta.resolve("highs")));'
+    )
+    try:
+        resolved = subprocess.run(
+            ["node", "--input-type=module", "--eval", script],
+            cwd=(repo / "js/dist/solver.js").resolve().parent,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ValueError(f"Cannot resolve the installed JavaScript solver: {error}") from error
+    entry = Path(resolved).resolve(strict=True)
+    for directory in entry.parents:
+        package = directory / "package.json"
+        if package.is_file() and json.loads(package.read_text()).get("name") == "highs":
+            # The installed loader resolves highs.wasm next to its own entry.
+            if not entry.with_name("highs.wasm").is_file():
+                raise ValueError("Resolved HiGHS loader has no adjacent highs.wasm")
+            return compiler.resolve(), directory, entry
+    raise ValueError("Resolved JavaScript solver is outside a HiGHS package")
+
+
+def _package_hashes(directory, name, *, compiler=False):
+    files = [
+        path
+        for path in directory.rglob("*")
+        if path.is_file()
+        and (
+            path.suffix in BUILD_SUFFIXES
+            or compiler
+            and (path.suffix == ".ts" or path.parent == directory / "bin")
+        )
+    ]
+    return {
+        f"{name}/{path.relative_to(directory).as_posix()}": _file_hash(path)
+        for path in sorted(files)
+    }
+
+
+def _compile_javascript(repo, compiler, destination):
+    # Disable incremental state and keep declarations inside the temporary
+    # directory too. Neither actual dist nor a project build cache is written.
+    command = [
+        "node",
+        str(compiler),
+        "--project",
+        str(repo / "js/tsconfig.build.json"),
+        "--outDir",
+        str(destination),
+        "--declarationDir",
+        str(destination / "declarations"),
+        "--incremental",
+        "false",
+    ]
+    try:
+        subprocess.run(
+            command, cwd=repo / "js", check=True, capture_output=True, text=True, timeout=120
+        )
+    except subprocess.CalledProcessError as error:
+        raise ValueError(
+            f"Fresh JavaScript compilation failed: {error.stdout}{error.stderr}"
+        ) from error
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ValueError(f"Fresh JavaScript compilation failed: {error}") from error
+
+
+def _javascript_proof(repo, build_files):
+    compiler, highs, entry = _javascript_tools(repo)
+    compiler_root = compiler.parent.parent
+    dependencies = _package_hashes(highs, "highs")
+    dependencies["highs/" + entry.relative_to(highs).as_posix()] = _file_hash(entry)
+    compiler_files = _package_hashes(compiler_root, "typescript", compiler=True)
+    with TemporaryDirectory(prefix="cld-js-build-proof-") as temporary:
+        destination = Path(temporary) / "dist"
+        _compile_javascript(repo, compiler, destination)
+        emitted = {
+            "js/dist/" + path.relative_to(destination).as_posix(): _file_hash(path)
+            for path in sorted(destination.rglob("*"))
+            if path.is_file() and path.suffix in BUILD_SUFFIXES
+        }
+        missing = sorted(emitted.keys() - build_files.keys())
+        extra = sorted(build_files.keys() - emitted.keys())
+        changed = sorted(
+            key for key in emitted.keys() & build_files.keys() if emitted[key] != build_files[key]
+        )
+        if not emitted or missing or extra or changed:
+            raise ValueError(
+                "JavaScript dist does not match fresh source compilation: "
+                f"missing={missing}, extra={extra}, changed={changed}"
+            )
+    after_dependencies = _package_hashes(highs, "highs")
+    after_dependencies["highs/" + entry.relative_to(highs).as_posix()] = _file_hash(entry)
+    if dependencies != after_dependencies or compiler_files != _package_hashes(
+        compiler_root, "typescript", compiler=True
+    ):
+        raise ValueError(
+            "JavaScript dependency or compiler files changed during build verification"
+        )
+    actual_after = {
+        path.relative_to(repo).as_posix(): _file_hash(path)
+        for path in sorted((repo / "js/dist").rglob("*"))
+        if path.is_file() and path.suffix in BUILD_SUFFIXES
+    }
+    if actual_after != build_files:
+        raise ValueError("JavaScript dist changed during build verification")
+    return {
+        "dependency_files": dependencies,
+        "compiler_files": compiler_files,
+        "build_verified": True,
+    }
+
+
 def source_binding(repo, *, languages=None, require_js=False):
     """Bind a clean source tree and the ignored files that JavaScript executes.
 
-    Always bind a present build. Set languages or require_js for a runtime that
-    needs JavaScript; a harness-only checkout need not have js/dist installed.
+    Always bind a present build. When JavaScript is requested, prove it matches
+    a fresh temporary compilation and bind the installed solver/compiler bytes.
+    A harness-only checkout need not have js/dist or TypeScript installed.
     """
     repo = Path(repo).resolve()
 
@@ -123,7 +246,12 @@ def source_binding(repo, *, languages=None, require_js=False):
         "lock_files": {
             path.relative_to(repo).as_posix(): _file_hash(path) for path in sorted(locks)
         },
+        "dependency_files": {},
+        "compiler_files": {},
+        "build_verified": False,
     }
+    if needs_js:
+        binding.update(_javascript_proof(repo, binding["build_files"]))
     if git("status", "--porcelain", "--untracked-files=all") or git("rev-parse", "HEAD") != head:
         raise ValueError(f"Source checkout changed while binding: {repo}")
     return binding
