@@ -19,6 +19,87 @@ LANGUAGES = {"python": {"python"}, "r": {"r"}, "js": {"js", "javascript"}}
 METHODS = {"letter_minimum", "assignment_minimum"}
 
 
+def case_input_digest(case):
+    return digest({name: case.get(name) for name in ("call", "input", "options")})
+
+
+def calibration_design(manifest):
+    """Fields that must remain fixed between A/A and the decision runs."""
+    fields = (
+        "processes",
+        "warmup_batches",
+        "batches",
+        "iterations",
+        "bootstrap_resamples",
+        "bootstrap_seed",
+        "order_seed",
+        "baseline_failures",
+    )
+    return {"input_sha256": input_digest(manifest), **{name: manifest[name] for name in fields}}
+
+
+def select_gain_targets(manifest, profiles):
+    """Select every eligible case, then retain groups with five inputs per split."""
+    expected = {
+        job_key(language, case): case
+        for language in manifest["languages"]
+        for case in jobs(manifest)
+    }
+    seen, eligible = set(), defaultdict(list)
+    for row in profiles:
+        key = row["key"]
+        if key not in expected:
+            if row["case"]["tier"] == "solve":
+                raise ValueError(f"Unexpected solve profile: {key}")
+            continue
+        if key in seen or row["case"] != expected[key]:
+            raise ValueError(f"Duplicate or mismatched solve profile: {key}")
+        seen.add(key)
+        response = row["response"]
+        if response.get("ok") is not True:
+            continue
+        metrics, phases = response.get("metrics", {}), response.get("phases_ns", {})
+        cover, solver, total = (
+            metrics.get("essential_cover"),
+            metrics.get("solver_total_ns"),
+            phases.get("total"),
+        )
+        if (
+            type(cover) is not bool
+            or type(solver) not in (int, float)
+            or not math.isfinite(solver)
+            or solver < 0
+            or type(total) not in (int, float)
+            or not math.isfinite(total)
+            or total <= 0
+        ):
+            raise ValueError(f"Missing or invalid target eligibility metrics: {key}")
+        if cover and solver / total >= 0.25:
+            if key in manifest["baseline_failures"]:
+                raise ValueError(f"Target profile conflicts with baseline failure: {key}")
+            eligible["|".join(key.split("|", 2)[:2])].append(key)
+    if seen != set(expected):
+        raise ValueError("Target profiles do not cover every solve case")
+    targets = {
+        group: sorted(keys)
+        for group, keys in sorted(eligible.items())
+        if all(
+            len(
+                {
+                    case_input_digest(expected[key])
+                    for key in keys
+                    if expected[key]["split"] == split
+                }
+            )
+            >= 5
+            for split in ("development", "validation")
+        )
+    }
+    if not targets:
+        raise ValueError("Profiles do not support a gain group with five distinct inputs per split")
+    return targets
+
+
 def estimate(base, candidate, draws, seed):
     """Resample paired batches in each original process, then those processes."""
     base, candidate = np.asarray(base, dtype=float), np.asarray(candidate, dtype=float)
@@ -171,6 +252,10 @@ def check_bindings(manifest, metadata, reasons):
         reasons.append("Paired JavaScript solver or compiler bytes differ")
     if not valid_source(metadata.get("harness")):
         reasons.append("Invalid harness source binding")
+    if not valid_source(metadata.get("harness_after")) or metadata.get(
+        "harness_after"
+    ) != metadata.get("harness"):
+        reasons.append("Harness source binding is missing or changed during collection")
     if metadata.get("kind") == "calibration":
         if complete and source_identity(before["baseline"]) != source_identity(before["candidate"]):
             reasons.append("A/A source identities differ")
@@ -197,11 +282,9 @@ def check_bindings(manifest, metadata, reasons):
     }
     seen, stable = set(), {}
     frozen_versions = manifest.get("baseline_versions")
-    candidate_run = metadata.get("kind") == "candidate"
-    if candidate_run and (
-        not isinstance(frozen_versions, dict) or set(frozen_versions) != set(manifest["languages"])
-    ):
-        reasons.append("Frozen baseline versions do not cover the manifest languages")
+    reference_label = "Frozen baseline" if metadata.get("kind") == "candidate" else "Pilot"
+    if not isinstance(frozen_versions, dict) or set(frozen_versions) != set(manifest["languages"]):
+        reasons.append(f"{reference_label} versions do not cover the manifest languages")
         frozen_versions = {}
     for row in versions:
         if not isinstance(row, dict) or type(row.get("process")) is not int:
@@ -237,14 +320,14 @@ def check_bindings(manifest, metadata, reasons):
             for role, version in zip(("baseline", "candidate"), pair, strict=True):
                 if version.get("source_head") != before[role]["head"]:
                     reasons.append(f"Driver source head differs: {key}/{role}")
-        if candidate_run:
-            frozen = frozen_versions.get(language)
-            if not valid_version(frozen, language, presolve):
-                reasons.append(f"Frozen baseline version is missing or invalid: {language}")
-            elif version_identity(frozen) != identities[0]:
-                reasons.append(
-                    f"Runtime or dependency versions differ from the frozen baseline: {language}"
-                )
+        frozen = frozen_versions.get(language)
+        if not valid_version(frozen, language, presolve):
+            reasons.append(f"{reference_label} version is missing or invalid: {language}")
+        elif version_identity(frozen) != identities[0]:
+            reasons.append(
+                f"Runtime or dependency versions differ from the {reference_label.lower()}: "
+                f"{language}"
+            )
     if seen != required:
         reasons.append("Version records do not cover every language and process")
 
@@ -271,6 +354,7 @@ def check_design(manifest):
         ("batches", 9),
         ("bootstrap_resamples", 10000),
         ("bootstrap_seed", 0),
+        ("order_seed", 0),
     ):
         value = manifest.get(name)
         if type(value) is not int or value < minimum:
@@ -374,6 +458,7 @@ def analyze(manifest, metadata, records):
         reasons.append("Unexpected cases are present")
     if set(by_key) & failures:
         reasons.append("Baseline failure cases must not contain timing samples")
+    aa = metadata.get("kind") == "calibration"
     draws = manifest["bootstrap_resamples"]
     log_draws = {}
     for key in expected:
@@ -420,14 +505,15 @@ def analyze(manifest, metadata, records):
             "candidate_median_ns": float(np.median(np.median(candidate, axis=1))),
             "baseline_range_ns": [float(base.min()), float(base.max())],
             "candidate_range_ns": [float(candidate.min()), float(candidate.max())],
-            "pass": interval[1] <= 1.05,
+            "pass": interval[1] <= 1.05 and (not aa or interval[0] >= 1 / 1.05),
         }
         log_draws[key] = boot
         if interval[1] > 1.05:
             reasons.append(f"Nonregression margin not established: {key}")
+        if aa and interval[0] < 1 / 1.05:
+            reasons.append(f"A/A equivalence margin not established: {key}")
     if not per_case:
         reasons.append("No successful measured cases")
-    aa = metadata.get("kind") == "calibration"
     targets = manifest.get("gain_targets")
     if not aa and manifest.get("frozen") is not True:
         reasons.append("Candidate manifest is not frozen")
@@ -457,10 +543,7 @@ def analyze(manifest, metadata, records):
             continue
         for split in ("development", "validation"):
             members = [key for key in keys if expected[key]["split"] == split]
-            distinct_inputs = {
-                digest({name: expected[key].get(name) for name in ("call", "input", "options")})
-                for key in members
-            }
+            distinct_inputs = {case_input_digest(expected[key]) for key in members}
             if len(distinct_inputs) < 5:
                 reasons.append(f"Target group lacks five distinct inputs: {group}/{split}")
                 continue

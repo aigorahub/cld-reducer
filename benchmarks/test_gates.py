@@ -8,6 +8,7 @@ from pathlib import Path
 
 import gates
 import pytest
+from analysis import analyze, select_gain_targets
 from cases import job_key, jobs, multipartite
 from common import digest, input_digest
 from gates import audit
@@ -74,7 +75,13 @@ def result(group="v", method="letter_minimum"):
 
 
 def make_evidence(
-    tmp_path, *, baseline_failure=False, new_success=False, oracle_match=False, language="python"
+    tmp_path,
+    *,
+    baseline_failure=False,
+    new_success=False,
+    oracle_match=False,
+    language="python",
+    cases_per_split=5,
 ):
     base_source = dict(
         path=str(tmp_path / "source"),
@@ -167,7 +174,7 @@ def make_evidence(
             input={"adjacency": [[1]], "groups": [f"{split}-{i}"]},
         )
         for split in ("development", "validation")
-        for i in range(5)
+        for i in range(cases_per_split)
     ]
     if baseline_failure:
         cases.append(
@@ -209,6 +216,7 @@ def make_evidence(
         batches=9,
         bootstrap_resamples=10000,
         bootstrap_seed=31,
+        order_seed=17,
         frozen=True,
         baseline_source=base_source,
         pilot_source=copy.deepcopy(base_source),
@@ -236,6 +244,7 @@ def make_evidence(
             "candidate-profiles",
             "run-1",
             "run-2",
+            "calibration",
         )
     }
     captures, profiles, metadata = {}, {}, {}
@@ -304,6 +313,7 @@ def make_evidence(
                     ok=True,
                     action="profile",
                     phases_ns={"total": 100},
+                    metrics={"essential_cover": True, "solver_total_ns": 40},
                     **{name: capture_map[key][name] for name in ("result", "canonical")},
                 )
             profile_rows.append(dict(key=key, case=case, response=response, peak_rss=1024))
@@ -312,6 +322,7 @@ def make_evidence(
             source=source,
             source_after=copy.deepcopy(source),
             harness=harness,
+            harness_after=copy.deepcopy(harness),
             machine={"platform": "test", "cpu_count": 8, "memory_bytes": 16384 * 1024**2},
             complete=True,
             input_sha256=input_digest(manifest),
@@ -328,11 +339,75 @@ def make_evidence(
         metadata[variant] = meta
     manifest["baseline_capture_sha256"] = digest(captures["baseline"])
     manifest["profile_sha256"] = digest(profiles["baseline"])
+    manifest["gain_targets"] = select_gain_targets(manifest, profiles["baseline"])
     for variant in ("baseline", "candidate"):
         write_rows(directories[f"{variant}-capture"] / "vectors.jsonl", captures[variant])
         write_rows(directories[f"{variant}-profiles"] / "profiles.jsonl", profiles[variant])
         for kind in ("capture", "profiles"):
             write(directories[f"{variant}-{kind}"] / "metadata.json", metadata[variant])
+    calibration_manifest = copy.deepcopy(manifest)
+    for name in (
+        "baseline_source",
+        "calibration_harness",
+        "baseline_capture_sha256",
+        "profile_sha256",
+    ):
+        calibration_manifest.pop(name)
+    calibration_manifest.update(frozen=False, gain_targets={})
+    calibration_samples = [
+        dict(
+            key=key,
+            process=process,
+            batch=batch,
+            iterations=1,
+            ok=True,
+            correct=True,
+            baseline_ns=100 + process,
+            candidate_ns=100 + process,
+        )
+        for key in keys
+        if key not in manifest["baseline_failures"]
+        for process in range(manifest["processes"])
+        for batch in range(manifest["batches"])
+    ]
+    calibration_metadata = dict(
+        complete=True,
+        kind="calibration",
+        manifest_sha256=digest(calibration_manifest),
+        input_sha256=input_digest(calibration_manifest),
+        source_before={"baseline": base_source, "candidate": base_source},
+        source_after={"baseline": base_source, "candidate": base_source},
+        harness=harness,
+        harness_after=copy.deepcopy(harness),
+        machine=metadata["baseline"]["machine"],
+        versions=[
+            dict(
+                language=language,
+                process=process,
+                versions=[version, version],
+                pids=[100 + 2 * process, 101 + 2 * process],
+            )
+            for process in range(manifest["processes"])
+        ],
+        started_unix=100,
+        finished_unix=200,
+        run_id="calibration",
+    )
+    calibration_report = analyze(calibration_manifest, calibration_metadata, calibration_samples)
+    assert calibration_report["pass"], calibration_report["reasons"]
+    for name, value in (
+        ("manifest", calibration_manifest),
+        ("metadata", calibration_metadata),
+        ("analysis", calibration_report),
+    ):
+        write(directories["calibration"] / f"{name}.json", value)
+    write_rows(directories["calibration"] / "samples.jsonl", calibration_samples)
+    manifest.update(
+        calibration_manifest_sha256=digest(calibration_manifest),
+        calibration_metadata_sha256=digest(calibration_metadata),
+        calibration_samples_sha256=digest(calibration_samples),
+        calibration_sha256=digest(calibration_report),
+    )
     for run in (1, 2):
         process_versions, samples, results = [], [], []
         for process in range(manifest["processes"]):
@@ -398,6 +473,7 @@ def make_evidence(
             source_before={"baseline": base_source, "candidate": candidate_source},
             source_after={"baseline": base_source, "candidate": candidate_source},
             harness=harness,
+            harness_after=copy.deepcopy(harness),
             machine=metadata["baseline"]["machine"],
             versions=process_versions,
             started_unix=1000 * run,
@@ -422,6 +498,7 @@ def run_audit(manifest, directories, runs=None):
         directories["candidate-capture"],
         directories["baseline-profiles"],
         directories["candidate-profiles"],
+        directories["calibration"],
     )
 
 
@@ -431,10 +508,164 @@ def change_json(path, change):
     write(path, value)
 
 
+def change_harness_head(metadata, head):
+    for name in ("harness", "harness_after"):
+        metadata[name]["head"] = head
+
+
 def change_rows(path, change):
     rows = [json.loads(line) for line in path.read_text().splitlines()]
     change(rows)
     write_rows(path, rows)
+
+
+def bind_decision_manifest(manifest, directories):
+    for name in ("run-1", "run-2"):
+        change_json(
+            directories[name] / "metadata.json",
+            lambda meta: meta.update(manifest_sha256=digest(manifest)),
+        )
+
+
+def bind_calibration_files(manifest, directories):
+    path = directories["calibration"]
+    design = json.loads((path / "manifest.json").read_text())
+    metadata = json.loads((path / "metadata.json").read_text())
+    samples = [json.loads(line) for line in (path / "samples.jsonl").read_text().splitlines()]
+    metadata.update(manifest_sha256=digest(design), input_sha256=input_digest(design))
+    write(path / "metadata.json", metadata)
+    manifest.update(
+        calibration_manifest_sha256=digest(design),
+        calibration_metadata_sha256=digest(metadata),
+        calibration_samples_sha256=digest(samples),
+        calibration_sha256=digest(analyze(design, metadata, samples)),
+    )
+    bind_decision_manifest(manifest, directories)
+
+
+@pytest.mark.parametrize("filename", ["manifest.json", "metadata.json", "samples.jsonl"])
+def test_audit_requires_raw_calibration_files(tmp_path, filename):
+    manifest, directories = make_evidence(tmp_path)
+    (directories["calibration"] / filename).unlink()
+    assert not run_audit(manifest, directories)["pass"]
+
+
+def test_audit_recomputes_calibration_and_rejects_spurious_aa_speedup(tmp_path):
+    manifest, directories = make_evidence(tmp_path)
+    path = directories["calibration"]
+    change_rows(
+        path / "samples.jsonl",
+        lambda rows: [row.update(candidate_ns=0.8 * row["baseline_ns"]) for row in rows],
+    )
+    write(path / "analysis.json", {"pass": True})
+    bind_calibration_files(manifest, directories)
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert any("Raw A/A calibration failed" in reason for reason in report["reasons"])
+    assert any(
+        "A/A equivalence" in reason
+        for reason in report["evidence"]["calibration"]["analysis"]["reasons"]
+    )
+
+
+@pytest.mark.parametrize("part", ["samples", "metadata", "manifest"])
+def test_raw_calibration_hashes_must_match_freeze(tmp_path, part):
+    manifest, directories = make_evidence(tmp_path)
+    path = directories["calibration"]
+    if part == "samples":
+        change_rows(
+            path / "samples.jsonl",
+            lambda rows: rows[0].update(candidate_ns=rows[0]["baseline_ns"] * 1.001),
+        )
+    else:
+        change_json(path / f"{part}.json", lambda value: value.update(extra="changed after freeze"))
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert f"Calibration evidence differs: calibration_{part}_sha256" in report["reasons"]
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "processes",
+        "warmup_batches",
+        "batches",
+        "iterations",
+        "bootstrap_resamples",
+        "bootstrap_seed",
+        "order_seed",
+    ],
+)
+def test_calibration_and_decision_sampling_design_must_match(tmp_path, field):
+    manifest, directories = make_evidence(tmp_path)
+    if field == "iterations":
+        key = next(iter(manifest[field]))
+        manifest[field][key] += 1
+    else:
+        manifest[field] += 1
+    bind_decision_manifest(manifest, directories)
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert (
+        "Calibration sampling design differs from the frozen decision design" in report["reasons"]
+    )
+
+
+@pytest.mark.parametrize("finish", [1500, None, -1])
+def test_calibration_must_end_before_both_candidate_runs(tmp_path, finish):
+    manifest, directories = make_evidence(tmp_path)
+    change_json(
+        directories["calibration"] / "metadata.json", lambda meta: meta.update(finished_unix=finish)
+    )
+    bind_calibration_files(manifest, directories)
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert any("calibration did not finish" in reason for reason in report["reasons"])
+
+
+def test_audit_rejects_omitted_eligible_case_even_when_declared_group_still_passes(tmp_path):
+    manifest, directories = make_evidence(tmp_path, cases_per_split=6)
+    manifest["gain_targets"]["python|letter_minimum"].pop(0)
+    bind_decision_manifest(manifest, directories)
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert "Frozen gain targets differ from the full eligible profile set" in report["reasons"]
+    assert all(run["analysis"]["pass"] for run in report["evidence"]["runs"])
+
+
+def test_audit_requires_eligibility_metrics_in_bound_profiles(tmp_path):
+    manifest, directories = make_evidence(tmp_path)
+    path = directories["baseline-profiles"] / "profiles.jsonl"
+    change_rows(path, lambda rows: rows[0]["response"]["metrics"].pop("essential_cover"))
+    manifest["profile_sha256"] = digest(
+        [json.loads(line) for line in path.read_text().splitlines()]
+    )
+    bind_decision_manifest(manifest, directories)
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert any("eligibility metrics" in reason for reason in report["reasons"])
+
+
+@pytest.mark.parametrize(
+    "stage", ["baseline-capture", "candidate-profiles", "calibration", "run-1"]
+)
+@pytest.mark.parametrize("fault", ["missing", "changed"])
+def test_audit_rejects_harness_change_during_any_collection(tmp_path, stage, fault):
+    manifest, directories = make_evidence(tmp_path)
+
+    def change(meta):
+        if fault == "missing":
+            meta.pop("harness_after")
+        else:
+            meta["harness_after"]["head"] = "9" * 40
+
+    change_json(directories[stage] / "metadata.json", change)
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert any(
+        "harness" in reason.lower() and ("collection" in reason or "changed" in reason)
+        for reason in report["reasons"]
+    )
 
 
 def test_complete_two_run_gate_uses_raw_samples_and_earlier_capture_design(tmp_path):
@@ -712,18 +943,14 @@ def test_separate_stage_harness_commits_with_equal_driver_bytes_are_allowed(tmp_
         "baseline-profiles",
         "candidate-profiles",
     ):
-        change_json(
-            directories[name] / "metadata.json", lambda x: x["harness"].update(head="9" * 40)
-        )
+        change_json(directories[name] / "metadata.json", lambda x: change_harness_head(x, "9" * 40))
     report = run_audit(manifest, directories)
     assert report["pass"], report["reasons"]
 
 
 def test_two_timed_runs_allow_other_commits_with_equal_measurement_code(tmp_path):
     manifest, directories = make_evidence(tmp_path)
-    change_json(
-        directories["run-2"] / "metadata.json", lambda x: x["harness"].update(head="9" * 40)
-    )
+    change_json(directories["run-2"] / "metadata.json", lambda x: change_harness_head(x, "9" * 40))
     report = run_audit(manifest, directories)
     assert report["pass"], report["reasons"]
 
@@ -732,7 +959,7 @@ def test_changed_driver_bytes_cannot_hide_in_a_different_stage(tmp_path, monkeyp
     manifest, directories = make_evidence(tmp_path)
     change_json(
         directories["candidate-profiles"] / "metadata.json",
-        lambda x: x["harness"].update(head="9" * 40),
+        lambda x: change_harness_head(x, "9" * 40),
     )
     monkeypatch.setattr(
         gates,
@@ -816,7 +1043,7 @@ def test_measurement_code_change_fails_with_unchanged_drivers(tmp_path, monkeypa
     manifest, directories = make_evidence(tmp_path)
     for name in ("run-1", "run-2"):
         change_json(
-            directories[name] / "metadata.json", lambda meta: meta["harness"].update(head="9" * 40)
+            directories[name] / "metadata.json", lambda meta: change_harness_head(meta, "9" * 40)
         )
     original = gates._measurement_hashes
 

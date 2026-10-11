@@ -37,6 +37,8 @@ def javascript_source():
         ("warmup_batches", 2),
         ("batches", 8),
         ("bootstrap_resamples", 9999),
+        ("bootstrap_seed", True),
+        ("order_seed", -1),
         ("memory_limit_mb", float("inf")),
         ("memory_limit_mb", float("nan")),
         ("memory_limit_mb", True),
@@ -185,6 +187,7 @@ def test_freeze_rechecks_pilot_binding(tmp_path, monkeypatch, fault):
     path.write_text(json.dumps(manifest))
     calibration = tmp_path / "calibration"
     calibration.mkdir()
+    run.save(calibration / "manifest.json", manifest)
     (calibration / "metadata.json").write_text(
         json.dumps({"kind": "calibration", "source_before": {"baseline": baseline}})
     )
@@ -197,7 +200,10 @@ def test_freeze_rechecks_pilot_binding(tmp_path, monkeypatch, fault):
         run.freeze(SimpleNamespace(manifest=path, calibration=calibration))
 
 
-def test_freeze_records_calibration_harness_with_equal_source_at_other_path(tmp_path, monkeypatch):
+@pytest.mark.parametrize("small_sigma", [False, True])
+def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
+    tmp_path, monkeypatch, small_sigma
+):
     manifest = frozen_manifest(Path(__file__).resolve().parents[1])
     manifest["languages"] = ["js"]
     manifest["cases"] = [
@@ -212,9 +218,15 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(tmp_
     manifest["baseline_versions"] = {"js": {"language": "javascript", "runtime": "synthetic"}}
     harness = dict(copy.deepcopy(baseline), path="/harness", head="e" * 40)
     calibration = tmp_path / "calibration"
+    run.save(calibration / "manifest.json", manifest)
     run.save(
         calibration / "metadata.json",
-        {"kind": "calibration", "source_before": {"baseline": baseline}, "harness": harness},
+        {
+            "kind": "calibration",
+            "source_before": {"baseline": baseline},
+            "harness": harness,
+            "harness_after": harness,
+        },
     )
     (calibration / "samples.jsonl").write_text("")
     profiles, capture = tmp_path / "profiles", tmp_path / "capture"
@@ -230,6 +242,15 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(tmp_
         }
         for case in jobs(manifest)
     ]
+    if small_sigma:
+        for split in ("development", "validation"):
+            row = next(
+                row
+                for row in profile_rows
+                if row["case"]["split"] == split
+                and row["case"]["options"]["method"] == "assignment_minimum"
+            )
+            row["response"]["metrics"]["solver_total_ns"] = 24
     capture_rows = [
         {"language": "js", "id": case["id"], "method": case["options"]["method"], "mismatch": []}
         for case in jobs(manifest)
@@ -242,6 +263,8 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(tmp_
         "versions": manifest["baseline_versions"],
         "failures": [],
         "expected_keys": capture_rows,
+        "harness": harness,
+        "harness_after": harness,
     }
     for directory, name, rows in (
         (profiles, "profiles.jsonl", profile_rows),
@@ -267,9 +290,15 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(tmp_
     assert frozen["frozen"] is True
     assert frozen["calibration_harness"] == harness
     assert frozen["baseline_source"] == baseline
+    assert frozen["calibration_manifest_sha256"] == run.digest(manifest)
+    assert frozen["calibration_samples_sha256"] == run.digest([])
+    assert set(frozen["gain_targets"]) == (
+        {"js|letter_minimum"} if small_sigma else {"js|letter_minimum", "js|assignment_minimum"}
+    )
 
 
-def test_excluded_timeout_uses_separate_processes(tmp_path, monkeypatch):
+@pytest.mark.parametrize("harness_changed", [False, True])
+def test_excluded_timeout_uses_separate_processes(tmp_path, monkeypatch, harness_changed):
     manifest = frozen_manifest(Path(__file__).resolve().parents[1])
     manifest["languages"] = ["python"]
     manifest["cases"] = manifest["cases"][:1]
@@ -289,7 +318,17 @@ def test_excluded_timeout_uses_separate_processes(tmp_path, monkeypatch):
     manifest["baseline_versions"] = {"python": version}
     path = tmp_path / "manifest.json"
     path.write_text(json.dumps(manifest))
-    monkeypatch.setattr(run, "source_binding", lambda *_, **__: binding)
+    root_reads = 0
+
+    def recorded_source(repo, **_):
+        nonlocal root_reads
+        if repo == run.ROOT:
+            root_reads += 1
+            if harness_changed and root_reads > 1:
+                return dict(binding, head="e" * 40)
+        return binding
+
+    monkeypatch.setattr(run, "source_binding", recorded_source)
     monkeypatch.setattr(run, "provenance", lambda _: {"machine": {"test": True}})
     monkeypatch.setattr(run, "analyze", lambda *_: {"pass": True, "reasons": []})
     processes = []
@@ -330,6 +369,10 @@ def test_excluded_timeout_uses_separate_processes(tmp_path, monkeypatch):
         run_id="excluded",
     )
     run.compare(args)
+    metadata = run.read(args.output / "metadata.json")
+    assert metadata["complete"] is not harness_changed
+    assert (metadata["harness"] == metadata["harness_after"]) is not harness_changed
+    assert run.read(args.output / "manifest.json") == manifest
     timed = [p for p in processes if "measure" in p.actions]
     excluded = [p for p in processes if "capture" in p.actions]
     assert len(timed) == 16 and len(excluded) == 2
@@ -340,3 +383,132 @@ def test_excluded_timeout_uses_separate_processes(tmp_path, monkeypatch):
     assert all(
         not r["ok"] and r["error"]["kind"] == "ExternalLimit" for r in failures[0]["responses"]
     )
+
+
+def setup_collection(tmp_path, monkeypatch, *, changed=False, warmup_failure=False):
+    manifest = frozen_manifest(Path(__file__).resolve().parents[1])
+    manifest["languages"] = ["python"]
+    manifest["cases"] = manifest["cases"][:1]
+    path = tmp_path / "manifest.json"
+    run.save(path, manifest)
+    repo = tmp_path / "source"
+    for name in ("reduce", "reduce_letter_minimum", "reduce_weighted"):
+        run.save(repo / "conformance" / "fixtures" / f"{name}.json", {"cases": []})
+    binding = javascript_source()
+    monkeypatch.setattr(run, "provenance", lambda *_: {"source": binding, "harness": binding})
+    monkeypatch.setattr(
+        run,
+        "source_binding",
+        lambda target, **_: (
+            dict(binding, head="e" * 40) if changed and target == run.ROOT else binding
+        ),
+    )
+    requests = []
+
+    class FakeDriver:
+        peak_rss = 1024
+
+        def request(self, request, seconds):
+            requests.append((copy.deepcopy(request), seconds))
+            action = request["action"]
+            if action == "version":
+                return {"ok": True, "action": action, "language": "python", "runtime": "synthetic"}
+            if action == "profile" and warmup_failure:
+                # Preserve the reported error while normalizing the phase's action.
+                return {
+                    "ok": False,
+                    "action": "measure",
+                    "error": {"kind": "SolverError", "message": "warmup failed"},
+                }
+            return {
+                "ok": True,
+                "action": action,
+                "elapsed_ns": 100,
+                "result": {"stats": {"objective": 1}},
+                "canonical": {"selected": [1], "objective": 1},
+            }
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+    monkeypatch.setattr(run, "driver", lambda *_: FakeDriver())
+    return (
+        SimpleNamespace(manifest=path, repo=repo, output=tmp_path / "output", include_opt_in=False),
+        manifest,
+        requests,
+    )
+
+
+@pytest.mark.parametrize("stage", ["profiles", "captures", "pilot"])
+def test_collection_cannot_complete_after_harness_mutation(tmp_path, monkeypatch, stage):
+    args, _, _ = setup_collection(tmp_path, monkeypatch, changed=True)
+    if stage == "pilot":
+        with pytest.raises(ValueError, match="harness changed"):
+            run.pilot(args)
+        assert not (args.output / "manifest.json").exists()
+    else:
+        getattr(run, stage)(args)
+    metadata = run.read(args.output / "metadata.json")
+    assert metadata["complete"] is False
+    assert metadata["source"] == metadata["source_after"]
+    assert metadata["harness"] != metadata["harness_after"]
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_profile_warmups_use_the_profile_path_and_preserve_failure(tmp_path, monkeypatch, failure):
+    args, manifest, requests = setup_collection(tmp_path, monkeypatch, warmup_failure=failure)
+    run.profiles(args)
+    calls = [(request, seconds) for request, seconds in requests if request["action"] != "version"]
+    assert all(request["action"] == "profile" for request, _ in calls)
+    assert all(seconds == manifest["cases"][0]["wall_seconds"] for _, seconds in calls)
+    assert len(calls) == len(manifest["methods"]) * (
+        1 if failure else manifest["warmup_batches"] + 1
+    )
+    metadata = run.read(args.output / "metadata.json")
+    assert metadata["warmup_profile_calls"] == manifest["warmup_batches"]
+    rows = [json.loads(line) for line in (args.output / "profiles.jsonl").read_text().splitlines()]
+    if failure:
+        assert all(
+            row["response"]
+            == {
+                "ok": False,
+                "action": "profile",
+                "failed_phase": "profile_warmup",
+                "error": {"kind": "SolverError", "message": "warmup failed"},
+            }
+            for row in rows
+        )
+    else:
+        assert all(row["response"]["ok"] for row in rows)
+
+
+def test_audit_cli_requires_calibration(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "run.py",
+            "audit",
+            "--manifest",
+            "manifest.json",
+            "--baseline-capture",
+            "baseline-capture",
+            "--candidate-capture",
+            "candidate-capture",
+            "--baseline-profiles",
+            "baseline-profiles",
+            "--candidate-profiles",
+            "candidate-profiles",
+            "--output",
+            "audit.json",
+            "--runs",
+            "run-1",
+            "run-2",
+        ],
+    )
+    with pytest.raises(SystemExit) as error:
+        run.main()
+    assert error.value.code == 2
+    assert "--calibration" in capsys.readouterr().err

@@ -12,7 +12,7 @@ import time
 from contextlib import ExitStack
 from pathlib import Path
 
-from analysis import analyze, same_javascript_tools, valid_source
+from analysis import analyze, same_javascript_tools, select_gain_targets, valid_source
 from cases import frozen_manifest, job_key, jobs
 from common import (
     ROOT,
@@ -77,6 +77,8 @@ def load_manifest(path):
         ("warmup_batches", 3),
         ("batches", 9),
         ("bootstrap_resamples", 10000),
+        ("bootstrap_seed", 0),
+        ("order_seed", 0),
         ("batch_target_ns", 1),
     ):
         if type(m[field]) is not int or m[field] < minimum:
@@ -132,6 +134,15 @@ def bind_version(metadata, language, version):
         raise ValueError(f"Dependency or settings changed: {language}")
 
 
+def finish_collection(metadata, repo, languages):
+    metadata["source_after"] = source_binding(repo, languages=languages)
+    metadata["harness_after"] = source_binding(ROOT)
+    return (
+        metadata["source_after"] == metadata["source"]
+        and metadata["harness_after"] == metadata["harness"]
+    )
+
+
 def profiles(args):
     m, out = load_manifest(args.manifest), output_dir(args.output)
     metadata = provenance(args.repo)
@@ -139,7 +150,7 @@ def profiles(args):
     metadata.update(
         manifest_sha256=digest(m), input_sha256=input_digest(m), complete=False, versions={}
     )
-    metadata["profile_warmup_calls"] = m["warmup_batches"]
+    metadata["warmup_profile_calls"] = m["warmup_batches"]
     save(out / "metadata.json", metadata)
     tiers = ("solve", "preprocess", "expected-error") + (("opt-in",) if args.include_opt_in else ())
     with (out / "profiles.jsonl").open("w") as f:
@@ -158,10 +169,13 @@ def profiles(args):
                         for _ in range(m["warmup_batches"]):
                             response = bounded_request(
                                 d,
-                                {"action": "measure", "case": c, "iterations": 1},
+                                {"action": "profile", "case": c},
                                 c["wall_seconds"],
                             )
                             if not response["ok"]:
+                                response = dict(
+                                    response, action=action, failed_phase="profile_warmup"
+                                )
                                 break
                     if response is None or response["ok"]:
                         response = bounded_request(
@@ -172,8 +186,7 @@ def profiles(args):
                         f"profile {key}: {'ok' if response['ok'] else response.get('error')}",
                         flush=True,
                     )
-    metadata["source_after"] = source_binding(args.repo, languages=m["languages"])
-    metadata["complete"] = metadata["source_after"] == metadata["source"]
+    metadata["complete"] = finish_collection(metadata, args.repo, m["languages"])
     save(out / "metadata.json", metadata)
 
 
@@ -315,9 +328,8 @@ def captures(args):
                     metadata["checked"] += 1
                     if index % 100 == 0:
                         print(f"capture {language}: {index + 1}/{len(cases)}", flush=True)
-    metadata["source_after"] = source_binding(args.repo, languages=m["languages"])
     metadata["failures"] = failures
-    metadata["complete"] = metadata["source_after"] == metadata["source"] and not failures
+    metadata["complete"] = finish_collection(metadata, args.repo, m["languages"]) and not failures
     save(out / "metadata.json", metadata)
     if failures:
         raise ValueError(f"{len(failures)} canonical or fixture mismatches")
@@ -377,10 +389,11 @@ def pilot(args):
     m["pilot_source"] = metadata["source"]
     m["pilot_harness"] = metadata["harness"]
     m["baseline_versions"] = metadata["versions"]
-    save(out / "manifest.json", m)
-    metadata["source_after"] = source_binding(args.repo, languages=m["languages"])
-    metadata["complete"] = metadata["source_after"] == metadata["source"]
+    metadata["complete"] = finish_collection(metadata, args.repo, m["languages"])
     save(out / "metadata.json", metadata)
+    if not metadata["complete"]:
+        raise ValueError("Source or harness changed during pilot collection")
+    save(out / "manifest.json", m)
 
 
 def compare(args):
@@ -422,6 +435,7 @@ def compare(args):
         "machine": provenance(args.baseline)["machine"],
     }
     save(out / "metadata.json", meta)
+    save(out / "manifest.json", m)
     all_rows = []
     try:
         with (
@@ -537,7 +551,10 @@ def compare(args):
             "baseline": source_binding(args.baseline, languages=m["languages"]),
             "candidate": source_binding(args.candidate, languages=m["languages"]),
         }
-        meta["complete"] = meta["source_after"] == before
+        meta["harness_after"] = source_binding(ROOT)
+        meta["complete"] = (
+            meta["source_after"] == before and meta["harness_after"] == meta["harness"]
+        )
     finally:
         meta["finished_unix"] = time.time()
         save(out / "metadata.json", meta)
@@ -550,12 +567,15 @@ def freeze(args):
     m = load_manifest(args.manifest)
     if m["frozen"]:
         raise ValueError("Manifest is already frozen")
+    calibration_manifest = read(Path(args.calibration) / "manifest.json")
+    if calibration_manifest.get("frozen") is not False or digest(calibration_manifest) != digest(m):
+        raise ValueError("Calibration must contain this exact pre-freeze manifest")
     metadata = read(Path(args.calibration) / "metadata.json")
     samples = [
         json.loads(line)
         for line in (Path(args.calibration) / "samples.jsonl").read_text().splitlines()
     ]
-    calibration = analyze(m, metadata, samples)
+    calibration = analyze(calibration_manifest, metadata, samples)
     if (
         not calibration["pass"]
         or calibration["manifest_sha256"] != digest(m)
@@ -571,6 +591,8 @@ def freeze(args):
     profile_meta = read(Path(args.profiles) / "metadata.json")
     if (
         not profile_meta["complete"]
+        or not valid_source(profile_meta.get("harness"))
+        or profile_meta.get("harness_after") != profile_meta["harness"]
         or profile_meta["source"] != profile_meta.get("source_after")
         or source_identity(profile_meta["source"])
         != source_identity(metadata["source_before"]["baseline"])
@@ -612,6 +634,8 @@ def freeze(args):
     capture_meta = read(Path(args.capture) / "metadata.json")
     if (
         not capture_meta.get("complete")
+        or not valid_source(capture_meta.get("harness"))
+        or capture_meta.get("harness_after") != capture_meta["harness"]
         or capture_meta.get("failures")
         or capture_meta.get("input_sha256") != input_digest(m)
         or source_identity(capture_meta["source"]) != source_identity(profile_meta["source"])
@@ -637,18 +661,7 @@ def freeze(args):
         or any(row.get("mismatch") for row in captures_data)
     ):
         raise ValueError("Baseline canonical vectors are missing or duplicated")
-    eligible = {}
-    for row in rows:
-        r, c = row["response"], row["case"]
-        if c["tier"] != "solve" or not r["ok"]:
-            continue
-        metrics, phases = r["metrics"], r["phases_ns"]
-        fraction = metrics["solver_total_ns"] / phases["total"]
-        if metrics["essential_cover"] and fraction >= 0.25:
-            language, method, _ = row["key"].split("|", 2)
-            eligible.setdefault(language + "|" + method, []).append(row["key"])
-    if not eligible:
-        raise ValueError("Profiles do not support an essential-cover target")
+    eligible = select_gain_targets(m, rows)
     m["gain_targets"] = eligible
     m["candidate"] = "essential-cover-certificate"
     m["eligibility_rule"] = (
@@ -658,14 +671,12 @@ def freeze(args):
     m["profile_sha256"] = digest(rows)
     m["calibration_sha256"] = digest(calibration)
     m["calibration_metadata_sha256"] = digest(metadata)
+    m["calibration_manifest_sha256"] = digest(calibration_manifest)
+    m["calibration_samples_sha256"] = digest(samples)
     m["calibration_harness"] = metadata["harness"]
     m["baseline_capture_sha256"] = digest(captures_data)
     m["baseline_source"] = metadata["source_before"]["baseline"]
     m["frozen"] = True
-    for group, keys in eligible.items():
-        for split in ("development", "validation"):
-            if sum(k.split("|", 2)[2].startswith(split + "/") for k in keys) < 5:
-                raise ValueError(f"Target group lacks five distinct {split} cases: {group}")
     save(args.output, m)
 
 
@@ -679,6 +690,7 @@ def final_audit(args):
         args.candidate_capture,
         args.baseline_profiles,
         args.candidate_profiles,
+        args.calibration,
     )
     save(args.output, report)
     print(json.dumps({"pass": report["pass"], "reasons": report["reasons"]}), flush=True)
@@ -713,6 +725,7 @@ def main():
         "candidate-capture",
         "baseline-profiles",
         "candidate-profiles",
+        "calibration",
         "output",
     ):
         p.add_argument("--" + arg, required=True)

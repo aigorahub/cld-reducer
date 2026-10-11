@@ -14,7 +14,13 @@ import subprocess
 from pathlib import Path
 
 import common
-from analysis import analyze, same_javascript_tools, valid_source
+from analysis import (
+    analyze,
+    calibration_design,
+    same_javascript_tools,
+    select_gain_targets,
+    valid_source,
+)
 from cases import job_key, jobs
 from common import digest
 
@@ -292,6 +298,7 @@ def audit(
     candidate_capture_dir,
     baseline_profiles_dir,
     candidate_profiles_dir,
+    calibration_dir,
 ):
     """Return pass/reasons/evidence. Invalid, missing or stale evidence fails closed."""
     reasons, evidence = [], {"runs": [], "captures": {}, "profiles": {}}
@@ -314,6 +321,11 @@ def audit(
         )
         require(
             source == metadata.get("source_after"), f"{label}: source changed during collection"
+        )
+        require(
+            valid_source(metadata.get("harness"))
+            and metadata.get("harness_after") == metadata["harness"],
+            f"{label}: harness binding is missing or changed during collection",
         )
         return common.source_identity(source)
 
@@ -394,6 +406,70 @@ def audit(
             and common.source_identity(manifest["pilot_source"]) == frozen_source,
             "Pilot source differs from the frozen baseline or lacks build proof",
         )
+        calibration_manifest = _read(calibration_dir, "manifest.json")
+        calibration_metadata = _read(calibration_dir, "metadata.json")
+        calibration_samples = _rows(calibration_dir, "samples.jsonl")
+        calibration_report = analyze(
+            calibration_manifest, calibration_metadata, calibration_samples
+        )
+        require(
+            calibration_manifest.get("frozen") is False
+            and calibration_metadata.get("kind") == "calibration"
+            and calibration_report["pass"],
+            f"Raw A/A calibration failed: {calibration_report['reasons']}",
+        )
+        for name, value in (
+            ("calibration_manifest_sha256", calibration_manifest),
+            ("calibration_metadata_sha256", calibration_metadata),
+            ("calibration_samples_sha256", calibration_samples),
+            ("calibration_sha256", calibration_report),
+        ):
+            require(digest(value) == manifest.get(name), f"Calibration evidence differs: {name}")
+        require(
+            calibration_design(calibration_manifest) == calibration_design(manifest),
+            "Calibration sampling design differs from the frozen decision design",
+        )
+        for variant in ("baseline", "candidate"):
+            require(
+                common.source_identity(calibration_metadata.get("source_before", {}).get(variant))
+                == frozen_source,
+                f"Calibration {variant} source differs from the frozen baseline",
+            )
+        require(
+            {
+                language: common.version_identity(version)
+                for language, version in calibration_manifest.get("baseline_versions", {}).items()
+            }
+            == {
+                language: common.version_identity(version)
+                for language, version in manifest.get("baseline_versions", {}).items()
+            },
+            "Calibration versions differ from the frozen baseline",
+        )
+        calibration_harness = manifest.get("calibration_harness")
+        require(valid_source(calibration_harness), "Missing or invalid calibration harness binding")
+        require(
+            valid_source(calibration_metadata.get("harness"))
+            and valid_source(calibration_harness)
+            and common.source_identity(calibration_metadata["harness"])
+            == common.source_identity(calibration_harness),
+            "Calibration harness differs from the frozen binding",
+        )
+        calibration_start, calibration_finish = (
+            calibration_metadata.get("started_unix"),
+            calibration_metadata.get("finished_unix"),
+        )
+        calibration_interval_valid = (
+            _positive(calibration_start)
+            and _positive(calibration_finish)
+            and calibration_finish > calibration_start
+        )
+        require(calibration_interval_valid, "Calibration has an invalid real run interval")
+        evidence["calibration"] = {
+            "directory": str(calibration_dir),
+            "analysis": calibration_report,
+            "samples_sha256": digest(calibration_samples),
+        }
         capture_dirs = {"baseline": baseline_capture_dir, "candidate": candidate_capture_dir}
         capture_meta = {label: _read(path, "metadata.json") for label, path in capture_dirs.items()}
         fixture_specs, fixture_hashes = _fixture_inventory(capture_meta["baseline"])
@@ -541,8 +617,6 @@ def audit(
 
         machine = capture_meta["baseline"].get("machine")
         driver_hashes = _driver_hashes(capture_meta["baseline"].get("harness"), languages)
-        calibration_harness = manifest.get("calibration_harness")
-        require(valid_source(calibration_harness), "Missing or invalid calibration harness binding")
         measurement_hashes = _measurement_hashes(calibration_harness, languages)
         require(
             all(measurement_hashes.get(name) == value for name, value in driver_hashes.items()),
@@ -553,6 +627,10 @@ def audit(
         def context(metadata, label):
             require(metadata.get("machine") == machine, f"{label}: machine differs")
             require(valid_source(metadata.get("harness")), f"{label}: invalid harness binding")
+            require(
+                metadata.get("harness_after") == metadata.get("harness"),
+                f"{label}: harness changed during collection",
+            )
             observed_drivers = _driver_hashes(metadata.get("harness"), languages)
             require(observed_drivers == driver_hashes, f"{label}: language driver source differs")
             if "driver_sha256" in metadata:
@@ -566,6 +644,7 @@ def audit(
 
         context(capture_meta["baseline"], "baseline capture")
         context(capture_meta["candidate"], "candidate capture")
+        context(calibration_metadata, "calibration")
         profiles = {}
         for label, path in (
             ("baseline", baseline_profiles_dir),
@@ -687,6 +766,11 @@ def audit(
             )
             profiles[label] = indexed
             evidence["profiles"][label] = {"directory": str(path), "rows": len(indexed)}
+        targets = select_gain_targets(manifest, list(profiles["baseline"].values()))
+        require(
+            manifest.get("gain_targets") == targets,
+            "Frozen gain targets differ from the full eligible profile set",
+        )
         require(
             set(profiles["baseline"]) == set(profiles["candidate"]),
             "Baseline and candidate profile coverage differs",
@@ -752,6 +836,10 @@ def audit(
                 f"{label}: invalid real run interval",
             ):
                 intervals.append((start, finish))
+                require(
+                    calibration_interval_valid and calibration_finish <= start,
+                    f"{label}: calibration did not finish before candidate timing",
+                )
             seen = set()
             for record in metadata.get("versions", []):
                 index = (record["language"], record["process"])

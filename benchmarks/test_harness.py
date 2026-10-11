@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common
-from analysis import analyze, estimate
+from analysis import analyze, estimate, select_gain_targets
 from cases import frozen_manifest, job_key, jobs, multipartite
 from common import Driver, DriverError, digest, input_digest
 from run import fixture_mismatch, load_manifest
@@ -81,6 +81,7 @@ def evidence(ratio=0.8, targets=True):
         "presolve": {"python": "on"},
         "bootstrap_resamples": 10000,
         "bootstrap_seed": 41,
+        "order_seed": 17,
         "frozen": True,
         "iterations": {},
         "baseline_failures": [],
@@ -117,6 +118,7 @@ def evidence(ratio=0.8, targets=True):
         "source_after": copy.deepcopy(before),
         "kind": "candidate",
         "harness": source("/harness"),
+        "harness_after": source("/harness"),
         "versions": [
             {"language": "python", "process": p, "versions": [version(), version("e" * 40)]}
             for p in range(8)
@@ -210,6 +212,99 @@ def test_empty_targets_fail_but_calibration_needs_no_gain():
     assert not analyze(m, meta, rows)["pass"]
     calibration(meta)
     assert analyze(m, meta, rows)["pass"]
+
+
+@pytest.mark.parametrize("ratio,passed", [(0.8, False), (0.96, True), (1.04, True), (1.06, False)])
+def test_calibration_requires_two_sided_equivalence(ratio, passed):
+    m, meta, rows = evidence(ratio, targets=False)
+    calibration(meta)
+    report = analyze(m, meta, rows)
+    assert report["pass"] is passed
+    assert all(case["pass"] is passed for case in report["cases"].values())
+
+
+@pytest.mark.parametrize("fault", ["missing", "changed"])
+def test_analysis_rejects_missing_or_changed_collection_harness(fault):
+    m, meta, rows = evidence()
+    if fault == "missing":
+        meta.pop("harness_after")
+    else:
+        meta["harness_after"]["head"] = "9" * 40
+    report = analyze(m, meta, rows)
+    assert not report["pass"]
+    assert "Harness source binding is missing or changed during collection" in report["reasons"]
+
+
+def target_profiles(manifest):
+    return [
+        {
+            "key": job_key(language, case),
+            "case": case,
+            "response": {
+                "ok": True,
+                "metrics": {"essential_cover": True, "solver_total_ns": 25},
+                "phases_ns": {"total": 100},
+            },
+        }
+        for language in manifest["languages"]
+        for case in jobs(manifest)
+    ]
+
+
+def test_target_selection_keeps_small_combinations_regression_only():
+    manifest, _, _ = evidence()
+    manifest["methods"].append("assignment_minimum")
+    profiles = target_profiles(manifest)
+    for row in profiles:
+        if row["case"]["options"]["method"] == "assignment_minimum" and row["case"]["id"].endswith(
+            "4"
+        ):
+            row["response"]["metrics"]["solver_total_ns"] = 24
+    targets = select_gain_targets(manifest, profiles)
+    assert set(targets) == {"python|letter_minimum"}
+    assert len(targets["python|letter_minimum"]) == 10
+
+
+def test_target_selection_counts_input_digests_not_case_ids():
+    manifest, _, _ = evidence()
+    for case in manifest["cases"]:
+        case["input"] = {"adjacency": [[1]]}
+    with pytest.raises(ValueError, match="five distinct inputs"):
+        select_gain_targets(manifest, target_profiles(manifest))
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing_cover",
+        "missing_solver",
+        "zero_total",
+        "nan_solver",
+        "boolean_solver",
+        "duplicate",
+        "missing",
+    ],
+)
+def test_target_selection_requires_complete_numeric_profile_evidence(fault):
+    manifest, _, _ = evidence()
+    profiles = target_profiles(manifest)
+    response = profiles[0]["response"]
+    if fault == "missing_cover":
+        response["metrics"].pop("essential_cover")
+    elif fault == "missing_solver":
+        response["metrics"].pop("solver_total_ns")
+    elif fault == "zero_total":
+        response["phases_ns"]["total"] = 0
+    elif fault == "nan_solver":
+        response["metrics"]["solver_total_ns"] = float("nan")
+    elif fault == "boolean_solver":
+        response["metrics"]["solver_total_ns"] = True
+    elif fault == "duplicate":
+        profiles.append(copy.deepcopy(profiles[0]))
+    else:
+        profiles.pop()
+    with pytest.raises(ValueError):
+        select_gain_targets(manifest, profiles)
 
 
 def test_manifest_families_are_deterministic_and_bounded():
