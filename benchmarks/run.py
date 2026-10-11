@@ -81,9 +81,17 @@ def load_manifest(path):
     ):
         if type(m[field]) is not int or m[field] < minimum:
             raise ValueError(f"Invalid measurement design: {field}")
-    if not math.isfinite(m["memory_limit_mb"]) or m["memory_limit_mb"] <= 0:
+    if (
+        type(m["memory_limit_mb"]) not in (int, float)
+        or not math.isfinite(m["memory_limit_mb"])
+        or m["memory_limit_mb"] <= 0
+    ):
         raise ValueError("Invalid memory limit")
-    if not math.isfinite(m["memory_growth_tolerance_mb"]) or m["memory_growth_tolerance_mb"] < 0:
+    if (
+        type(m["memory_growth_tolerance_mb"]) not in (int, float)
+        or not math.isfinite(m["memory_growth_tolerance_mb"])
+        or m["memory_growth_tolerance_mb"] < 0
+    ):
         raise ValueError("Invalid memory growth tolerance")
     if set(m["methods"]) != {"letter_minimum", "assignment_minimum"} or len(m["methods"]) != 2:
         raise ValueError("Both methods must be present exactly once")
@@ -93,6 +101,7 @@ def load_manifest(path):
     for c in m["cases"]:
         if (
             c["classification"] not in ("ordinary", "stress")
+            or type(c["wall_seconds"]) not in (int, float)
             or not math.isfinite(c["wall_seconds"])
             or c["wall_seconds"] <= 0
         ):
@@ -444,19 +453,6 @@ def compare(args):
                         for c in jobs(m):
                             key = job_key(language, c)
                             if key in m["baseline_failures"]:
-                                responses = [
-                                    d.request({"action": "capture", "case": c}, c["wall_seconds"])
-                                    for d in pair
-                                ]
-                                emit(
-                                    results,
-                                    {
-                                        "key": key,
-                                        "process": process,
-                                        "baseline_failure": True,
-                                        "responses": responses,
-                                    },
-                                )
                                 continue
                             iterations = m["iterations"][key]
                             request = {"action": "measure", "case": c, "iterations": iterations}
@@ -499,6 +495,37 @@ def compare(args):
                                 f"{c['id']} {c['options']['method']}",
                                 flush=True,
                             )
+            for language in m["languages"]:
+                for index, c in enumerate(jobs(m)):
+                    key = job_key(language, c)
+                    if key not in m["baseline_failures"]:
+                        continue
+                    responses, versions, pids = [], [], []
+                    for repo, label in ((args.baseline, "baseline"), (args.candidate, "candidate")):
+                        with driver(language, repo, m, out, f"excluded-{index}-{label}") as d:
+                            version = require_success(d.request({"action": "version"}, 60))
+                            if version_identity(version) != version_identity(
+                                m["baseline_versions"][language]
+                            ):
+                                raise ValueError("Excluded-case dependencies differ from pilot")
+                            versions.append(version)
+                            pids.append(d.process.pid)
+                            responses.append(
+                                bounded_request(
+                                    d, {"action": "capture", "case": c}, c["wall_seconds"]
+                                )
+                            )
+                    emit(
+                        results,
+                        {
+                            "key": key,
+                            "process": 0,
+                            "baseline_failure": True,
+                            "responses": responses,
+                            "versions": versions,
+                            "pids": pids,
+                        },
+                    )
         meta["source_after"] = {
             "baseline": source_binding(args.baseline, languages=m["languages"]),
             "candidate": source_binding(args.candidate, languages=m["languages"]),
@@ -578,6 +605,11 @@ def freeze(args):
         or capture_meta["source"] != capture_meta.get("source_after")
     ):
         raise ValueError("Baseline canonical capture is incomplete or mismatched")
+    for language in m["languages"]:
+        if version_identity(capture_meta["versions"][language]) != version_identity(
+            m["baseline_versions"][language]
+        ):
+            raise ValueError("Capture dependency versions differ")
     captures_data = [
         json.loads(line) for line in (Path(args.capture) / "vectors.jsonl").read_text().splitlines()
     ]
