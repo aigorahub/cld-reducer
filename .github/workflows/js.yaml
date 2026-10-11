@@ -33,6 +33,8 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npm run test:conformance
+      - run: node --test ../benchmarks/js_driver.test.mjs
+        if: runner.os == 'Linux'
 
   pack:
     runs-on: ubuntu-latest

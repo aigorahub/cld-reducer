@@ -1,0 +1,43 @@
+# Measure full API speed
+
+These tools measure the Python, R, and JavaScript APIs. They keep the runtime code unchanged. See `PROTOCOL.md` for the driver interface and `../docs/plans/clique-performance/design.md` for the accepted design.
+
+Install the Python package dependencies and `benchmarks/requirements.txt` in one environment. Install the R package dependencies plus `jsonlite`. Use `microbenchmark` and `digest` for R profile timing and patch records. Run `npm ci` and `npm run build` in `js/` in each source checkout. Use clean Git worktrees. The harness binds source commits, executable JavaScript files, lock files, actual dependency versions, and solver settings.
+
+All output paths must be outside the harness checkout. Keep the baseline checkout at its exact commit. Run each command from the same clean harness checkout. The example uses absolute paths supplied by the operator:
+
+```sh
+python benchmarks/run.py manifest --repo "$baseline_repo" --output "$evidence_dir/inputs.json"
+python benchmarks/run.py profile --repo "$baseline_repo" --manifest "$evidence_dir/inputs.json" --output "$evidence_dir/baseline-profiles"
+python benchmarks/run.py pilot --repo "$baseline_repo" --manifest "$evidence_dir/inputs.json" --output "$evidence_dir/pilot"
+python benchmarks/run.py capture --repo "$baseline_repo" --manifest "$evidence_dir/pilot/manifest.json" --output "$evidence_dir/baseline-capture"
+python benchmarks/run.py compare --kind calibration --run-id calibration-1 --baseline "$baseline_repo" --candidate "$baseline_repo" --manifest "$evidence_dir/pilot/manifest.json" --output "$evidence_dir/calibration"
+```
+
+Review the profiles before selecting a runtime change. The current `freeze` command supports the essential cover certificate candidate. It selects every solve case where the essential decisions cover the graph and solver adapter calls use at least 25 percent of the profiled full API time. Each declared language and method target needs five development cases and five validation cases. An unsupported candidate needs its own reviewed eligibility rule before timing.
+
+```sh
+python benchmarks/run.py freeze --manifest "$evidence_dir/pilot/manifest.json" --profiles "$evidence_dir/baseline-profiles" --capture "$evidence_dir/baseline-capture" --calibration "$evidence_dir/calibration" --output "$evidence_dir/frozen.json"
+```
+
+Calibration compares the same source to itself. It must pass every case's 5 percent nonregression bound. Set the sampling design before candidate timing. If calibration is inconclusive, increase the baseline sampling effort and repeat calibration. Keep the graph inputs fixed. Do not adjust the design after candidate results are known.
+
+After the candidate passes its correctness suites, capture its actual decisions and resource outcomes. Run the two timing comparisons in sequence on an otherwise idle host. Keep other test and build jobs stopped during these runs.
+
+```sh
+python benchmarks/run.py capture --repo "$candidate_repo" --manifest "$evidence_dir/frozen.json" --output "$evidence_dir/candidate-capture"
+python benchmarks/run.py profile --repo "$candidate_repo" --manifest "$evidence_dir/frozen.json" --output "$evidence_dir/candidate-profiles"
+python benchmarks/run.py compare --kind candidate --run-id candidate-1 --baseline "$baseline_repo" --candidate "$candidate_repo" --manifest "$evidence_dir/frozen.json" --output "$evidence_dir/candidate-1"
+python benchmarks/run.py compare --kind candidate --run-id candidate-2 --baseline "$baseline_repo" --candidate "$candidate_repo" --manifest "$evidence_dir/frozen.json" --output "$evidence_dir/candidate-2"
+python benchmarks/run.py audit --manifest "$evidence_dir/frozen.json" --runs "$evidence_dir/candidate-1" "$evidence_dir/candidate-2" --baseline-capture "$evidence_dir/baseline-capture" --candidate-capture "$evidence_dir/candidate-capture" --baseline-profiles "$evidence_dir/baseline-profiles" --candidate-profiles "$evidence_dir/candidate-profiles" --output "$evidence_dir/acceptance.json"
+```
+
+The final audit reads raw evidence again. One timing run cannot establish acceptance. Each target must show a geometric mean ratio of at most 0.90. Its 95 percent upper confidence bound must be below 1. Each case's upper bound must be at most 1.05. Both independent runs must pass. Correctness and resource failures block acceptance.
+
+Each timing process runs three warmup batches, then nine or more measured batches. The default design uses eight fresh process pairs. The baseline pilot sets iterations to reach about 50 milliseconds per batch. The estimator takes a median across batches within each process, then a median across processes. The bootstrap resamples paired batches within each original process before it resamples the resulting process values. It uses the same draws across target cases.
+
+Module and solver load costs appear in version records. The pilot records the first full API call and warm calls separately. Profile hooks and result serialization are outside timed calls. A profile records inclusive regions and explains overlap. Profile times choose candidate targets. They do not prove a speed gain.
+
+The default corpus includes ordinary inputs and bounded stress inputs. The three part multipartite graph is the earlier `overlap9` case. Five part multipartite solves are opt in. Six to eight part cases stop after preprocessing. Nine parts must reach the existing clique limit. The tools enforce wall time and process tree memory limits. Baseline failures receive no speed ratio. A new candidate success needs independent correctness evidence.
+
+Shared CI checks harness logic and driver behavior. It has no elapsed time thresholds. The package archive checks keep these tools out of runtime packages.
