@@ -6,9 +6,11 @@ Date: 2026-10-11.
 
 `baseline-profile.json` records the source and build hashes, driver versions, raw artifact hashes, phase costs, model sizes, and solver call counts. The raw JSONL artifacts remain outside the checkout in the workspace evidence directory. These profiles diagnose costs. They are not speed acceptance results.
 
-All 240 required profiles completed. All 216 full solve profiles succeeded. The 18 preprocessing cases succeeded. All six expected error cases reached the existing 10,000 clique limit. Each full solve profile followed three uninstrumented warmup calls in a fresh process. Profile hooks record inclusive regions, so the phase times must not be summed.
+The first collection produced 240 records. All 216 full solve profiles succeeded. Sixteen preprocessing cases succeeded. The R sigma cases with seven and eight parts reached the 30 second external wall limit. All six expected error cases reached the existing 10,000 clique limit. Each full solve profile followed three public API warmup calls in a fresh process. Profile hooks record inclusive regions, so the phase times must not be summed.
 
-The essential cover certificate is the first candidate supported by these profiles. Its eligibility rule is fixed before candidate timing: the essential decisions cover the graph, and inclusive solver adapter calls consume at least 25 percent of the profiled full API time. Every case that meets this rule belongs to the target set.
+These records are diagnostic history. The first collection warmed the production JavaScript module but used a cold copy for its profile. It also lacks native memory receipts and observed solver settings. Recollect all evidence with the corrected harness before calibration or candidate acceptance. Keep the 30 second preprocessing limit. Freeze each observed preprocessing resource failure by its exact case key and failure class. A continuing failure is not a successful profile or a speed result. A new failure rejects the candidate.
+
+The first profiles support the essential cover certificate as a candidate. Confirm this choice with the corrected profiles. Its eligibility rule is fixed before candidate timing: the essential decisions cover the graph, and inclusive solver adapter calls consume at least 25 percent of the profiled full API time. Every case that meets this rule belongs to its eligible group. A declared gain group needs at least five distinct inputs in each split. Other combinations still need to pass all regression checks.
 
 | Language | Method | Development inputs | Validation inputs |
 | --- | --- | ---: | ---: |
@@ -19,7 +21,7 @@ The essential cover certificate is the first candidate supported by these profil
 | JavaScript | C | 16 | 13 |
 | JavaScript | Sigma | 13 | 12 |
 
-All six groups meet the five input minimum in each split. A/A calibration, canonical capture, and the final frozen manifest are still required before candidate timing.
+The first collection gives at least five inputs in each split for all six groups. These counts are provisional. The first canonical collection passed 8,907 checks. Corrected profiles, canonical captures, pilot records, A/A calibration, and the final frozen manifest are required before candidate timing.
 
 The four part multipartite sigma cases need about 291 to 292 solver calls in Python and R. Their profiled full API costs range from about 2.6 to 4.0 seconds. These cases remain in the regression set. The certificate will fall through to the existing BIP when essential decisions do not cover the graph.
 
