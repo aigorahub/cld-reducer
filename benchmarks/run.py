@@ -130,6 +130,7 @@ def profiles(args):
     metadata.update(
         manifest_sha256=digest(m), input_sha256=input_digest(m), complete=False, versions={}
     )
+    metadata["profile_warmup_calls"] = m["warmup_batches"]
     save(out / "metadata.json", metadata)
     tiers = ("solve", "preprocess", "expected-error") + (("opt-in",) if args.include_opt_in else ())
     with (out / "profiles.jsonl").open("w") as f:
@@ -143,7 +144,20 @@ def profiles(args):
                     action = (
                         "preprocess" if c["tier"] in ("preprocess", "expected-error") else "profile"
                     )
-                    response = bounded_request(d, {"action": action, "case": c}, c["wall_seconds"])
+                    response = None
+                    if action == "profile":
+                        for _ in range(m["warmup_batches"]):
+                            response = bounded_request(
+                                d,
+                                {"action": "measure", "case": c, "iterations": 1},
+                                c["wall_seconds"],
+                            )
+                            if not response["ok"]:
+                                break
+                    if response is None or response["ok"]:
+                        response = bounded_request(
+                            d, {"action": action, "case": c}, c["wall_seconds"]
+                        )
                     emit(f, {"key": key, "case": c, "response": response, "peak_rss": d.peak_rss})
                     print(
                         f"profile {key}: {'ok' if response['ok'] else response.get('error')}",
