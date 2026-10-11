@@ -750,3 +750,37 @@ def test_calibration_requires_the_verified_pilot_source(fault):
     report = analyze(m, meta, rows)
     assert not report["pass"]
     assert any("ilot" in reason for reason in report["reasons"])
+
+
+@pytest.mark.parametrize("field,value", [("processes", 17), ("batches", 37)])
+def test_analysis_rejects_sampling_beyond_fixed_limits(field, value):
+    manifest, metadata, rows = evidence()
+    manifest[field] = value
+    report = analyze(manifest, metadata, rows)
+    assert not report["pass"]
+    assert f"Measurement design exceeds the fixed limit: {field}" in report["reasons"]
+
+
+@pytest.mark.parametrize("ratio,passed", [(0.90, True), (0.900001, False)])
+def test_exact_target_gain_boundary(ratio, passed):
+    manifest, metadata, rows = evidence(ratio)
+    assert analyze(manifest, metadata, rows)["pass"] is passed
+
+
+@pytest.mark.parametrize("ratio,passed", [(1.05, True), (1.050001, False)])
+def test_exact_case_regression_boundary(ratio, passed):
+    manifest, metadata, rows = evidence(ratio, targets=False)
+    calibration(metadata)
+    report = analyze(manifest, metadata, rows)
+    assert report["pass"] is passed
+
+
+def test_target_upper_bound_requires_strict_gain():
+    manifest, metadata, rows = evidence()
+    for row in rows:
+        row["candidate_ns"] = row["baseline_ns"] * (0.8 if row["process"] < 5 else 1.0)
+    report = analyze(manifest, metadata, rows)
+    assert all(value["pass"] for value in report["cases"].values())
+    assert all(value["ratio"] <= 0.90 for value in report["groups"].values())
+    assert all(value["interval_95"][1] == 1.0 for value in report["groups"].values())
+    assert not report["pass"]

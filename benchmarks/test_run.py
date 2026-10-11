@@ -34,9 +34,11 @@ def javascript_source():
     "field,value",
     [
         ("processes", 7),
+        ("processes", 17),
         ("processes", 8.5),
         ("warmup_batches", 2),
         ("batches", 8),
+        ("batches", 37),
         ("bootstrap_resamples", 9999),
         ("bootstrap_seed", True),
         ("order_seed", -1),
@@ -387,6 +389,14 @@ def test_excluded_timeout_uses_separate_processes(tmp_path, monkeypatch, harness
     timed = [p for p in processes if "measure" in p.actions]
     excluded = [p for p in processes if "capture" in p.actions]
     assert len(timed) == 16 and len(excluded) == 2
+    samples = [
+        json.loads(line) for line in (args.output / "samples.jsonl").read_text().splitlines()
+    ]
+    assert sum(row["order"][0] == 0 for row in samples) == len(samples) // 2
+    for process in range(manifest["processes"]):
+        orders = [row["order"] for row in samples if row["process"] == process]
+        assert all(sorted(order) == [0, 1] for order in orders)
+        assert abs(sum(order[0] == 0 for order in orders) - len(orders) / 2) <= 0.5
     assert all("capture" not in p.actions for p in timed)
     rows = [json.loads(line) for line in (args.output / "results.jsonl").read_text().splitlines()]
     failures = [row for row in rows if row.get("baseline_failure")]
@@ -525,3 +535,31 @@ def test_audit_cli_requires_calibration(monkeypatch, capsys):
         run.main()
     assert error.value.code == 2
     assert "--calibration" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("unsafe", ["checkout", "symlink", "existing"])
+def test_artifact_outputs_preserve_source_and_existing_evidence(tmp_path, monkeypatch, unsafe):
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    monkeypatch.setattr(run, "ROOT", checkout)
+    output = tmp_path / "result.json"
+    if unsafe == "checkout":
+        output = checkout / "result.json"
+    elif unsafe == "symlink":
+        alias = tmp_path / "alias"
+        alias.symlink_to(checkout, target_is_directory=True)
+        output = alias / "result.json"
+    else:
+        output.write_text("prior evidence")
+    with pytest.raises((ValueError, FileExistsError)):
+        run.save_artifact(output, {"new": True})
+    if unsafe == "existing":
+        assert output.read_text() == "prior evidence"
+    else:
+        assert not output.exists()
+
+
+def test_new_artifact_output_is_valid_json(tmp_path):
+    output = tmp_path / "nested" / "new.json"
+    run.save_artifact(output, {"pass": False, "reasons": ["inconclusive"]})
+    assert run.read(output) == {"pass": False, "reasons": ["inconclusive"]}

@@ -19,6 +19,11 @@ LANGUAGES = {"python": {"python"}, "r": {"r"}, "js": {"js", "javascript"}}
 METHODS = {"letter_minimum", "assignment_minimum"}
 
 
+def at_most(value, limit):
+    """Include an exact boundary despite roundoff from ratios, logs and exp."""
+    return value <= limit or math.isclose(value, limit, rel_tol=4 * np.finfo(float).eps)
+
+
 def case_input_digest(case):
     return digest({name: case.get(name) for name in ("call", "input", "options")})
 
@@ -359,6 +364,10 @@ def check_design(manifest):
         value = manifest.get(name)
         if type(value) is not int or value < minimum:
             reasons.append(f"Invalid measurement design: {name}")
+    for name, maximum in (("processes", 16), ("batches", 36)):
+        value = manifest.get(name)
+        if type(value) is int and value > maximum:
+            reasons.append(f"Measurement design exceeds the fixed limit: {name}")
     presolve = manifest.get("presolve")
     if not isinstance(presolve, dict) or any(
         presolve.get(language) not in (("off",) if language == "r" else ("on", "off"))
@@ -505,12 +514,12 @@ def analyze(manifest, metadata, records):
             "candidate_median_ns": float(np.median(np.median(candidate, axis=1))),
             "baseline_range_ns": [float(base.min()), float(base.max())],
             "candidate_range_ns": [float(candidate.min()), float(candidate.max())],
-            "pass": interval[1] <= 1.05 and (not aa or interval[0] >= 1 / 1.05),
+            "pass": at_most(interval[1], 1.05) and (not aa or at_most(1 / 1.05, interval[0])),
         }
         log_draws[key] = boot
-        if interval[1] > 1.05:
+        if not at_most(interval[1], 1.05):
             reasons.append(f"Nonregression margin not established: {key}")
-        if aa and interval[0] < 1 / 1.05:
+        if aa and not at_most(1 / 1.05, interval[0]):
             reasons.append(f"A/A equivalence margin not established: {key}")
     if not per_case:
         reasons.append("No successful measured cases")
@@ -558,7 +567,7 @@ def analyze(manifest, metadata, records):
             # Calls to estimate use identical grouped resamples for every case.
             samples = np.mean([log_draws[key] for key in members], axis=0)
             interval = np.exp(np.quantile(samples, [0.025, 0.975])).tolist()
-            passed = point <= 0.90 and interval[1] < 1
+            passed = at_most(point, 0.90) and interval[1] < 1
             groups[f"{group}/{split}"] = {
                 "ratio": point,
                 "interval_95": interval,

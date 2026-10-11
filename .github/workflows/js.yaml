@@ -35,6 +35,8 @@ jobs:
       - run: npm run test:conformance
       - run: node --test ../benchmarks/js_driver.test.mjs
         if: runner.os == 'Linux'
+      - run: node ../benchmarks/js_driver_conformance.mjs
+        if: runner.os == 'Linux' && matrix.node == 24
 
   pack:
     runs-on: ubuntu-latest

@@ -42,9 +42,27 @@ def output_dir(path):
     return path
 
 
+def save_artifact(path, value):
+    """Write a new external result file without replacing earlier evidence."""
+    path = Path(path).resolve()
+    if path == ROOT or ROOT in path.parents:
+        raise ValueError("Benchmark output must be outside the checkout")
+    payload = json.dumps(value, indent=2, allow_nan=False) + "\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x") as stream:
+        stream.write(payload)
+
+
 def emit(stream, value):
     stream.write(json.dumps(value, allow_nan=False) + "\n")
     stream.flush()
+
+
+def paired_orders(rng, count, process):
+    """Balance first position per process; alternate any odd surplus."""
+    first = [(batch + process) % 2 for batch in range(count)]
+    rng.shuffle(first)
+    return [[value, 1 - value] for value in first]
 
 
 def driver(language, repo, manifest, output, suffix, *, metadata, allow_close_failure=False):
@@ -92,6 +110,9 @@ def load_manifest(path):
     ):
         if type(m[field]) is not int or m[field] < minimum:
             raise ValueError(f"Invalid measurement design: {field}")
+    for field, maximum in (("processes", 16), ("batches", 36)):
+        if m[field] > maximum:
+            raise ValueError(f"Measurement design exceeds the fixed limit: {field}")
     if (
         type(m["memory_limit_mb"]) not in (int, float)
         or not math.isfinite(m["memory_limit_mb"])
@@ -523,11 +544,12 @@ def compare(args):
                                 continue
                             iterations = m["iterations"][key]
                             request = {"action": "measure", "case": c, "iterations": iterations}
-                            for _ in range(m["warmup_batches"]):
-                                for i in rng.sample([0, 1], 2):
+                            for order in paired_orders(rng, m["warmup_batches"], process):
+                                for i in order:
                                     require_success(pair[i].request(request, c["wall_seconds"]))
-                            for batch in range(m["batches"]):
-                                order = rng.sample([0, 1], 2)
+                            for batch, order in enumerate(
+                                paired_orders(rng, m["batches"], process)
+                            ):
                                 responses = [None, None]
                                 for i in order:
                                     responses[i] = pair[i].request(request, c["wall_seconds"])
@@ -740,7 +762,7 @@ def freeze(args):
     m["calibration_resource_sha256"] = calibration_resources["sha256"]
     m["baseline_source"] = metadata["source_before"]["baseline"]
     m["frozen"] = True
-    save(args.output, m)
+    save_artifact(args.output, m)
 
 
 def final_audit(args):
@@ -755,7 +777,7 @@ def final_audit(args):
         args.candidate_profiles,
         args.calibration,
     )
-    save(args.output, report)
+    save_artifact(args.output, report)
     print(json.dumps({"pass": report["pass"], "reasons": report["reasons"]}), flush=True)
     if not report["pass"]:
         raise ValueError("Final acceptance gate failed")
@@ -795,7 +817,7 @@ def main():
     p.add_argument("--runs", nargs=2, required=True)
     args = parser.parse_args()
     if args.action == "manifest":
-        save(args.output, frozen_manifest(Path(args.repo)))
+        save_artifact(args.output, frozen_manifest(Path(args.repo)))
     else:
         {
             "profile": profiles,
