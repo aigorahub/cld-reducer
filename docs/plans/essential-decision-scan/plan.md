@@ -102,6 +102,11 @@ clique. Reuse these structures; do not enumerate cliques or rebuild a matrix
 product again in the scan. Keep auxiliary sigma y variables outside the scan
 result, objective support, and canonical decision order.
 
+In R, each edge endpoint alternative set is a two column matrix. Test
+`nrow(ends) == 1L` for a single covering clique, then take both endpoint indices.
+Do not use `length(ends) == 1L`. Do not infer essential decisions from raw
+singleton matrix rows; a row can constrain a zero cost auxiliary column.
+
 The common canonical engine starts its existing deadline, computes essential
 decisions, validates their indices, and sets their lower bounds to 1. All upper
 bounds remain 1 initially. Run HiGHS even when every decision is essential.
@@ -110,6 +115,10 @@ it must reject a returned solution that violates an essential bound, including
 on the first solve. Invalid internal scan indices use the existing solver error
 path. Keep R presolve off and Python/JavaScript presolve settings unchanged.
 
+Apply lower bounds to the actual vector passed to the solver adapter. Canonical
+trials copy that vector and keep every essential bound. Do not mutate the model's
+coverage lists or decision order.
+
 Expected runtime files:
 
 - Python: `reduction.py`, `canonical.py`, and the two algorithm modules.
@@ -117,6 +126,22 @@ Expected runtime files:
 - JavaScript: `model.ts` and `canonical.ts`.
 
 Add focused tests in each language and a shared independent scan reference.
+Update the six tests that call canonical engines with synthetic models:
+
+- `python/tests/test_reduction_graph.py`
+- `python/tests/test_letter_minimum.py`
+- `tests/testthat/test-reduction-graph.R`
+- `tests/testthat/test-letter-minimum.R`
+- `js/test/reduction-graph.test.ts`
+- `js/test/letter-minimum.test.ts`
+
+These tests replace coverage checks, use bare problem models or empty coverage
+lists, and inherit the production strategy. Replace the new essential scan
+operation too, with an explicit empty result. Preserve their expected outputs
+and purpose. Keep their noncontiguous decision indices, weighted caps, and
+zero cost auxiliary column checks. Add malformed scan result tests to prove
+that an auxiliary or absent column is rejected before the adapter runs.
+
 Update `docs/algorithm.md` and the unreleased `NEWS.md` entry during implementation.
 Do not change versions in this planning PR. The dependency already prepares
 unreleased version 0.3.0; confirm release state before any implementation bump.
@@ -126,7 +151,8 @@ unreleased version 0.3.0; confirm release state before any implementation bump.
 1. Add the pure exact scans and registry operations in all three languages.
 2. Apply and validate essential bounds in the common canonical engines.
 3. Add independent deletion checks and tests that inspect first solve bounds.
-4. Run existing conformance and canonical output checks unchanged.
+4. Run conformance with unchanged fixture bytes and canonical expected outputs.
+   Adapt the synthetic test strategies as specified above.
 5. Measure the same inputs with and without the scan.
 6. Update algorithm documentation and obtain exact head implementation reviews.
 
@@ -139,8 +165,22 @@ unreleased version 0.3.0; confirm release state before any implementation bump.
   reduction. Keep this oracle independent of singleton coverage logic.
 - Cover isolates, complete graphs, separate components, no essential decisions,
   all essential decisions, overlapping cliques, weighted classes, and interleaved
-  original class members. A cycle with overlapping candidate coverage must
-  exercise optional choices that cannot all be removed together.
+  original class members. Keep ordinary cycles as all essential cases. Use the
+  following separate witnesses for optional choices that conflict together.
+- Sigma conflict: use vertices 0 through 4 and edges 01, 02, 03, 04, 13, 14,
+  23, 24. Maximal cliques are {0,1,3}, {0,1,4}, {0,2,3}, {0,2,4}. The four
+  memberships of vertex 0 are individually removable. Removing its memberships
+  in {0,1,3} and {0,2,3} together uncovers edge 03. The other eight memberships
+  and all four C clique selections are essential.
+- C conflict: use the existing six vertex fixture in
+  `python/tests/test_letter_minimum.py`. Verify that {0,2,3} and {1,2,3} are
+  each removable as whole cliques from the full maximal cover. Removing both
+  uncovers edge 23. Check this witness separately from the 1 through 5 census.
+- No essential decisions: use the complete tripartite graph with parts {0,1},
+  {2,3}, and {4,5}. Include every edge between different parts and no edge
+  within a part. Its eight maximal cliques are triples with one vertex from
+  each part. All 24 sigma memberships and all eight C clique variables are
+  individually removable. Removing both covering cliques of an edge loses it.
 - The five item ABC example must force eight of nine sigma memberships and all
   three C clique variables. Group 3's B membership must remain optional.
 - Instrument the solver boundary in all three languages. Verify essential
