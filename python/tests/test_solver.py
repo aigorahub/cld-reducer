@@ -21,7 +21,7 @@ EXPECTED_OPTIONS = {
     "threads": 1,
 }
 
-# Groups 1 to 5 of the simple example: the canonical solve needs at least two solves.
+# Groups 1 to 5: the reference sigma engine needs at least two solves.
 SIMPLE = np.array(
     [
         [1, 1, 1, 0, 0],
@@ -49,7 +49,7 @@ def record_runs(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
 
 
 def test_every_solve_uses_the_documented_settings(
-    monkeypatch: pytest.MonkeyPatch, presolve: str
+    monkeypatch: pytest.MonkeyPatch, presolve: str, reference_engine
 ) -> None:
     seen = record_runs(monkeypatch)
 
@@ -73,7 +73,7 @@ def test_highs_version_is_reported() -> None:
 @pytest.mark.parametrize("method", ["assignment_minimum", "letter_minimum"])
 @pytest.mark.parametrize("clock_value", [None, 500.2], ids=["real", "rounding"])
 def test_time_limit_is_passed_to_highs(
-    monkeypatch: pytest.MonkeyPatch, method: str, clock_value: float | None
+    monkeypatch: pytest.MonkeyPatch, method: str, clock_value: float | None, reference_engine
 ) -> None:
     if clock_value is not None:
         monkeypatch.setattr(canonical, "_now", lambda: clock_value)
@@ -85,7 +85,9 @@ def test_time_limit_is_passed_to_highs(
     assert 0 < seen[0]["time_limit"] <= 30 + 1e-9
 
 
-def test_time_budget_is_shared_across_solves(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_time_budget_is_shared_across_solves(
+    monkeypatch: pytest.MonkeyPatch, reference_engine
+) -> None:
     clock = {"now": 0.0}
     real = _solver.run
     limits: list[float | None] = []
@@ -106,7 +108,7 @@ def test_time_budget_is_shared_across_solves(monkeypatch: pytest.MonkeyPatch) ->
     assert limits == [5.0]
 
 
-def test_no_time_limit_means_no_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_no_time_limit_means_no_deadline(monkeypatch: pytest.MonkeyPatch, reference_engine) -> None:
     limits: list[float | None] = []
     real = _solver.run
 
@@ -130,7 +132,7 @@ def test_no_time_limit_means_no_deadline(monkeypatch: pytest.MonkeyPatch) -> Non
     ],
 )
 def test_non_optimal_first_solve_raises_solver_error(
-    monkeypatch: pytest.MonkeyPatch, status: str, text: str
+    monkeypatch: pytest.MonkeyPatch, status: str, text: str, reference_engine
 ) -> None:
     monkeypatch.setattr(_solver, "run", lambda *a, **k: _solver.Outcome(status, text))
 
@@ -138,7 +140,9 @@ def test_non_optimal_first_solve_raises_solver_error(
         reduce_from_adjacency(SIMPLE, method="assignment_minimum")
 
 
-def test_non_optimal_later_solve_raises_solver_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_non_optimal_later_solve_raises_solver_error(
+    monkeypatch: pytest.MonkeyPatch, reference_engine
+) -> None:
     real = _solver.run
     calls = {"n": 0}
 
@@ -170,7 +174,9 @@ def corrupt(outcome: _solver.Outcome, change) -> _solver.Outcome:
     ],
     ids=["all-zero", "fractional", "nan", "sum-differs-from-objective"],
 )
-def test_scripted_invalid_first_solution_raises(monkeypatch: pytest.MonkeyPatch, change) -> None:
+def test_scripted_invalid_first_solution_raises(
+    monkeypatch: pytest.MonkeyPatch, change, reference_engine
+) -> None:
     real = _solver.run
     monkeypatch.setattr(_solver, "run", lambda *a, **k: corrupt(real(*a, **k), change))
 
@@ -260,7 +266,7 @@ def test_solution_violating_a_fixing_is_invalid(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_solution_that_leaves_an_edge_uncovered_is_invalid(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, reference_engine
 ) -> None:
     real = _solver.run
 

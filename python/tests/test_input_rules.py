@@ -31,7 +31,9 @@ def all_pairs(labels: list[str], nonsignificant: set[tuple[int, int]]) -> list[d
 
 
 @pytest.mark.parametrize("value", [2.0, -1.0, np.inf], ids=["two", "minus-one", "infinite"])
-def test_membership_outside_zero_and_one_is_invalid(monkeypatch: pytest.MonkeyPatch, value) -> None:
+def test_membership_outside_zero_and_one_is_invalid(
+    monkeypatch: pytest.MonkeyPatch, value, reference_engine
+) -> None:
     real = _solver.run
 
     def wrapper(*args, **kwargs):
