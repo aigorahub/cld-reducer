@@ -21,6 +21,10 @@ export const SIMPLE_MEANS = [
 
 export const SIMPLE_LETTERS = { "1": "A", "2": "AB", "3": "AC", "4": "BC", "5": "C" };
 
+/** K(2,2,2) has no essential decisions, so solver fault tests reach HiGHS. */
+export const MULTIPARTITE = Array.from({length:6}, (_,i) =>
+  Array.from({length:6}, (_,j) => i === j || Math.floor(i / 2) !== Math.floor(j / 2)));
+
 /** Rows of a conformance CSV (any line ending). */
 export function readCsv(name: string): Record<string, string>[] {
   const lines = readFileSync(join(CONFORMANCE, "data", name), "utf8").split(/\r?\n/).filter(Boolean);

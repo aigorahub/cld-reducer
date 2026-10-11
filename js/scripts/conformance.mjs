@@ -3,7 +3,10 @@
 // thread and a test runner's worker messages do not tolerate that.
 //
 // Run from js/ after `npm run build`: node scripts/conformance.mjs
-import { readFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   InvalidInputError, SolverError, reduceFromAdjacency, reduceLetters,
 } from "../dist/index.js";
@@ -18,6 +21,37 @@ const cases = (kind) => read(`fixtures/${kind}.json`).cases;
 const failures = [];
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
+// Exercise the private certificate=false seam through the same public rendering
+// path. Only this disposable copy changes the fourth internal engine argument.
+const temporary = mkdtempSync(join(tmpdir(), "cld-certificate-reference-"));
+process.on("exit", () => rmSync(temporary, {recursive:true, force:true}));
+const referenceDist = join(temporary,"dist");
+cpSync(new URL("../dist/",import.meta.url),referenceDist,{recursive:true});
+writeFileSync(join(temporary,"package.json"),'{"type":"module"}\n');
+unlinkSync(join(referenceDist,"solver.js"));
+symlinkSync(fileURLToPath(new URL("../dist/solver.js",import.meta.url)),join(referenceDist,"solver.js"));
+const reducePath = join(referenceDist,"reduce.js");
+const source = readFileSync(reducePath,"utf8");
+const invocation = "solveCanonical(model, timeLimit, strategy)";
+if (source.split(invocation).length !== 2) throw new Error("reference engine call is missing or ambiguous");
+writeFileSync(reducePath,source.replace(invocation,"solveCanonical(model, timeLimit, strategy, false)"));
+const referenceApi = await import(pathToFileURL(join(referenceDist,"index.js")));
+const referenceMethods = (await import(pathToFileURL(join(referenceDist,"model.js")))).methods;
+function observeCanonical(registry) {
+  const observation = {value:null};
+  for (const strategy of registry) {
+    const decoder = strategy.decoder;
+    strategy.decoder = (cliques,model,selected) => {
+      observation.value = {selected:[...selected],minimum:selected.reduce((sum,on,k)=>
+        sum+(on?model.problem.cost[model.problem.decisionColumns[k]]:0),0)};
+      return decoder(cliques,model,selected);
+    };
+  }
+  return observation;
+}
+const candidateCanonical = observeCanonical(methods);
+const referenceCanonical = observeCanonical(referenceMethods);
+
 for (const c of cases("essential")) {
   const context=graphContext({adjacency:c.adjacency.map(row=>row.map(Boolean)),
     groups:c.adjacency.map((_,v)=>String(v)),means:null},c.cliques,c.weights);
@@ -29,7 +63,7 @@ for (const c of cases("essential")) {
 console.log(`essential scan: ${cases("essential").length} cases checked for both methods`);
 
 /** Call the package the way the fixture says. */
-function call(c) {
+function call(c, api = {reduceLetters,reduceFromAdjacency}) {
   const o = c.options;
   const options = {};
   // Historical sigma fixtures predate the C default. Keep their inputs frozen.
@@ -40,9 +74,20 @@ function call(c) {
   }
   if ("max_cliques" in o) options.maxCliques = o.max_cliques;
   if ("time_limit" in o) options.timeLimit = o.time_limit;
-  if (c.call === "pairs") return reduceLetters(c.input.pairs, options);
+  if (c.call === "pairs") return api.reduceLetters(c.input.pairs, options);
   if (c.input.groups != null) options.groups = c.input.groups;
-  return reduceFromAdjacency(c.input.adjacency, options);
+  return api.reduceFromAdjacency(c.input.adjacency, options);
+}
+
+async function differentialCall(c) {
+  candidateCanonical.value = referenceCanonical.value = null;
+  const actual = await call(c);
+  const reference = await call(c,referenceApi);
+  if (!same(actual,reference)) failures.push(`${c.id}: full public output differs from certificate=false`);
+  if (!candidateCanonical.value || !referenceCanonical.value || !same(candidateCanonical.value,referenceCanonical.value)) {
+    failures.push(`${c.id}: canonical vector or objective differs from certificate=false`);
+  }
+  return actual;
 }
 
 const percent = (p) => p.numerator / p.denominator * 100;
@@ -117,12 +162,12 @@ for (const presolve of ["on", "off"]) {
   settings.presolve = presolve;
   for (const c of reduceCases) {
     try {
-      const actual = actualOf(await call(c));
+      const actual = actualOf(await differentialCall(c));
       const bad = mismatches(actual, ordered(c.expected));
       if (bad.length) failures.push(`${c.id} (presolve ${presolve}): differs in ${bad.join(", ")}`);
       if (c.sigma_expected) {
         const sigma = {...c, options:{...c.options,method:"assignment_minimum"}};
-        const badSigma = mismatches(actualOf(await call(sigma)), ordered(c.sigma_expected));
+        const badSigma = mismatches(actualOf(await differentialCall(sigma)), ordered(c.sigma_expected));
         if (badSigma.length) failures.push(`${c.id} sigma: differs in ${badSigma.join(", ")}`);
       }
     } catch (e) {
@@ -160,3 +205,4 @@ if (failures.length) {
   process.exit(1);
 }
 console.log("all conformance fixtures pass");
+console.log("full public outputs and canonical vectors match certificate=false with presolve on and off");
