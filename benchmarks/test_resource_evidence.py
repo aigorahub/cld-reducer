@@ -28,6 +28,12 @@ def write_resource_fixture(directory, metadata, rows, stage):
     records = []
     for pid, spec in expected.items():
         language = spec["language"]
+        peak = max(
+            (row.get("peak_rss", 1024) for row in rows if row.get("pid") == pid), default=1024
+        )
+        memory_failure = any(
+            response.get("error") == resources.MEMORY_ERROR for response in spec["responses"]
+        )
         command = [
             {"python": sys.executable, "js": "node", "r": "Rscript"}[language],
             str(Path(metadata["harness"]["path"]) / resources.DRIVERS[language]),
@@ -43,9 +49,9 @@ def write_resource_fixture(directory, metadata, rows, stage):
             "child_pid": pid + 10000000,
             "wait_status": 0,
             "exitstatus": 0,
-            "ru_maxrss": 1024,
+            "ru_maxrss": peak,
             "ru_maxrss_unit": "bytes",
-            "peak_rss_bytes": 1024,
+            "peak_rss_bytes": peak,
             "platform": "darwin",
             "command_sha256": _command_digest(command),
             "coverage": copy.deepcopy(COVERAGE),
@@ -60,9 +66,9 @@ def write_resource_fixture(directory, metadata, rows, stage):
                 "command": command,
                 "receipt_file": filename,
                 "receipt": receipt,
-                "sampled_peak_rss": 1024,
-                "peak_rss": 1024,
-                "resource_error": None,
+                "sampled_peak_rss": peak,
+                "peak_rss": peak,
+                "resource_error": "Driver memory limit exceeded" if memory_failure else None,
             }
         )
     write_records(directory, records)

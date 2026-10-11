@@ -1035,7 +1035,12 @@ def test_new_or_changed_preprocessing_failure_rejects_candidate(tmp_path, known_
         )
         row["peak_rss"] = (manifest["memory_limit_mb"] + 1) * 1024**2
 
-    change_rows(directories["candidate-profiles"] / "profiles.jsonl", fail)
+    path = directories["candidate-profiles"]
+    change_rows(path / "profiles.jsonl", fail)
+    rows = [json.loads(line) for line in (path / "profiles.jsonl").read_text().splitlines()]
+    metadata = json.loads((path / "metadata.json").read_text())
+    write_resource_fixture(path, metadata, rows, "profiles")
+    write(path / "metadata.json", metadata)
     report = run_audit(manifest, directories)
     assert not report["pass"]
     assert any("outcome differs from frozen baseline" in reason for reason in report["reasons"])
