@@ -183,9 +183,26 @@ def finish_collection(metadata, repo, languages):
     )
 
 
+def check_collection_code(manifest, metadata):
+    """Check the clean executing checkout before a frozen collection starts."""
+    if manifest.get("frozen") is True:
+        from gates import acceptance_hashes
+
+        harness = source_binding(ROOT)
+        if not valid_source(harness):
+            raise ValueError("Collection harness must have a valid clean source binding")
+        if acceptance_hashes(harness, manifest["languages"]) != manifest.get(
+            "acceptance_code_sha256"
+        ):
+            raise ValueError("Executing collection code differs from frozen code")
+        if metadata.get("harness") != harness:
+            raise ValueError("Collection harness changed before driver launch")
+
+
 def profiles(args):
     m, out = load_manifest(args.manifest), output_dir(args.output)
     metadata = provenance(args.repo)
+    check_collection_code(m, metadata)
     metadata["source"] = source_binding(args.repo, languages=m["languages"])
     metadata.update(
         manifest_sha256=digest(m), input_sha256=input_digest(m), complete=False, versions={}
@@ -279,6 +296,7 @@ def fixture_mismatch(actual, expected):
 def captures(args):
     m, out = load_manifest(args.manifest), output_dir(args.output)
     metadata = provenance(args.repo)
+    check_collection_code(m, metadata)
     metadata["source"] = source_binding(args.repo, languages=m["languages"])
     metadata.update(
         manifest_sha256=digest(m),
@@ -692,7 +710,7 @@ def compare(args):
 
 
 def freeze(args):
-    from gates import _driver_hashes, acceptance_hashes, context_errors
+    from gates import acceptance_hashes, context_errors
 
     m = load_manifest(args.manifest)
     if m["frozen"]:
@@ -713,11 +731,10 @@ def freeze(args):
     code_hashes = acceptance_hashes(freeze_harness, m["languages"])
     if code_hashes != acceptance_hashes(metadata.get("harness"), m["languages"]):
         raise ValueError("Executing acceptance code differs from calibration")
-    driver_hashes = _driver_hashes(metadata["harness"], m["languages"])
 
     def context(stage_metadata, label):
         errors = context_errors(
-            stage_metadata, metadata.get("machine"), driver_hashes, m["languages"]
+            stage_metadata, metadata.get("machine"), code_hashes, m["languages"]
         )
         if errors:
             raise ValueError(f"{label} context differs from calibration: {'; '.join(errors)}")

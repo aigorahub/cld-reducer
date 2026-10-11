@@ -836,6 +836,13 @@ def test_capture_reports_completed_baseline_exclusion(tmp_path, monkeypatch, cap
     args, manifest, requests = setup_collection(tmp_path, monkeypatch)
     excluded = job_key("python", next(jobs(manifest)))
     manifest.update(frozen=frozen, baseline_failures=[excluded])
+    if frozen:
+        import gates
+
+        manifest["acceptance_code_sha256"] = synthetic_code_hashes(manifest["languages"])
+        monkeypatch.setattr(
+            gates, "acceptance_hashes", lambda _, languages: synthetic_code_hashes(languages)
+        )
     run.save(args.manifest, manifest)
     if frozen:
         run.captures(args)

@@ -1954,3 +1954,113 @@ def test_freeze_checks_stage_context_before_candidate_timing(tmp_path, monkeypat
     with pytest.raises(ValueError, match="context differs from calibration.*differs"):
         run.freeze(args)
     assert not args.output.exists()
+
+
+@pytest.mark.parametrize(
+    "stage",
+    [
+        "baseline-capture",
+        "candidate-capture",
+        "baseline-profiles",
+        "candidate-profiles",
+        "pilot",
+        "calibration",
+        "run-1",
+        "run-2",
+    ],
+)
+@pytest.mark.parametrize(
+    "changed", [None, "benchmarks/run.py", "benchmarks/cases.py", "benchmarks/profile_settings.py"]
+)
+def test_every_stored_collection_binds_full_acceptance_code(tmp_path, monkeypatch, stage, changed):
+    from pilot_evidence import validate_pilot
+
+    manifest, directories = make_evidence(tmp_path)
+    change_json(
+        directories[stage] / "metadata.json", lambda meta: change_harness_head(meta, "9" * 40)
+    )
+    if stage == "pilot":
+        manifest["pilot_harness"] = dict(manifest["pilot_harness"], head="9" * 40)
+        change_json(
+            directories[stage] / "manifest.json",
+            lambda value: value.update(pilot_harness=manifest["pilot_harness"]),
+        )
+        captured = [
+            json.loads(line)
+            for line in (directories["baseline-capture"] / "vectors.jsonl").read_text().splitlines()
+        ]
+        manifest["pilot_evidence_sha256"] = validate_pilot(
+            directories[stage], manifest, captured, manifest["baseline_failure_classes"]
+        )["sha256"]
+    elif stage == "calibration":
+        manifest["calibration_harness"] = dict(manifest["calibration_harness"], head="9" * 40)
+        bind_calibration_files(manifest, directories)
+    if changed:
+        original = gates.acceptance_hashes
+
+        def altered(binding, languages):
+            values = original(binding, languages)
+            if binding["head"] == "9" * 40:
+                values[changed] = "9" * 64
+            return values
+
+        monkeypatch.setattr(gates, "acceptance_hashes", altered)
+    bind_decision_manifest(manifest, directories)
+    report = run_audit(manifest, directories)
+    if changed:
+        assert not report["pass"]
+        assert any("acceptance code differs" in reason for reason in report["reasons"]), report[
+            "reasons"
+        ]
+    else:
+        assert report["pass"], report["reasons"]
+
+
+@pytest.mark.parametrize("stage", ["baseline-capture", "baseline-profiles", "pilot"])
+def test_freeze_rejects_changed_collection_coordinator(tmp_path, monkeypatch, stage):
+    from types import SimpleNamespace
+
+    import run
+
+    _, directories = make_evidence(tmp_path)
+    calibration = directories["calibration"]
+    design = json.loads((calibration / "manifest.json").read_text())
+    change_json(
+        directories[stage] / "metadata.json", lambda meta: change_harness_head(meta, "9" * 40)
+    )
+    if stage == "pilot":
+        design["pilot_harness"] = dict(design["pilot_harness"], head="9" * 40)
+        change_json(
+            directories[stage] / "manifest.json",
+            lambda value: value.update(pilot_harness=design["pilot_harness"]),
+        )
+        # Keep calibration bound to the exact proposed design, so rejection
+        # comes from the recorded pilot's changed code rather than a stale hash.
+        write(calibration / "manifest.json", design)
+        change_json(
+            calibration / "metadata.json",
+            lambda value: value.update(manifest_sha256=digest(design)),
+        )
+    monkeypatch.setattr(run, "load_manifest", lambda _: copy.deepcopy(design))
+    original = gates.acceptance_hashes
+
+    def altered(binding, languages):
+        values = original(binding, languages)
+        if binding["head"] == "9" * 40:
+            values["benchmarks/run.py"] = "9" * 64
+        return values
+
+    monkeypatch.setattr(gates, "acceptance_hashes", altered)
+    args = SimpleNamespace(
+        manifest="unused",
+        calibration=calibration,
+        pilot=directories["pilot"],
+        profiles=directories["baseline-profiles"],
+        capture=directories["baseline-capture"],
+        output=tmp_path / "frozen.json",
+    )
+    with pytest.raises(
+        ValueError, match="context differs from calibration: acceptance code differs"
+    ):
+        run.freeze(args)
+    assert not args.output.exists()

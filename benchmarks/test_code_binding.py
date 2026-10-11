@@ -82,6 +82,7 @@ def test_acceptance_inventory_reads_real_git_blobs(code_repo, name):
 @pytest.mark.parametrize(
     "change",
     [
+        "benchmarks/run.py",
         "benchmarks/cases.py",
         "benchmarks/analysis.py",
         "benchmarks/profile_outcomes.py",
@@ -91,7 +92,7 @@ def test_acceptance_inventory_reads_real_git_blobs(code_repo, name):
         "tests/test_result.py",
     ],
 )
-@pytest.mark.parametrize("stage", ["freeze", "candidate", "audit"])
+@pytest.mark.parametrize("stage", ["freeze", "candidate", "audit", "captures", "profiles"])
 def test_executing_code_is_checked_before_driver_or_judgment(
     tmp_path, monkeypatch, code_repo, change, stage
 ):
@@ -109,6 +110,7 @@ def test_executing_code_is_checked_before_driver_or_judgment(
         "pilot_source": before,
         "acceptance_code_sha256": hashes,
         "processes": 1,
+        "warmup_batches": 3,
     }
     monkeypatch.setattr(run, "ROOT", repo)
     monkeypatch.setattr(run, "load_manifest", lambda _: copy.deepcopy(manifest))
@@ -117,7 +119,15 @@ def test_executing_code_is_checked_before_driver_or_judgment(
         "source_binding",
         lambda path, **_: source_binding(repo) if Path(path) == repo else copy.deepcopy(before),
     )
-    monkeypatch.setattr(run, "provenance", lambda _: {"machine": {"test": True}})
+    monkeypatch.setattr(
+        run,
+        "provenance",
+        lambda _: {
+            "machine": {"test": True},
+            "harness": source_binding(repo),
+            "source": copy.deepcopy(before),
+        },
+    )
     entered = []
 
     def driver(*_, **__):
@@ -148,6 +158,14 @@ def test_executing_code_is_checked_before_driver_or_judgment(
             run_id="run",
         )
         action = run.compare
+    elif stage in ("captures", "profiles"):
+        runtime = tmp_path / "runtime"
+        fixtures = runtime / "conformance" / "fixtures"
+        fixtures.mkdir(parents=True)
+        for name in ("reduce", "reduce_letter_minimum", "reduce_weighted"):
+            (fixtures / f"{name}.json").write_text(json.dumps({"cases": []}))
+        args = SimpleNamespace(manifest="unused", repo=runtime, output=output, include_opt_in=False)
+        action = getattr(run, stage)
     elif stage == "freeze":
         calibration = tmp_path / "calibration"
         calibration.mkdir()
@@ -188,9 +206,42 @@ def test_executing_code_is_checked_before_driver_or_judgment(
         else:
             with pytest.raises(RuntimeError, match="after code check"):
                 action(args)
-            assert entered[0] == ("driver" if stage == "candidate" else "analysis")
+            assert entered[0] == ("analysis" if stage == "freeze" else "driver")
     else:
         with pytest.raises(ValueError, match="clean source binding|must be clean|code differs"):
             action(args)
         assert entered == []
         assert not output.is_file()
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "benchmarks/run.py",
+        "benchmarks/cases.py",
+        "benchmarks/profile_outcomes.py",
+        "README.md",
+        "python/runtime.py",
+        "tests/test_result.py",
+    ],
+)
+def test_stored_collection_code_is_checked_after_current_code_is_restored(code_repo, change):
+    repo, before, hashes = code_repo
+    revise(repo, change)
+    collected = source_binding(repo)
+    metadata = {
+        "harness": collected,
+        "harness_after": collected,
+        "machine": {"test": True},
+        # Neither a supplied full hash map nor matching driver bytes can excuse
+        # a different coordinator or validator in the recorded Git commit.
+        "acceptance_code_sha256": hashes,
+        "driver_sha256": {gates.DRIVERS["python"]: hashes[gates.DRIVERS["python"]]},
+    }
+    git(repo, "checkout", "--detach", before["head"])
+    assert gates.acceptance_hashes(source_binding(repo), ["python"]) == hashes
+    errors = gates.context_errors(metadata, {"test": True}, hashes, ["python"])
+    if change.startswith("benchmarks/"):
+        assert errors == ["acceptance code differs"]
+    else:
+        assert errors == []

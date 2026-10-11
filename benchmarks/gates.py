@@ -360,8 +360,8 @@ def acceptance_hashes(binding, languages):
     return hashes
 
 
-def context_errors(metadata, machine, driver_hashes, languages):
-    """Use the same machine and language driver checks at freeze and audit."""
+def context_errors(metadata, machine, code_hashes, languages):
+    """Bind every collection stage to the same machine and acceptance code."""
     errors = []
     if not isinstance(machine, dict) or not machine:
         errors.append("Missing machine identity")
@@ -373,11 +373,14 @@ def context_errors(metadata, machine, driver_hashes, languages):
     if metadata.get("harness_after") != harness:
         errors.append("harness changed during collection")
     if valid_source(harness):
-        observed = _driver_hashes(harness, languages)
-        if observed != driver_hashes:
+        observed = acceptance_hashes(harness, languages)
+        driver_files = [DRIVERS[language] for language in languages]
+        if any(observed[name] != code_hashes.get(name) for name in driver_files):
             errors.append("language driver source differs")
+        if observed != code_hashes:
+            errors.append("acceptance code differs")
         if "driver_sha256" in metadata and any(
-            metadata["driver_sha256"].get(name) != value for name, value in observed.items()
+            metadata["driver_sha256"].get(name) != observed[name] for name in driver_files
         ):
             errors.append("recorded driver hashes differ")
     return errors
@@ -780,7 +783,9 @@ def audit(
         require(isinstance(machine, dict) and bool(machine), "Missing machine identity")
 
         def context(metadata, label):
-            for error in context_errors(metadata, machine, driver_hashes, languages):
+            for error in context_errors(
+                metadata, machine, manifest["acceptance_code_sha256"], languages
+            ):
                 require(False, f"{label}: {error}")
 
         context(capture_meta["baseline"], "baseline capture")
@@ -1093,10 +1098,8 @@ def audit(
         evidence["driver_sha256"] = driver_hashes
         evidence["measurement_sha256"] = measurement_hashes
         evidence["harness_rule"] = (
-            "Capture and profile stages may use different recorded harness commits. "
-            "Language driver bytes must match across all stages. "
-            "Measurement code bytes must match calibration and both timed runs. "
-            "An absent process guard is recorded as null."
+            "All evidence stages must use the frozen acceptance and measurement code bytes. "
+            "Recorded harness commits may differ when those bytes are unchanged."
         )
     except (
         OSError,
