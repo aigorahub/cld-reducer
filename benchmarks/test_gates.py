@@ -12,6 +12,7 @@ from analysis import analyze, select_gain_targets
 from cases import job_key, jobs, multipartite
 from common import digest, input_digest
 from gates import audit
+from test_resource_evidence import write_resource_fixture
 
 recorded_driver_hashes = gates._driver_hashes
 recorded_measurement_hashes = gates._measurement_hashes
@@ -337,14 +338,24 @@ def make_evidence(
             ],
         )
         metadata[variant] = meta
+    for variant in ("baseline", "candidate"):
+        for kind in ("capture", "profiles"):
+            path = directories[f"{variant}-{kind}"]
+            values = captures[variant] if kind == "capture" else profiles[variant]
+            meta = copy.deepcopy(metadata[variant])
+            records = write_resource_fixture(path, meta, values, kind)
+            write_rows(path / ("vectors.jsonl" if kind == "capture" else "profiles.jsonl"), values)
+            write(path / "metadata.json", meta)
+            if variant == "baseline":
+                field = (
+                    "baseline_capture_resource_sha256"
+                    if kind == "capture"
+                    else "profile_resource_sha256"
+                )
+                manifest[field] = digest(records)
     manifest["baseline_capture_sha256"] = digest(captures["baseline"])
     manifest["profile_sha256"] = digest(profiles["baseline"])
     manifest["gain_targets"] = select_gain_targets(manifest, profiles["baseline"])
-    for variant in ("baseline", "candidate"):
-        write_rows(directories[f"{variant}-capture"] / "vectors.jsonl", captures[variant])
-        write_rows(directories[f"{variant}-profiles"] / "profiles.jsonl", profiles[variant])
-        for kind in ("capture", "profiles"):
-            write(directories[f"{variant}-{kind}"] / "metadata.json", metadata[variant])
     calibration_manifest = copy.deepcopy(manifest)
     for name in (
         "baseline_source",
@@ -480,6 +491,7 @@ def make_evidence(
             finished_unix=1000 * run + 100,
             run_id=f"run-{run}",
         )
+        write_resource_fixture(directories[f"run-{run}"], meta, results, "compare")
         write(directories[f"run-{run}"] / "metadata.json", meta)
         write(
             directories[f"run-{run}"] / "analysis.json",
@@ -1103,3 +1115,20 @@ def test_recorded_measurement_hashes_bind_optional_guard_presence(tmp_path, monk
     )
     (tmp_path / "benchmarks/run.py").write_text("different uncommitted loop\n")
     assert recorded_measurement_hashes(binding, ["python"]) == present
+@pytest.mark.parametrize(
+    "stage",
+    [
+        "baseline-capture",
+        "candidate-capture",
+        "baseline-profiles",
+        "candidate-profiles",
+        "run-1",
+        "run-2",
+    ],
+)
+def test_final_gate_requires_every_raw_process_receipt(tmp_path, stage):
+    manifest, directories = make_evidence(tmp_path)
+    next(directories[stage].glob("*.resource.json")).unlink()
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert any("receipt" in reason for reason in report["reasons"])

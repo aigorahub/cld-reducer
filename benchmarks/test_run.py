@@ -334,7 +334,7 @@ def test_excluded_timeout_uses_separate_processes(tmp_path, monkeypatch, harness
     processes = []
 
     class FakeDriver:
-        def __init__(self, *_):
+        def __init__(self, *_, **__):
             self.process = SimpleNamespace(pid=len(processes) + 1)
             self.actions = []
             self.rss = self.peak_rss = 1024

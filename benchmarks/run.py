@@ -26,6 +26,7 @@ from common import (
     source_identity,
     version_identity,
 )
+from resource_evidence import closed_response, record_driver, validate_resources
 
 
 def read(path):
@@ -46,13 +47,21 @@ def emit(stream, value):
     stream.flush()
 
 
-def driver(language, repo, manifest, output, suffix):
-    return Driver(
+def driver(language, repo, manifest, output, suffix, *, metadata, allow_close_failure=False):
+    instance = Driver(
         language,
         repo,
         manifest["presolve"][language],
         output / f"{language}-{suffix}.stderr",
         manifest["memory_limit_mb"],
+    )
+    return record_driver(
+        instance,
+        language,
+        repo,
+        output,
+        metadata.setdefault("resource_processes", []),
+        allow_close_failure=allow_close_failure,
     )
 
 
@@ -156,7 +165,15 @@ def profiles(args):
     with (out / "profiles.jsonl").open("w") as f:
         for language in m["languages"]:
             for index, c in enumerate(jobs(m, tiers=tiers)):
-                with driver(language, args.repo, m, out, f"profile-{index}") as d:
+                with driver(
+                    language,
+                    args.repo,
+                    m,
+                    out,
+                    f"profile-{index}",
+                    metadata=metadata,
+                    allow_close_failure=True,
+                ) as d:
                     bind_version(
                         metadata, language, require_success(d.request({"action": "version"}, 60))
                     )
@@ -181,11 +198,21 @@ def profiles(args):
                         response = bounded_request(
                             d, {"action": action, "case": c}, c["wall_seconds"]
                         )
-                    emit(f, {"key": key, "case": c, "response": response, "peak_rss": d.peak_rss})
-                    print(
-                        f"profile {key}: {'ok' if response['ok'] else response.get('error')}",
-                        flush=True,
-                    )
+                response = closed_response(d, response, action)
+                emit(
+                    f,
+                    {
+                        "key": key,
+                        "case": c,
+                        "pid": d.process.pid,
+                        "response": response,
+                        "peak_rss": d.peak_rss,
+                    },
+                )
+                print(
+                    f"profile {key}: {'ok' if response['ok'] else response.get('error')}",
+                    flush=True,
+                )
     metadata["complete"] = finish_collection(metadata, args.repo, m["languages"])
     save(out / "metadata.json", metadata)
 
@@ -262,7 +289,9 @@ def captures(args):
     with (out / "vectors.jsonl").open("w") as f:
         for language in m["languages"]:
             with ExitStack() as stack:
-                d = stack.enter_context(driver(language, args.repo, m, out, "capture"))
+                d = stack.enter_context(
+                    driver(language, args.repo, m, out, "capture", metadata=metadata)
+                )
                 metadata["versions"][language] = require_success(
                     d.request({"action": "version"}, 60)
                 )
@@ -279,6 +308,7 @@ def captures(args):
                             f,
                             {
                                 "language": language,
+                                "pid": d.process.pid,
                                 "id": c["id"],
                                 "method": c["options"]["method"],
                                 "oracle_fixture": False,
@@ -289,8 +319,17 @@ def captures(args):
                         )
                         metadata["checked"] += 1
                         d.close()
+                        if index + 1 == len(cases):
+                            continue
                         d = stack.enter_context(
-                            driver(language, args.repo, m, out, f"capture-after-{index}")
+                            driver(
+                                language,
+                                args.repo,
+                                m,
+                                out,
+                                f"capture-after-{index}",
+                                metadata=metadata,
+                            )
                         )
                         bind_version(
                             metadata,
@@ -317,6 +356,7 @@ def captures(args):
                         f,
                         {
                             "language": language,
+                            "pid": d.process.pid,
                             "id": c["id"],
                             "method": c["options"]["method"],
                             "oracle_fixture": "expected" in c,
@@ -349,43 +389,49 @@ def pilot(args):
         for language in m["languages"]:
             for index, c in enumerate(jobs(m)):
                 key = job_key(language, c)
-                with driver(language, args.repo, m, out, f"pilot-{index}") as d:
+                with driver(
+                    language,
+                    args.repo,
+                    m,
+                    out,
+                    f"pilot-{index}",
+                    metadata=metadata,
+                    allow_close_failure=True,
+                ) as d:
                     version = require_success(d.request({"action": "version"}, 60))
                     bind_version(metadata, language, version)
                     first = bounded_request(
                         d, {"action": "measure", "case": c, "iterations": 1}, c["wall_seconds"]
                     )
-                    if not first["ok"]:
-                        m["baseline_failures"].append(key)
-                        emit(f, {"key": key, "versions": version, "first": first})
-                        continue
                     warm = first
-                    for _ in range(m["warmup_batches"]):
-                        warm = bounded_request(
-                            d, {"action": "measure", "case": c, "iterations": 1}, c["wall_seconds"]
-                        )
-                        if not warm["ok"]:
-                            break
-                    if not warm["ok"]:
-                        m["baseline_failures"].append(key)
-                        emit(f, {"key": key, "versions": version, "first": first, "warm": warm})
-                        continue
+                    if first["ok"]:
+                        for _ in range(m["warmup_batches"]):
+                            warm = bounded_request(
+                                d,
+                                {"action": "measure", "case": c, "iterations": 1},
+                                c["wall_seconds"],
+                            )
+                            if not warm["ok"]:
+                                break
+                warm = closed_response(d, warm, "measure")
+                row = {
+                    "key": key,
+                    "pid": d.process.pid,
+                    "versions": version,
+                    "first": first,
+                    "warm": warm,
+                    "peak_rss": d.peak_rss,
+                }
+                if not warm["ok"]:
+                    m["baseline_failures"].append(key)
+                else:
                     iterations = max(
                         1, min(100000, math.ceil(m["batch_target_ns"] / warm["elapsed_ns"]))
                     )
                     m["iterations"][key] = iterations
-                    emit(
-                        f,
-                        {
-                            "key": key,
-                            "versions": version,
-                            "first": first,
-                            "warm": warm,
-                            "iterations": iterations,
-                            "peak_rss": d.peak_rss,
-                        },
-                    )
+                    row["iterations"] = iterations
                     print(f"pilot {key}: {iterations} iterations", flush=True)
+                emit(f, row)
     m["pilot_source"] = metadata["source"]
     m["pilot_harness"] = metadata["harness"]
     m["baseline_versions"] = metadata["versions"]
@@ -447,7 +493,7 @@ def compare(args):
                     with ExitStack() as stack:
                         pair = [
                             stack.enter_context(
-                                driver(language, repo, m, out, f"{process}-{label}")
+                                driver(language, repo, m, out, f"{process}-{label}", metadata=meta)
                             )
                             for repo, label in (
                                 (args.baseline, "baseline"),
@@ -523,7 +569,9 @@ def compare(args):
                         continue
                     responses, versions, pids = [], [], []
                     for repo, label in ((args.baseline, "baseline"), (args.candidate, "candidate")):
-                        with driver(language, repo, m, out, f"excluded-{index}-{label}") as d:
+                        with driver(
+                            language, repo, m, out, f"excluded-{index}-{label}", metadata=meta
+                        ) as d:
                             version = require_success(d.request({"action": "version"}, 60))
                             if version_identity(version) != version_identity(
                                 m["baseline_versions"][language]
@@ -650,6 +698,18 @@ def freeze(args):
     captures_data = [
         json.loads(line) for line in (Path(args.capture) / "vectors.jsonl").read_text().splitlines()
     ]
+    profile_resources = validate_resources(args.profiles, m, profile_meta, rows, "profiles")
+    capture_resources = validate_resources(args.capture, m, capture_meta, captures_data, "capture")
+    calibration_resources = validate_resources(
+        args.calibration,
+        m,
+        metadata,
+        [
+            json.loads(line)
+            for line in (Path(args.calibration) / "results.jsonl").read_text().splitlines()
+        ],
+        "compare",
+    )
 
     def keys(row):
         return row["language"], row["id"], row["method"]
@@ -675,6 +735,9 @@ def freeze(args):
     m["calibration_samples_sha256"] = digest(samples)
     m["calibration_harness"] = metadata["harness"]
     m["baseline_capture_sha256"] = digest(captures_data)
+    m["profile_resource_sha256"] = profile_resources["sha256"]
+    m["baseline_capture_resource_sha256"] = capture_resources["sha256"]
+    m["calibration_resource_sha256"] = calibration_resources["sha256"]
     m["baseline_source"] = metadata["source_before"]["baseline"]
     m["frozen"] = True
     save(args.output, m)

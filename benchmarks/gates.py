@@ -23,6 +23,7 @@ from analysis import (
 )
 from cases import job_key, jobs
 from common import digest
+from resource_evidence import validate_resources
 
 FIXTURES = ("reduce", "reduce_letter_minimum", "reduce_weighted")
 TIERS = ("solve", "preprocess", "expected-error")
@@ -504,7 +505,14 @@ def audit(
                 )
             indexed = {}
             capture_rows = _rows(path, "vectors.jsonl")
+            capture_resources = validate_resources(
+                path, manifest, metadata, capture_rows, "capture"
+            )
             if label == "baseline":
+                require(
+                    capture_resources["sha256"] == manifest.get("baseline_capture_resource_sha256"),
+                    "Baseline capture resources differ from the frozen evidence",
+                )
                 require(
                     digest(capture_rows) == manifest.get("baseline_capture_sha256"),
                     "Baseline capture differs from the frozen evidence",
@@ -662,7 +670,14 @@ def audit(
             )
             indexed = {}
             profile_rows = _rows(path, "profiles.jsonl")
+            profile_resources = validate_resources(
+                path, manifest, metadata, profile_rows, "profiles"
+            )
             if label == "baseline":
+                require(
+                    profile_resources["sha256"] == manifest.get("profile_resource_sha256"),
+                    "Baseline profile resources differ from the frozen evidence",
+                )
                 require(
                     digest(profile_rows) == manifest.get("profile_sha256"),
                     "Baseline profiles differ from the frozen evidence",
@@ -929,6 +944,7 @@ def audit(
                     )
                 )
             response_rows = _rows(path, "results.jsonl")
+            run_resources = validate_resources(path, manifest, metadata, response_rows, "compare")
             seen_results = set()
             for row in response_rows:
                 index = (row["key"], row["process"])
@@ -1006,6 +1022,7 @@ def audit(
                     "samples_sha256": digest(samples),
                     "analysis": report,
                     "rss_growth": growth,
+                    "resources": run_resources,
                 }
             )
         if len(intervals) == 2:

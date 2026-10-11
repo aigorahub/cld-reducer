@@ -359,6 +359,7 @@ class Driver:
         self.buffer = b""
         self.memory_limit = memory_mb * 1024 * 1024
         self.peak_rss = 0
+        self.sampled_peak_rss = 0
         self.rss = 0
         self.memory_receipt = None
         self.resource_error = None
@@ -406,6 +407,7 @@ class Driver:
             except psutil.NoSuchProcess:
                 continue
         self.rss = rss
+        self.sampled_peak_rss = max(rss, self.sampled_peak_rss)
         self.peak_rss = max(rss, self.peak_rss)
         if rss > self.memory_limit:
             raise DriverError("Driver memory limit exceeded")
