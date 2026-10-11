@@ -87,18 +87,30 @@ stopifnot(identical(measure$result, capture$result), identical(measure$result, p
           identical(capture$canonical$selected, list(1L, 1L, 1L, 1L)),
           profile$metrics$decision_variables == 4L, profile$metrics$auxiliary_variables == 2L,
           profile$metrics$constraints == 9L, profile$metrics$nonzeros == 14L,
-          profile$metrics$solve_count == 1L, profile$metrics$essential_cover,
+          profile$metrics$solve_count == 0L, profile$metrics$essential_cover,
+          profile$metrics$solver_total_ns == 0, profile$metrics$probe_ns == 0,
+          identical(profile$metrics$solver_settings$available, FALSE),
+          identical(profile$metrics$solver_settings$records, list()),
           preprocess$metrics$solve_count == 0L, is.null(preprocess$metrics$selected),
           is.null(preprocess$result), is.null(preprocess$phases_ns$initial_optimization),
           profile$phases_ns$final_validation >= 0,
           profile$phases_ns$final_validation <= profile$profile_notes$render_result_total_ns,
           grepl("^[a-f0-9]{64}$", profile$profile_notes$temporary_patch$sha256),
-          profile$metrics$solver_counters$available)
+          identical(profile$metrics$solver_counters$available, FALSE))
 stopifnot(profile$metrics$probe_ns >= 0,
           profile$metrics$solver_total_ns + profile$metrics$probe_ns <= profile$phases_ns$total,
           preprocess$metrics$probe_ns == 0)
-settings <- profile$metrics$solver_settings
-stopifnot(settings$available, length(settings$records) == profile$metrics$solve_count,
+# K(2,2,2) has no essential cover and must retain native solver observations.
+solver_adjacency <- outer(0:5, 0:5, function(u, v) as.integer(u == v | u %/% 2 != v %/% 2))
+solver_case <- list(id = "multipartite222", call = "adjacency", input = list(
+  adjacency = lapply(seq_len(6L), function(i) as.list(solver_adjacency[i, ]))),
+  options = list(method = "assignment_minimum"))
+solver_profile <- request("profile", solver_case)
+stopifnot(solver_profile$ok, solver_profile$metrics$solve_count > 0L,
+          solver_profile$metrics$solver_counters$available,
+          !solver_profile$metrics$essential_cover)
+settings <- solver_profile$metrics$solver_settings
+stopifnot(settings$available, length(settings$records) == solver_profile$metrics$solve_count,
           identical(settings$excluded_from_stable_comparison, list("time_limit")),
           identical(settings$records[[1L]]$solve, 1L),
           identical(settings$records[[1L]]$values$presolve, "off"),
@@ -124,6 +136,17 @@ stopifnot(overhead$reference_ns >= 0,
           is.null(preprocess$profile_notes$full_call_overhead))
 unchanged(runtime, original_runtime)
 unchanged(highs, original_highs)
+
+# The private reference seam must produce the same full output and decisions.
+reference_canonical <- runtime$solve_canonical
+runtime$solve_canonical <- function(model, time_limit, strategy) {
+  reference_canonical(model, time_limit, strategy, certificate = FALSE)
+}
+reference <- request("capture")
+runtime$solve_canonical <- reference_canonical
+stopifnot(reference$ok, identical(reference$result, profile$result),
+          identical(reference$canonical, profile$canonical))
+unchanged(runtime, original_runtime)
 
 # The two middle vertices are true twins. Profile counts must distinguish
 # original edges from edges after the twin reduction.
@@ -153,7 +176,7 @@ assign("solver_run", function(solver) {
   real_native_run(solver)
 }, highs)
 lockBinding("solver_run", highs)
-stopifnot(request("measure", iterations = 1L)$ok,
+stopifnot(request("measure", solver_case, iterations = 1L)$ok,
           identical(settings$records[[1L]]$values$threads, native_threads))
 unlockBinding("solver_run", highs)
 assign("solver_run", real_native_run, highs)
@@ -167,7 +190,7 @@ stopifnot(grepl("mip_rel_gap = 0", source_text, fixed = TRUE))
 body(mutated_lp) <- parse(text = sub("mip_rel_gap = 0", "mip_rel_gap = 0.025",
                                    source_text, fixed = TRUE))[[1L]]
 runtime$solve_lp <- mutated_lp
-mutated_profile <- request("profile")
+mutated_profile <- request("profile", solver_case)
 stopifnot(mutated_profile$ok, mutated_profile$metrics$solver_settings$available,
           mutated_profile$metrics$solver_settings$records[[1L]]$values$mip_rel_gap == 0.025,
           handle(list(action = "version"))$settings$mip_rel_gap == 0,
@@ -182,9 +205,9 @@ assign("hi_solver_get_str_option", function(...) stop("injected getter failure")
 lockBinding("hi_solver_get_str_option", highs)
 before_getter_failure <- snapshot(highs)
 for (action in c("measure", "capture", "preprocess", "version")) {
-  stopifnot(request(action, iterations = 1L)$ok)
+  stopifnot(request(action, solver_case, iterations = 1L)$ok)
 }
-missing_settings <- request("profile")
+missing_settings <- request("profile", solver_case)
 stopifnot(missing_settings$ok, !missing_settings$metrics$solver_settings$available,
           length(missing_settings$metrics$solver_settings$errors) == missing_settings$metrics$solve_count)
 unchanged(highs, before_getter_failure)
@@ -218,7 +241,7 @@ real_lp <- runtime$solve_lp
 runtime$solve_lp <- function(...) stop("injected solver failure")
 before_failure <- snapshot(runtime)
 for (action in c("capture", "profile")) {
-  answer <- request(action)
+  answer <- request(action, solver_case)
   stopifnot(!answer$ok, grepl("injected solver failure", answer$error$message),
             is.null(answer$result), is.null(answer$canonical))
   unchanged(runtime, before_failure)

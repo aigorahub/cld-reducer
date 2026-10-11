@@ -97,6 +97,27 @@ call_case <- function(case) {
   }
 }
 
+# Capture the actual engine return for both paths. Restore the namespace binding
+# even when a fixture throws, and keep the public API free of reference options.
+canonical_case <- function(case, certificate) {
+  engine <- ns$solve_canonical
+  locked <- bindingIsLocked("solve_canonical", ns)
+  if (locked) unlockBinding("solve_canonical", ns)
+  on.exit({
+    if (bindingIsLocked("solve_canonical", ns)) unlockBinding("solve_canonical", ns)
+    assign("solve_canonical", engine, ns)
+    if (locked) lockBinding("solve_canonical", ns)
+  }, add = TRUE)
+  solution <- NULL
+  assign("solve_canonical", function(model, time_limit, strategy) {
+    solution <<- engine(model, time_limit, strategy, certificate = certificate)
+    solution
+  }, ns)
+  if (locked) lockBinding("solve_canonical", ns)
+  result <- call_case(case)
+  list(result = result, solution = solution)
+}
+
 percent <- function(p) p$numerator / p$denominator * 100
 
 actual_of <- function(r) {
@@ -175,23 +196,42 @@ local({
 })
 
 counts <- c(reduce = 0L, errors = 0L, labels = 0L, data = 0L)
+differential_count <- 0L
+
+check_reduce_case <- function(case, expected, id = case$id) {
+  actual <- tryCatch(canonical_case(case, TRUE), error = function(e) e)
+  if (inherits(actual, "condition")) {
+    fail(id, "raised an error: ", conditionMessage(actual))
+    return(invisible(NULL))
+  }
+  bad <- mismatches(actual_of(actual$result), expected)
+  if (length(bad) > 0L) fail(id, "differs in ", paste(bad, collapse = ", "))
+  reference <- tryCatch(canonical_case(case, FALSE), error = function(e) e)
+  if (inherits(reference, "condition")) {
+    fail(id, "reference raised an error: ", conditionMessage(reference))
+    return(invisible(NULL))
+  }
+  if (!identical(actual$result, reference$result) ||
+      !identical(as.data.frame(actual$result), as.data.frame(reference$result))) {
+    fail(id, "full output differs from the reference")
+  }
+  if (is.null(actual$solution) || !identical(actual$solution, reference$solution)) {
+    fail(id, "ordered decision vector or minimum differs from the reference")
+  }
+  differential_count <<- differential_count + 1L
+}
 
 for (case in reduce_cases) {
-  result <- tryCatch(call_case(case), error = function(e) e)
-  if (inherits(result, "condition")) {
-    fail(case$id, "raised an error: ", conditionMessage(result))
-  } else {
-    bad <- mismatches(actual_of(result), case$expected)
-    if (length(bad) > 0L) fail(case$id, "differs in ", paste(bad, collapse = ", "))
-    if (!is.null(case$sigma_expected)) {
-      sigma <- case
-      sigma$options$method <- "assignment_minimum"
-      bad <- mismatches(actual_of(call_case(sigma)), case$sigma_expected)
-      if (length(bad) > 0L) fail(case$id, "sigma differs in ", paste(bad, collapse = ", "))
-    }
+  check_reduce_case(case, case$expected)
+  if (!is.null(case$sigma_expected)) {
+    sigma <- case
+    sigma$options$method <- "assignment_minimum"
+    check_reduce_case(sigma, case$sigma_expected, paste0(case$id, "/sigma"))
   }
   counts[["reduce"]] <- counts[["reduce"]] + 1L
 }
+cat(sprintf("certificate/reference: %d full outputs and ordered vectors checked\n",
+            differential_count))
 
 error_classes <- c(invalid_input = "cldreducer_invalid_input", solver = "cldreducer_solver_error")
 for (case in read_fixture("errors")$cases) {

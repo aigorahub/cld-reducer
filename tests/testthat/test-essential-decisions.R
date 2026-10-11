@@ -1,5 +1,9 @@
 test_that("essential bounds reach the first and later solver calls", {
   real <- solve_lp
+  canonical <- solve_canonical
+  local_mocked_bindings(solve_canonical = function(model, time_limit, strategy) {
+    canonical(model, time_limit, strategy, certificate = FALSE)
+  })
   for (strategy in reduction_methods()) {
     calls <- list()
     local_mocked_bindings(solve_lp = function(problem, col_lower, col_upper, sum_limit = NULL, time_limit = Inf) {
@@ -23,13 +27,14 @@ test_that("a first result must obey essential bounds even when coverage and cost
   for(strategy in reduction_methods()) {
     strategy$coverage <- function(model,x) any(x)
     strategy$essential_decisions <- function(model) 1L
-    expect_error(solve_canonical(model,NULL,strategy),"HiGHS returned an invalid solution",
+    expect_error(solve_canonical(model,NULL,strategy,certificate=FALSE),"HiGHS returned an invalid solution",
                  class="cldreducer_solver_error")
   }
 })
 
 test_that("malformed scan indices fail before the adapter", {
-  local_mocked_bindings(solve_lp=function(...) stop("invalid scan reached adapter"))
+  local_mocked_bindings(solve_lp=function(...) stop("invalid scan reached adapter"),
+    essential_cover_certificate=function(...) stop("invalid scan reached certificate"))
   model <- list(problem=list(num_cols=3L,decision_columns=c(3L,1L)))
   for(required in list(NULL,2L,0L,4L,1.5,TRUE,NA_real_,c(3L,1L),c(1L,1L),list(1L),matrix(1L))) {
     strategy <- reduction_methods()[[1]]

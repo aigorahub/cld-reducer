@@ -43,9 +43,31 @@ check_solution <- function(model, outcome, col_lower, col_upper, expected_sum, s
   selected
 }
 
-# Solve once for the minimum, then fix the memberships in (clique, group) order
-# (docs/algorithm.md section 5). Returns the selected x and the minimum.
-solve_canonical <- function(model, time_limit, strategy) {
+# Every feasible decision vector contains the essential decisions. If they
+# cover the graph, positive decision costs make that vector the unique optimum.
+# Zero auxiliary costs let coverage supply witnesses without changing its cost.
+essential_cover_certificate <- function(model, decisions, required, strategy) {
+  problem <- model$problem
+  cost <- problem$cost
+  if (!is.numeric(cost) || is.complex(cost) || !is.null(dim(cost)) ||
+      length(cost) != problem$num_cols || any(!is.finite(cost))) return(NULL)
+  decision_cost <- cost[decisions]
+  if (any(decision_cost <= 0 | decision_cost != floor(decision_cost))) return(NULL)
+  auxiliary <- rep(TRUE, problem$num_cols)
+  auxiliary[decisions] <- FALSE
+  if (any(cost[auxiliary] != 0)) return(NULL)
+  selected <- decisions %in% required
+  minimum <- sum(decision_cost[selected])
+  # The reference engine stores its minimum as an R integer.
+  if (!is.finite(minimum) || minimum > .Machine$integer.max) return(NULL)
+  if (!strategy$coverage(model, selected)) return(NULL)
+  list(selected = selected, minimum = as.integer(minimum))
+}
+
+# Use the certificate when possible. Otherwise solve once for the minimum,
+# then fix memberships in (clique, group) order (docs/algorithm.md section 5).
+# The private switch retains the reference path for differential checks.
+solve_canonical <- function(model, time_limit, strategy, certificate = TRUE) {
   problem <- model$problem
   decisions <- problem$decision_columns
   if (anyDuplicated(decisions) || any(!is.finite(decisions) | decisions != floor(decisions) |
@@ -59,7 +81,17 @@ solve_canonical <- function(model, time_limit, strategy) {
       anyDuplicated(required) || is.unsorted(required, strictly = TRUE)) {
     solver_error("HiGHS returned an invalid solution")
   }
+  if (!is.null(deadline) && elapsed() >= deadline) {
+    solver_error(strategy$failure_prefix, "Time limit reached")
+  }
   col_lower[required] <- 1
+  if (certificate) {
+    certified <- essential_cover_certificate(model, decisions, required, strategy)
+    if (!is.null(deadline) && elapsed() >= deadline) {
+      solver_error(strategy$failure_prefix, "Time limit reached")
+    }
+    if (!is.null(certified)) return(certified)
+  }
 
   outcome <- solve_step(model, col_lower, col_upper, NULL, deadline, strategy)
   selected <- check_solution(model, outcome, col_lower, col_upper, NULL, strategy)
