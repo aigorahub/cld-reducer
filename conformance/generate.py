@@ -21,6 +21,8 @@ import math
 import sys
 from pathlib import Path
 
+from generate_essential import cases as essential_cases
+
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 INPUTS = ROOT / "inputs"
@@ -1217,6 +1219,7 @@ def build(files, excluded):
         else:
             raise AssertionError("%s: reference accepted the input" % case["id"])
     labels = labels_cases()
+    scans = essential_cases()
 
     fixtures = {
         "reduce.json": dump_records({"schema_version": SCHEMA_VERSION, "kind": "reduce"},
@@ -1228,6 +1231,8 @@ def build(files, excluded):
         "labels.json": dump_records({"schema_version": SCHEMA_VERSION, "kind": "labels"},
                                     "cases", labels),
         "checker.json": dump(checker),
+        "essential.json": dump_records({"schema_version": SCHEMA_VERSION, "kind": "essential"},
+                                       "cases", scans),
     }
     for fname, text in fixtures.items():
         outputs["fixtures/" + fname] = text
@@ -1244,6 +1249,7 @@ def build(files, excluded):
         "checker_bad_results": len(checker["bad"]) + len(checker["letter_bad"]) + 1,
         "reduce_letter_minimum": len(c_cases),
         "reduce_weighted": len(repeated_cases),
+        "essential": len(scans),
     }
     manifest = {
         "schema_version": SCHEMA_VERSION,

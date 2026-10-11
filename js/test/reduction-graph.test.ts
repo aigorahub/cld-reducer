@@ -34,6 +34,6 @@ it("uses weighted costs for canonical trial caps", async () => {
       rowUpper: new Float64Array([Infinity,Infinity]) },
     members: [], edges: [], groupColumns: [], edgeEnds: [],
   };
-  const strategy = { ...methods[0], coverage: (_: Model, x: boolean[]) => (x[0] || x[1]) && (x[0] || x[2]) };
+  const strategy = { ...methods[0], coverage: (_: Model, x: boolean[]) => (x[0] || x[1]) && (x[0] || x[2]), essentialDecisions: () => [] };
   expect(solveCanonical(model,null,strategy)).toEqual({minimum:2,selected:[false,true,true]});
 });

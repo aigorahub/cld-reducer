@@ -47,7 +47,8 @@ appearance in \code{group1}, then \code{group2}. Every mean must be finite.}
 assignment secondary objective. Hyphenated aliases are also accepted.
 Public result metadata uses the underscore spelling.}
 
-\item{time_limit}{One time budget in seconds for all solves of the call, or
+\item{time_limit}{One time budget in seconds for the essential scan and all
+solves of the call, or
 \code{NULL} for no limit.}
 
 \item{max_cliques}{The largest number of maximal cliques to enumerate before

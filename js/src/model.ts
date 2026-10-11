@@ -90,9 +90,18 @@ export function assignmentCoverage(model: Model, selected: boolean[]): boolean {
   return model.groupColumns.every(cs => cs.some(k => selected[k])) &&
     model.edgeEnds.every(ends => ends.some(([a,b]) => selected[a] && selected[b]));
 }
+export function assignmentEssentialDecisions(model: Model): number[] {
+  const required = new Set<number>();
+  for (const columns of model.groupColumns) if (columns.length === 1) required.add(columns[0]);
+  for (const ends of model.edgeEnds) if (ends.length === 1) {
+    required.add(ends[0][0]); required.add(ends[0][1]);
+  }
+  return [...required].sort((a,b) => a-b);
+}
 export interface Strategy {
   name: string; aliases: string[]; failurePrefix: string; countsAssignments: boolean;
   builder: typeof buildModel; coverage: typeof assignmentCoverage; decoder: typeof selectedColumns;
+  essentialDecisions: (model: Model) => number[];
 }
 
 export interface Context extends Graph {
@@ -124,14 +133,17 @@ function buildLetterModel(context: Context): Model {
 function letterCoverage(model: Model, selected: boolean[]): boolean {
   return model.coverageColumns!.every(cs => cs.some(c => selected[c]));
 }
+function letterEssentialDecisions(model: Model): number[] {
+  return [...new Set(model.coverageColumns!.filter(cs => cs.length === 1).map(cs => cs[0]))].sort((a,b) => a-b);
+}
 function letterColumns(cliques: number[][], model: Model, selected: boolean[]): number[][] {
   return cliques.filter((_,c) => selected[c]).map(q => [...q]);
 }
 export const methods: Strategy[] = [
   { name: "assignment_minimum", aliases: ["assignment_minimum", "assignment-minimum"],
     failurePrefix: "assignment-minimum MILP failed: ", countsAssignments: true,
-    builder: buildModel, coverage: assignmentCoverage, decoder: selectedColumns },
+    builder: buildModel, coverage: assignmentCoverage, essentialDecisions: assignmentEssentialDecisions, decoder: selectedColumns },
   { name: "letter_minimum", aliases: ["letter_minimum", "letter-minimum"],
     failurePrefix: "letter-minimum MILP failed: ", countsAssignments: false,
-    builder: buildLetterModel, coverage: letterCoverage, decoder: letterColumns },
+    builder: buildLetterModel, coverage: letterCoverage, essentialDecisions: letterEssentialDecisions, decoder: letterColumns },
 ];

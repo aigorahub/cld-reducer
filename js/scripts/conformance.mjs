@@ -9,6 +9,7 @@ import {
 } from "../dist/index.js";
 import { makeLetterLabels } from "../dist/labels.js";
 import { loadedSolver, settings } from "../dist/solver.js";
+import { graphContext, methods } from "../dist/model.js";
 
 const root = new URL("../../conformance/", import.meta.url);
 const read = (path) => JSON.parse(readFileSync(new URL(path, root), "utf8"));
@@ -16,6 +17,16 @@ const cases = (kind) => read(`fixtures/${kind}.json`).cases;
 
 const failures = [];
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+for (const c of cases("essential")) {
+  const context=graphContext({adjacency:c.adjacency.map(row=>row.map(Boolean)),
+    groups:c.adjacency.map((_,v)=>String(v)),means:null},c.cliques,c.weights);
+  for (const [k,strategy] of methods.entries()) {
+    const actual=strategy.essentialDecisions(strategy.builder(context));
+    if (!same(actual,c[k===0?"essential_sigma":"essential_c"])) failures.push(`${c.id}: essential decisions differ for ${strategy.name}`);
+  }
+}
+console.log(`essential scan: ${cases("essential").length} cases checked for both methods`);
 
 /** Call the package the way the fixture says. */
 function call(c) {

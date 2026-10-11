@@ -17,8 +17,39 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import generate as g  # noqa: E402
+import generate_essential as essential  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
+
+
+class EssentialOracleTests(unittest.TestCase):
+    def test_simple_membership_and_clique_removal(self):
+        adjacency = essential.graph(5, [(0,1),(0,2),(1,2),(1,3),(2,3),(2,4),(3,4)])
+        case = essential.scan_case("simple", adjacency, [1] * 5)
+        self.assertEqual(case["essential_sigma"], [0,1,2,3,5,6,7,8])
+        self.assertEqual(case["essential_c"], [0,1,2])
+
+    def test_boolean_reconstruction_rejects_missing_vertices_and_extra_pairs(self):
+        adjacency = essential.graph(2, [])
+        self.assertTrue(essential.covered(adjacency, [(0,), (1,)]))
+        self.assertFalse(essential.covered(adjacency, [(0,)]))
+        self.assertFalse(essential.covered(adjacency, [(0,1)]))
+
+    def test_no_essential_decisions_does_not_allow_joint_deletions(self):
+        adjacency = essential.graph(6, [(u,v) for u,v in itertools.combinations(range(6), 2)
+                                       if u // 2 != v // 2])
+        case = essential.scan_case("tripartite", adjacency, [1] * 6)
+        self.assertEqual(case["essential_sigma"], [])
+        self.assertEqual(case["essential_c"], [])
+        self.assertEqual(len(case["cliques"]), 8)
+        self.assertTrue(essential.covered(adjacency, case["cliques"][1:]))
+        self.assertFalse(essential.covered(adjacency, case["cliques"][2:]))
+
+    def test_interleaved_true_twins_keep_weights_and_distinct_isolates(self):
+        adjacency = [[1,0,1,0],[0,1,0,0],[1,0,1,0],[0,0,0,1]]
+        quotient, weights = essential.reduced(adjacency)
+        self.assertEqual(weights, [2,1,1])
+        self.assertEqual(quotient, [[1,0,0],[0,1,0],[0,0,1]])
 
 
 # ----------------------------------------------------- plain enumeration oracle ----
@@ -435,7 +466,7 @@ class CheckerAndSetupTest(unittest.TestCase):
 
     def test_only_standard_library_imports(self):
         stdlib = set(sys.stdlib_module_names)
-        for fname in ("generate.py", "test_generate.py"):
+        for fname in ("generate.py", "generate_essential.py", "test_generate.py"):
             tree = ast.parse((HERE / fname).read_text(encoding="utf-8"))
             for node in ast.walk(tree):
                 names = []
@@ -444,7 +475,7 @@ class CheckerAndSetupTest(unittest.TestCase):
                 elif isinstance(node, ast.ImportFrom):
                     names = [(node.module or "").split(".")[0]]
                 for name in names:
-                    self.assertTrue(name in stdlib or name == "generate",
+                    self.assertTrue(name in stdlib or name in {"generate", "generate_essential"},
                                     "%s imports %s" % (fname, name))
 
     def test_random_inputs_are_at_least_200_graphs(self):

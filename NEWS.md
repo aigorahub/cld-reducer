@@ -12,6 +12,9 @@
   assignment meanings. Explicit sigma displays and shared sigma fixtures are unchanged.
 - Apply weighted vertex reduction from Lemma 2.5 before both models. Restore
   original groups and counts after solving. Preserve the canonical result.
+- Scan the full maximal cover for essential decisions before HiGHS. Fix required
+  sigma memberships or C clique selections to 1. Preserve the minimum and
+  canonical result. Include scan time in the shared solver deadline.
 - Add independent C reference searches, a 33,867-graph census, cross-language fixtures,
   solver failures, and installed-package checks.
 

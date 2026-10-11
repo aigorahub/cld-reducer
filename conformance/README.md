@@ -14,6 +14,8 @@ One set of fixtures binds the R, Python, and JavaScript implementations of cld-r
 | `fixtures/reduce.json` | Valid CLD-sigma calls and their expected results. |
 | `fixtures/reduce_letter_minimum.json` | Valid CLD-C calls and their expected results. |
 | `fixtures/reduce_weighted.json` | Weighted vertex reduction cases for both methods, including the C default. |
+| `fixtures/essential.json` | Exact essential decisions for both models on 2,206 original and reduced graphs. |
+| `generate_essential.py` | Independent vertex subset clique enumeration and full Boolean reconstruction after each deletion. Called by `generate.py`. |
 | `fixtures/errors.json` | Invalid calls and the expected error kind and message prefix. |
 | `fixtures/labels.json` | Label counts and the expected labels. |
 | `fixtures/checker.json` | Wrong wheat and CLD-C results that every runner's checker must reject. |

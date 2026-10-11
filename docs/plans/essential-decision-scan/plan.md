@@ -6,8 +6,9 @@ Add the paper's exact removal test as a preliminary scan in Python, R, and
 JavaScript. Use the existing BIP models to optimize the remaining decisions.
 Preserve every public result and the canonical optimum for each method.
 
-This is a planning PR. It contains no runtime changes. The implementation is
-a later stage of this PR after the user authorizes it.
+This document defines the reviewed implementation contract. The plan reviews
+completed at `3e643fe982f7d66550ef28d0530892a163fb5353` before implementation.
+Implementation and validation are recorded in `implementation.md`.
 
 Branch: `plan/essential-decision-scan`.
 Absolute worktree: `/Users/john/aigora/dev/cld-reducer-essential-scan`.

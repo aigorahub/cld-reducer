@@ -26,6 +26,7 @@ test_that("the canonical cost cap uses weights", {
     row_lower=c(1,1),row_upper=c(Inf,Inf))
   strategy <- reduction_methods()[[1]]
   strategy$coverage <- function(model,x) (x[1] || x[2]) && (x[1] || x[3])
+  strategy$essential_decisions <- function(model) integer(0)
   result <- solve_canonical(list(problem=problem),NULL,strategy)
   expect_equal(result$minimum,2)
   expect_equal(result$selected,c(FALSE,TRUE,TRUE))
