@@ -8,7 +8,7 @@ from pathlib import Path
 
 import gates
 import pytest
-from analysis import analyze, select_gain_targets
+from analysis import analyze, measurement_orders, select_gain_targets
 from cases import job_key, jobs, multipartite
 from common import digest, input_digest
 from gates import audit
@@ -507,6 +507,9 @@ def make_evidence(
         for process in range(manifest["processes"])
         for batch in range(manifest["batches"])
     ]
+    orders = measurement_orders(calibration_manifest)
+    for row in calibration_samples:
+        row["order"] = orders[row["key"], row["process"], row["batch"]]
     calibration_metadata = dict(
         complete=True,
         kind="calibration",
@@ -643,6 +646,9 @@ def make_evidence(
                             peak_rss=[1024, 1024],
                         )
                     )
+        orders = measurement_orders(manifest)
+        for row in samples:
+            row["order"] = orders[row["key"], row["process"], row["batch"]]
         meta = dict(
             complete=True,
             kind="candidate",
