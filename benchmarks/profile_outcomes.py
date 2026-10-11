@@ -1,7 +1,7 @@
 """Validate bounded preprocessing outcomes without scoring failed or partial work.
 
 Callers must also bind profile sources, inputs, versions, and baseline file hashes.
-This module checks row coverage, resource outcomes, and preprocessing completeness.
+This module checks row coverage, resource outcomes, and exact model dimensions.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ DIMENSIONS = (
     "vertices_before",
     "vertices_after",
     "edges",
+    "edges_after",
     "maximal_cliques",
     "decision_variables",
     "auxiliary_variables",
@@ -26,6 +27,7 @@ DIMENSIONS = (
     "nonzeros",
     "essential_decisions",
 )
+STRUCTURE = DIMENSIONS + ("essential_cover",)
 PREPROCESS_PHASES = (
     "input",
     "vertex_reduction",
@@ -50,6 +52,72 @@ def _require(condition, message):
 
 def _positive(value):
     return type(value) in (int, float) and math.isfinite(value) and value > 0
+
+
+def _multipartite_structure(case, key):
+    """Independent dimension oracle for complete multipartite (6-8) x 3 inputs.
+
+    R/model.R and the Python/JavaScript builders have one coverage row per
+    vertex and edge. Letter columns have p vertex entries and choose(p,2)
+    edge entries each. Assignment columns add one witness per clique edge,
+    with one entry in an edge row and four entries in two linking rows.
+    Closed neighborhoods are distinct, so production twin reduction keeps n.
+    Each vertex and edge has multiple covering cliques, so no decision is
+    essential. This checks the adjacency itself, including permuted vertices.
+    """
+    missing = f"Missing independent preprocessing structure evidence for {key}: "
+    adjacency = case.get("input", {}).get("adjacency")
+    _require(
+        case.get("call") == "adjacency"
+        and isinstance(adjacency, list)
+        and len(adjacency) in (18, 21, 24),
+        missing + "only complete multipartite inputs with 6-8 parts of size 3 are supported",
+    )
+    n = len(adjacency)
+    _require(
+        all(
+            isinstance(row, list)
+            and len(row) == n
+            and all(type(value) in (bool, int) and value in (0, 1) for value in row)
+            for row in adjacency
+        ),
+        missing + "adjacency must be a square Boolean matrix",
+    )
+    parts = [frozenset(j for j in range(n) if i == j or not adjacency[i][j]) for i in range(n)]
+    p = n // 3
+    _require(
+        len(set(parts)) == p
+        and all(len(part) == 3 for part in parts)
+        and all(
+            bool(adjacency[i][j]) == (i == j or parts[i] != parts[j])
+            for i in range(n)
+            for j in range(n)
+        )
+        and len({tuple(row) for row in adjacency}) == n,
+        missing + "adjacency does not have exact size-3 parts and distinct closed neighborhoods",
+    )
+    method = case.get("options", {}).get("method")
+    _require(
+        method in ("letter_minimum", "assignment_minimum"), missing + "unsupported model method"
+    )
+    pairs, cliques = p * (p - 1) // 2, 3**p
+    sigma = method == "assignment_minimum"
+    decisions = p * cliques if sigma else cliques
+    auxiliary = pairs * cliques if sigma else 0
+    edges = 9 * pairs
+    return dict(
+        vertices_before=n,
+        vertices_after=n,
+        edges=edges,
+        edges_after=edges,
+        maximal_cliques=cliques,
+        decision_variables=decisions,
+        auxiliary_variables=auxiliary,
+        constraints=n + edges + 2 * auxiliary,
+        nonzeros=decisions + 5 * auxiliary if sigma else cliques * (p + pairs),
+        essential_decisions=0,
+        essential_cover=False,
+    )
 
 
 def _complete(response, case, key):
@@ -102,6 +170,16 @@ def _complete(response, case, key):
         and 0 < phases["total"] <= case["wall_seconds"] * 1e9,
         f"Incomplete or out-of-bound preprocessing phases: {key}",
     )
+    structure = {name: metrics[name] for name in STRUCTURE}
+    expected = _multipartite_structure(case, key)
+    if "edges_before" in metrics:
+        _require(type(metrics["edges_before"]) is int, f"Invalid edges_before: {key}")
+        structure["edges_before"] = metrics["edges_before"]
+        expected["edges_before"] = expected["edges"]
+    _require(
+        structure == expected, f"Preprocessing structure differs from independent oracle: {key}"
+    )
+    return structure
 
 
 def _outcomes(manifest, profile_rows):
@@ -112,7 +190,7 @@ def _outcomes(manifest, profile_rows):
     }
     memory_mb = manifest["memory_limit_mb"]
     _require(_positive(memory_mb), "Invalid preprocessing memory limit")
-    result = {}
+    result, structures = {}, {}
     for row in profile_rows:
         _require(isinstance(row, dict), "Invalid profile row")
         key, case = row.get("key"), row.get("case")
@@ -129,7 +207,7 @@ def _outcomes(manifest, profile_rows):
             f"Invalid preprocessing response: {key}",
         )
         if response.get("ok") is True:
-            _complete(response, case, key)
+            structures[key] = _complete(response, case, key)
             outcome = COMPLETE
         else:
             error = response.get("error")
@@ -152,7 +230,7 @@ def _outcomes(manifest, profile_rows):
         )
         result[key] = outcome
     _require(set(result) == set(expected), "Missing preprocessing rows")
-    return result
+    return result, structures
 
 
 def freeze_preprocess_failures(manifest, profile_rows):
@@ -160,19 +238,20 @@ def freeze_preprocess_failures(manifest, profile_rows):
 
     Do not mutate the manifest. Unsupported errors and incomplete rows raise.
     """
-    return {
-        key: value for key, value in _outcomes(manifest, profile_rows).items() if value != COMPLETE
-    }
+    outcomes, _ = _outcomes(manifest, profile_rows)
+    return {key: value for key, value in outcomes.items() if value != COMPLETE}
 
 
-def validate_preprocess_outcomes(manifest, profile_rows, *, candidate=False):
+def validate_preprocess_outcomes(manifest, profile_rows, *, candidate=False, baseline_rows=None):
     """Validate baseline or candidate rows against baseline_preprocess_failures.
 
     Baseline rows must agree exactly with the frozen map. Candidate rows may
-    complete a known failed preprocessing case. Such completion is unscored.
+    complete a known failed preprocessing case only with independent structural
+    verification. Such completion is unscored. Candidate callers must supply
+    baseline_rows from the profile file bound by the frozen profile hash.
     A changed resource failure class or a new failure always raises ValueError.
     """
-    outcomes = _outcomes(manifest, profile_rows)
+    outcomes, structures = _outcomes(manifest, profile_rows)
     failures = manifest.get("baseline_preprocess_failures", {})
     _require(
         isinstance(failures, dict)
@@ -190,4 +269,18 @@ def validate_preprocess_outcomes(manifest, profile_rows, *, candidate=False):
             f"Preprocessing outcome differs from frozen baseline: {key} ({baseline} -> {outcome})",
         )
         evidence[key] = {"baseline": baseline, "outcome": outcome, "scored": False}
+        if outcome == COMPLETE:
+            evidence[key]["structure"] = structures[key]
+    if candidate:
+        _require(
+            baseline_rows is not None,
+            "Candidate preprocessing requires frozen baseline profile rows",
+        )
+        baseline = validate_preprocess_outcomes(manifest, baseline_rows)
+        for key, item in evidence.items():
+            if item["outcome"] == COMPLETE and baseline[key]["outcome"] == COMPLETE:
+                _require(
+                    item["structure"] == baseline[key]["structure"],
+                    f"Candidate preprocessing structure differs from frozen baseline: {key}",
+                )
     return evidence

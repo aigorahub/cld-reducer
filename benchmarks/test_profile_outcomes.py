@@ -6,7 +6,9 @@ import pytest
 from cases import job_key, jobs, multipartite
 from profile_outcomes import (
     COMPLETE,
+    DIMENSIONS,
     PREPROCESS_PHASES,
+    STRUCTURE,
     UNUSED_PHASES,
     freeze_preprocess_failures,
     validate_preprocess_outcomes,
@@ -19,6 +21,8 @@ def success(case):
     decisions = parts * cliques
     edges = 9 * parts * (parts - 1) // 2
     witnesses = cliques * parts * (parts - 1) // 2
+    if case["options"]["method"] == "letter_minimum":
+        decisions, witnesses = cliques, 0
     return {
         "ok": True,
         "action": "preprocess",
@@ -26,11 +30,14 @@ def success(case):
             "vertices_before": 3 * parts,
             "vertices_after": 3 * parts,
             "edges": edges,
+            "edges_after": edges,
             "maximal_cliques": cliques,
             "decision_variables": decisions,
             "auxiliary_variables": witnesses,
             "constraints": 3 * parts + edges + 2 * witnesses,
-            "nonzeros": decisions + 5 * witnesses,
+            "nonzeros": decisions + 5 * witnesses
+            if witnesses
+            else cliques * (parts + parts * (parts - 1) // 2),
             "essential_decisions": 0,
             "essential_cover": False,
             "solve_count": 0,
@@ -63,6 +70,7 @@ def baseline():
             {
                 "id": f"bounded/multipartite-{parts}x3",
                 "tier": "preprocess",
+                "call": "adjacency",
                 "wall_seconds": 30,
                 "input": {"adjacency": multipartite(parts)},
                 "options": {},
@@ -104,17 +112,170 @@ def test_baseline_and_unchanged_candidate(baseline):
         }
         for index, row in enumerate(rows)
     }
+    expected[rows[0]["key"]]["structure"] = {
+        name: rows[0]["response"]["metrics"][name] for name in STRUCTURE
+    }
     assert validate_preprocess_outcomes(manifest, rows) == expected
-    assert validate_preprocess_outcomes(manifest, rows, candidate=True) == expected
+    assert (
+        validate_preprocess_outcomes(manifest, rows, candidate=True, baseline_rows=rows) == expected
+    )
 
 
 def test_new_completion_is_only_unscored_preprocessing(baseline):
     manifest, rows = baseline
+    frozen_rows = copy.deepcopy(rows)
     rows[1]["response"] = success(rows[1]["case"])
-    record = validate_preprocess_outcomes(manifest, rows, candidate=True)[rows[1]["key"]]
-    assert record == {"baseline": "external_wall_timeout", "outcome": COMPLETE, "scored": False}
+    record = validate_preprocess_outcomes(
+        manifest, rows, candidate=True, baseline_rows=frozen_rows
+    )[rows[1]["key"]]
+    assert record == {
+        "baseline": "external_wall_timeout",
+        "outcome": COMPLETE,
+        "scored": False,
+        "structure": {name: rows[1]["response"]["metrics"][name] for name in STRUCTURE},
+    }
     with pytest.raises(ValueError, match="differs from frozen baseline"):
         validate_preprocess_outcomes(manifest, rows)
+
+
+@pytest.mark.parametrize("field", DIMENSIONS + ("essential_cover",))
+@pytest.mark.parametrize("new_completion", [False, True])
+def test_candidate_structural_change_rejects_even_plausible_counts(baseline, field, new_completion):
+    manifest, frozen = baseline
+    rows = copy.deepcopy(frozen)
+    row = rows[1 if new_completion else 0]
+    row["response"] = success(row["case"])
+    metrics = row["response"]["metrics"]
+    metrics[field] = not metrics[field] if field == "essential_cover" else metrics[field] + 1
+    with pytest.raises(ValueError, match="dimensions|structure"):
+        validate_preprocess_outcomes(manifest, rows, candidate=True, baseline_rows=frozen)
+
+
+@pytest.mark.parametrize("field", STRUCTURE)
+def test_each_declared_structural_metric_is_required(baseline, field):
+    manifest, frozen = baseline
+    rows = copy.deepcopy(frozen)
+    del rows[0]["response"]["metrics"][field]
+    with pytest.raises(ValueError, match="dimensions"):
+        validate_preprocess_outcomes(manifest, rows, candidate=True, baseline_rows=frozen)
+
+
+def test_candidate_requires_the_frozen_baseline_records(baseline):
+    manifest, rows = baseline
+    with pytest.raises(ValueError, match="requires frozen baseline profile rows"):
+        validate_preprocess_outcomes(manifest, rows, candidate=True)
+
+
+def test_optional_structural_metric_must_match_frozen_baseline(baseline):
+    manifest, frozen = baseline
+    frozen[0]["response"]["metrics"]["edges_before"] = frozen[0]["response"]["metrics"]["edges"]
+    rows = copy.deepcopy(frozen)
+    del rows[0]["response"]["metrics"]["edges_before"]
+    with pytest.raises(ValueError, match="differs from frozen baseline"):
+        validate_preprocess_outcomes(manifest, rows, candidate=True, baseline_rows=frozen)
+
+
+@pytest.mark.parametrize(
+    "mutation", ["diagonal", "cross_edge", "within_edge", "ragged", "true_twins"]
+)
+def test_new_completion_needs_actual_multipartite_input_evidence(baseline, mutation):
+    manifest, _ = baseline
+    matrix = manifest["cases"][1]["input"]["adjacency"]
+    if mutation == "diagonal":
+        matrix[0][0] = 0
+    elif mutation == "cross_edge":
+        matrix[0][3] = matrix[3][0] = 0
+    elif mutation == "within_edge":
+        matrix[0][1] = matrix[1][0] = 1
+    elif mutation == "ragged":
+        matrix[0].pop()
+    else:
+        for i in range(3):
+            for j in range(3):
+                matrix[i][j] = 1
+    frozen = [
+        dict(key=job_key("r", c), case=c, response=failure(), peak_rss=1024)
+        for c in jobs(manifest, tiers=("preprocess",))
+    ]
+    manifest["baseline_preprocess_failures"] = {
+        row["key"]: "external_wall_timeout" for row in frozen
+    }
+    rows = copy.deepcopy(frozen)
+    rows[1]["response"] = success(rows[1]["case"])
+    with pytest.raises(ValueError, match="Missing independent preprocessing structure evidence"):
+        validate_preprocess_outcomes(manifest, rows, candidate=True, baseline_rows=frozen)
+
+
+@pytest.mark.parametrize(
+    "parts,method,decisions,auxiliary,constraints,nonzeros",
+    [
+        (6, "letter_minimum", 729, 0, 153, 15309),
+        (7, "letter_minimum", 2187, 0, 210, 61236),
+        (8, "letter_minimum", 6561, 0, 276, 236196),
+        (6, "assignment_minimum", 4374, 10935, 22023, 59049),
+        (7, "assignment_minimum", 15309, 45927, 92064, 244944),
+        (8, "assignment_minimum", 52488, 183708, 367692, 971028),
+    ],
+)
+def test_exact_closed_form_dimensions_and_permuted_parts(
+    parts, method, decisions, auxiliary, constraints, nonzeros
+):
+    matrix = multipartite(parts)
+    # Interleave the partitions. A case ID cannot supply the graph proof.
+    order = [i for offset in range(3) for i in range(offset, 3 * parts, 3)]
+    matrix = [[bool(matrix[i][j]) for j in order] for i in order]
+    case = dict(
+        id="unlabelled/graph",
+        tier="preprocess",
+        call="adjacency",
+        wall_seconds=30,
+        input={"adjacency": matrix},
+        options={"method": method},
+    )
+    manifest = dict(
+        cases=[case],
+        methods=[method],
+        languages=["r"],
+        memory_limit_mb=8192,
+        baseline_preprocess_failures={},
+    )
+    response = success(case)
+    response["metrics"].update(
+        decision_variables=decisions,
+        auxiliary_variables=auxiliary,
+        constraints=constraints,
+        nonzeros=nonzeros,
+    )
+    rows = [dict(key=job_key("r", case), case=case, response=response, peak_rss=1024)]
+    result = validate_preprocess_outcomes(manifest, rows)
+    structure = result[rows[0]["key"]]["structure"]
+    assert structure["decision_variables"] == decisions
+    assert structure["auxiliary_variables"] == auxiliary
+    assert structure["constraints"] == constraints
+    assert structure["nonzeros"] == nonzeros
+    assert structure["edges"] == structure["edges_after"]
+    assert structure["vertices_before"] == structure["vertices_after"] == parts * 3
+    frozen = copy.deepcopy(rows)
+    frozen[0]["response"] = failure()
+    manifest["baseline_preprocess_failures"] = {rows[0]["key"]: "external_wall_timeout"}
+    new = validate_preprocess_outcomes(manifest, rows, candidate=True, baseline_rows=frozen)
+    assert new[rows[0]["key"]]["structure"] == structure
+
+
+def test_unsupported_new_completion_has_a_missing_evidence_reason(baseline):
+    manifest, _ = baseline
+    manifest["cases"][1]["input"]["adjacency"] = multipartite(5)
+    frozen = [
+        dict(key=job_key("r", c), case=c, response=failure(), peak_rss=1024)
+        for c in jobs(manifest, tiers=("preprocess",))
+    ]
+    manifest["baseline_preprocess_failures"] = {
+        row["key"]: "external_wall_timeout" for row in frozen
+    }
+    rows = copy.deepcopy(frozen)
+    rows[1]["response"] = success(rows[1]["case"])
+    with pytest.raises(ValueError, match="only complete multipartite inputs with 6-8 parts"):
+        validate_preprocess_outcomes(manifest, rows, candidate=True, baseline_rows=frozen)
 
 
 def test_failure_map_is_required_when_rows_failed(baseline):
