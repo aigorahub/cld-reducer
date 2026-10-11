@@ -257,6 +257,18 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
     write_resource_fixture(calibration, calibration_metadata, [], "compare")
     run.save(calibration / "metadata.json", calibration_metadata)
     profiles, capture = tmp_path / "profiles", tmp_path / "capture"
+    calibration_samples = [
+        {
+            "key": job_key("js", next(jobs(manifest))),
+            "process": process,
+            "rss": [1024, 1024],
+            "peak_rss": [1024, 1024],
+        }
+        for process in range(manifest["processes"])
+    ]
+    (calibration / "samples.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in calibration_samples)
+    )
     profile_rows = [
         {
             "key": job_key("js", case),
@@ -364,7 +376,7 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
     assert frozen["calibration_harness"] == harness
     assert frozen["baseline_source"] == baseline
     assert frozen["calibration_manifest_sha256"] == run.digest(manifest)
-    assert frozen["calibration_samples_sha256"] == run.digest([])
+    assert frozen["calibration_samples_sha256"] == run.digest(calibration_samples)
     assert frozen["baseline_preprocess_failures"] == declared_failures
     assert set(frozen["gain_targets"]) == (
         {"js|letter_minimum"} if small_sigma else {"js|letter_minimum", "js|assignment_minimum"}

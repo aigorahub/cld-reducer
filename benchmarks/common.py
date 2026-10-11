@@ -268,6 +268,8 @@ def version_identity(version):
 
     Source commits and paths belong to source_binding. Do not drop settings
     such as time_limit, or stable timer descriptions, as if they were timings.
+    The reducer's own release version stays in the raw record. It is part of
+    the changed source, not a dependency that must match the reference.
     """
     ignored = {
         "module_load_ns",
@@ -280,8 +282,16 @@ def version_identity(version):
         "source_head",
         "source_path",
         "repo",
+        "package_version",
     }
     identity = {key: value for key, value in version.items() if key not in ignored}
+    if isinstance(identity.get("package"), dict):
+        identity["package"] = {
+            key: value for key, value in identity["package"].items() if key != "version"
+        }
+    else:
+        # Python reports its own version as a string; R reports name/version.
+        identity.pop("package", None)
     if isinstance(identity.get("timer"), dict):
         # R observes clock resolution in every fresh process. Its clock name,
         # method, monotonic flag and fallback status are stable provenance.

@@ -17,6 +17,7 @@ import common
 from analysis import (
     analyze,
     calibration_design,
+    rss_growth,
     same_javascript_tools,
     select_gain_targets,
     valid_source,
@@ -26,6 +27,11 @@ from common import digest
 from profile_outcomes import validate_preprocess_outcomes
 from profile_settings import validate_solver_settings
 from resource_evidence import validate_resources
+from solve_outcomes import (
+    validate_calibration_failures,
+    validate_solve_captures,
+    validate_solve_profiles,
+)
 
 FIXTURES = ("reduce", "reduce_letter_minimum", "reduce_weighted")
 TIERS = ("solve", "preprocess", "expected-error")
@@ -447,6 +453,8 @@ def audit(
         calibration_manifest = _read(calibration_dir, "manifest.json")
         calibration_metadata = _read(calibration_dir, "metadata.json")
         calibration_samples = _rows(calibration_dir, "samples.jsonl")
+        calibration_results = _rows(calibration_dir, "results.jsonl")
+        calibration_growth = rss_growth(calibration_manifest, calibration_samples)
         calibration_report = analyze(
             calibration_manifest,
             calibration_metadata,
@@ -457,7 +465,7 @@ def audit(
             calibration_dir,
             calibration_manifest,
             calibration_metadata,
-            _rows(calibration_dir, "results.jsonl"),
+            calibration_results,
             "compare",
         )
         require(
@@ -522,6 +530,7 @@ def audit(
             "analysis": calibration_report,
             "samples_sha256": digest(calibration_samples),
             "resources": calibration_resources,
+            "rss_growth": calibration_growth,
         }
         capture_dirs = {"baseline": baseline_capture_dir, "candidate": candidate_capture_dir}
         capture_meta = {label: _read(path, "metadata.json") for label, path in capture_dirs.items()}
@@ -533,6 +542,7 @@ def audit(
             for case in jobs(manifest):
                 expected_captures[(language, case["id"], case["options"]["method"])] = (case, False)
         captures, identities, dependency_versions = {}, {}, {}
+        baseline_failure_classes = None
         for label, path in capture_dirs.items():
             metadata = capture_meta[label]
             identities[label] = binding(metadata, f"{label} capture")
@@ -557,6 +567,20 @@ def audit(
                 )
             indexed = {}
             capture_rows = _rows(path, "vectors.jsonl")
+            observed_failure_classes = validate_solve_captures(
+                manifest,
+                capture_rows,
+                baseline_classes=baseline_failure_classes,
+            )
+            if label == "baseline":
+                baseline_failure_classes = observed_failure_classes
+                require(
+                    baseline_failure_classes == manifest.get("baseline_failure_classes"),
+                    "Baseline solve failure classes differ from frozen evidence",
+                )
+                validate_calibration_failures(
+                    manifest, calibration_results, baseline_failure_classes
+                )
             capture_resources = validate_resources(
                 path, manifest, metadata, capture_rows, "capture"
             )
@@ -722,6 +746,12 @@ def audit(
             )
             indexed = {}
             profile_rows = _rows(path, "profiles.jsonl")
+            validate_solve_profiles(
+                manifest,
+                profile_rows,
+                baseline_failure_classes,
+                candidate=label == "candidate",
+            )
             profile_resources = validate_resources(
                 path, manifest, metadata, profile_rows, "profiles"
             )
@@ -852,16 +882,9 @@ def audit(
                     f"Optional stress result or canonical vector differs: {key}",
                 )
 
-        intervals, run_ids, pids = [], set(), set()
-        tolerance = manifest.get("memory_growth_tolerance_mb")
-        valid_tolerance = (
-            type(tolerance) in (int, float) and math.isfinite(tolerance) and tolerance >= 0
-        )
-        require(
-            valid_tolerance,
-            "Manifest lacks a nonnegative finite memory growth allowance",
-        )
+        intervals, run_ids = [], set()
         for path in run_dirs:
+            pids = set()
             metadata, samples = _read(path, "metadata.json"), _rows(path, "samples.jsonl")
             label = f"run {path}"
             require(
@@ -940,7 +963,6 @@ def audit(
                 },
                 f"{label}: missing fresh processes",
             )
-            rss_by_process = {}
             for row in samples:
                 if row.get("key") not in solve_specs or row["key"] in failures:
                     require(False, f"{label}: unexpected scored case {row.get('key')}")
@@ -955,47 +977,7 @@ def audit(
                     row.get("result_hashes") == wanted_hashes,
                     f"{label}: sample result hash differs {row['key']}",
                 )
-                valid_memory = True
-                for field in ("rss", "peak_rss"):
-                    memory = row.get(field, [])
-                    valid_memory &= require(
-                        isinstance(memory, list)
-                        and len(memory) == 2
-                        and all(
-                            _positive(value) and value <= manifest["memory_limit_mb"] * 1024**2
-                            for value in memory
-                        ),
-                        f"{label}: missing or exceeded sample {field} bound",
-                    )
-                if valid_memory:
-                    require(
-                        all(
-                            current <= peak
-                            for current, peak in zip(row["rss"], row["peak_rss"], strict=True)
-                        ),
-                        f"{label}: current RSS exceeds recorded peak",
-                    )
-                    rss_by_process.setdefault((language, row["process"]), []).append(row["rss"])
-            growth = []
-            for (language, process), values in sorted(rss_by_process.items()):
-                delta = [values[-1][i] - values[0][i] for i in (0, 1)]
-                excess = delta[1] - delta[0]
-                require(
-                    valid_tolerance and excess <= tolerance * 1024**2,
-                    f"{label}: candidate RSS growth exceeds baseline and allowance "
-                    f"for {language}/{process}",
-                )
-                growth.append(
-                    dict(
-                        language=language,
-                        process=process,
-                        first_rss=values[0],
-                        last_rss=values[-1],
-                        baseline_growth_bytes=delta[0],
-                        candidate_growth_bytes=delta[1],
-                        excess_candidate_growth_bytes=excess,
-                    )
-                )
+            growth = rss_growth(manifest, samples)
             response_rows = _rows(path, "results.jsonl")
             run_resources = validate_resources(path, manifest, metadata, response_rows, "compare")
             seen_results = set()

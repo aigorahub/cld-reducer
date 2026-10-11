@@ -807,3 +807,15 @@ def test_candidate_cannot_override_frozen_targets():
     report = analyze(manifest, metadata, rows, calibration_targets={})
     assert not report["pass"]
     assert "Target overrides are only valid for A/A calibration" in report["reasons"]
+
+
+def test_candidate_release_version_change_preserves_dependency_checks():
+    m, metadata, rows = evidence()
+    for record in metadata["versions"]:
+        record["versions"][1]["package"] = "0.4.0"
+    assert analyze(m, metadata, rows)["pass"]
+    for record in metadata["versions"]:
+        record["versions"][1]["dependencies"]["highspy"] = "1.16.0"
+    report = analyze(m, metadata, rows)
+    assert not report["pass"]
+    assert any("dependency versions differ" in reason for reason in report["reasons"])

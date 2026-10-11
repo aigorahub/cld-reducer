@@ -28,6 +28,76 @@ def case_input_digest(case):
     return digest({name: case.get(name) for name in ("call", "input", "options")})
 
 
+def rss_growth(manifest, records):
+    """Apply the same sampled RSS cap and paired growth bound to A/A and candidates."""
+
+    def number(value, *, zero=False):
+        return (
+            type(value) in (int, float)
+            and math.isfinite(value)
+            and (value >= 0 if zero else value > 0)
+        )
+
+    tolerance, limit = manifest.get("memory_growth_tolerance_mb"), manifest.get("memory_limit_mb")
+    if not number(tolerance, zero=True) or not number(limit):
+        raise ValueError("Invalid frozen memory cap or growth allowance")
+    specs = {
+        job_key(language, case): language
+        for language in manifest["languages"]
+        for case in jobs(manifest)
+        if job_key(language, case) not in manifest["baseline_failures"]
+    }
+    expected = {
+        (language, process)
+        for language in manifest["languages"]
+        for process in range(manifest["processes"])
+    }
+    by_process = defaultdict(list)
+    for row in records:
+        if (
+            not isinstance(row, dict)
+            or row.get("key") not in specs
+            or type(row.get("process")) is not int
+        ):
+            raise ValueError("Invalid RSS sample identity")
+        identity = (specs[row["key"]], row["process"])
+        if identity not in expected:
+            raise ValueError("Unexpected RSS process")
+        for field in ("rss", "peak_rss"):
+            values = row.get(field)
+            if not (
+                isinstance(values, list)
+                and len(values) == 2
+                and all(number(value) and value <= limit * 1024**2 for value in values)
+            ):
+                raise ValueError(f"Missing or exceeded sample {field} bound")
+        if any(current > peak for current, peak in zip(row["rss"], row["peak_rss"], strict=True)):
+            raise ValueError("Current RSS exceeds recorded peak")
+        by_process[identity].append(row["rss"])
+    if set(by_process) != expected:
+        raise ValueError("RSS samples do not cover every paired process")
+    growth = []
+    for (language, process), values in sorted(by_process.items()):
+        delta = [values[-1][index] - values[0][index] for index in (0, 1)]
+        excess = delta[1] - delta[0]
+        if excess > tolerance * 1024**2:
+            raise ValueError(
+                f"Candidate RSS growth exceeds baseline and allowance for {language}/{process}"
+            )
+        growth.append(
+            dict(
+                language=language,
+                process=process,
+                first_rss=values[0],
+                last_rss=values[-1],
+                baseline_growth_bytes=delta[0],
+                candidate_growth_bytes=delta[1],
+                excess_candidate_growth_bytes=excess,
+            )
+        )
+    return growth
+
+
 def calibration_design(manifest):
     """Fields that must remain fixed between A/A and the decision runs."""
     fields = (

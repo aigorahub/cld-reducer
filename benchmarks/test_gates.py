@@ -291,6 +291,7 @@ def make_evidence(
         calibration_harness=harness,
         baseline_versions={language: version},
         baseline_failures=[],
+        baseline_failure_classes={},
         iterations={},
         gain_targets={},
     )
@@ -300,8 +301,11 @@ def make_evidence(
     manifest["gain_targets"] = {language + "|letter_minimum": keys[:10]}
     if baseline_failure:
         manifest["baseline_failures"] = [keys[-1]]
+        manifest["baseline_failure_classes"] = {keys[-1]: "solver_time_limit"}
     failure = dict(
-        ok=False, action="capture", error={"kind": "SolverError", "message": "Time limit reached"}
+        ok=False,
+        action="capture",
+        error={"kind": "SolverError", "message": "letter-minimum MILP failed: Time limit reached"},
     )
     directories = {
         name: tmp_path / name
@@ -455,6 +459,8 @@ def make_evidence(
             correct=True,
             baseline_ns=100 + process,
             candidate_ns=100 + process,
+            rss=[1024, 1024],
+            peak_rss=[1024, 1024],
         )
         for key in keys
         if key not in manifest["baseline_failures"]
@@ -832,7 +838,7 @@ def test_two_run_faults_fail_closed(tmp_path, fault):
             change_json(path / "metadata.json", lambda x: x.update(started_unix=1050))
         elif fault == "same-pid":
             change_json(
-                path / "metadata.json", lambda x: x["versions"][0].update(pids=[1000, 1001])
+                path / "metadata.json", lambda x: x["versions"][0].update(pids=[2002, 2003])
             )
         elif fault == "missing-process":
             change_json(path / "metadata.json", lambda x: x["versions"].pop())
@@ -1407,3 +1413,113 @@ def test_final_gate_requires_every_raw_process_receipt(tmp_path, stage):
     report = run_audit(manifest, directories)
     assert not report["pass"]
     assert any("receipt" in reason for reason in report["reasons"])
+
+
+def test_process_ids_can_repeat_in_a_later_independent_run(tmp_path):
+    manifest, directories = make_evidence(tmp_path, baseline_failure=True)
+    first, second = directories["run-1"], directories["run-2"]
+    source = json.loads((first / "metadata.json").read_text())
+    change_json(
+        second / "metadata.json",
+        lambda meta: meta.update(
+            versions=source["versions"], resource_processes=source["resource_processes"]
+        ),
+    )
+    source_results = [
+        json.loads(line) for line in (first / "results.jsonl").read_text().splitlines()
+    ]
+    write_rows(second / "results.jsonl", source_results)
+    for path in second.glob("*.resource.json"):
+        path.unlink()
+    for path in first.glob("*.resource.json"):
+        (second / path.name).write_bytes(path.read_bytes())
+    (second / "resources.jsonl").write_bytes((first / "resources.jsonl").read_bytes())
+    report = run_audit(manifest, directories)
+    assert report["pass"], report["reasons"]
+
+
+@pytest.mark.parametrize("fault", ["healthy", "arbitrary_external", "crash", "changed_class"])
+def test_excluded_solve_requires_a_real_matching_baseline_failure(tmp_path, fault):
+    manifest, directories = make_evidence(tmp_path, baseline_failure=True)
+    path = directories["baseline-capture"]
+    key = manifest["baseline_failures"][0]
+    rows = [json.loads(line) for line in (path / "vectors.jsonl").read_text().splitlines()]
+    row = next(row for row in rows if job_key(row["language"], row["case"]) == key)
+    if fault == "healthy":
+        row.pop("response")
+        row.update(result=result("blocked"), canonical={"selected": [1], "objective": 1})
+    else:
+        row["response"]["error"] = {
+            "arbitrary_external": {
+                "kind": "ExternalLimit",
+                "message": "some wall limit transport bug",
+            },
+            "crash": {"kind": "ExternalLimit", "message": "Driver exited -11"},
+            "changed_class": {
+                "kind": "ExternalLimit",
+                "message": "Driver external wall limit exceeded",
+            },
+        }[fault]
+    write_rows(path / "vectors.jsonl", rows)
+    manifest["baseline_capture_sha256"] = digest(rows)
+    bind_decision_manifest(manifest, directories)
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert any("solve" in reason.lower() for reason in report["reasons"])
+
+
+@pytest.mark.parametrize("fault", ["missing", "growth", "over_cap", "nonfinite"])
+def test_raw_calibration_must_pass_the_same_rss_gate(tmp_path, fault):
+    manifest, directories = make_evidence(tmp_path)
+    path = directories["calibration"]
+    rows = [json.loads(line) for line in (path / "samples.jsonl").read_text().splitlines()]
+    if fault == "missing":
+        rows[0].pop("rss")
+    elif fault == "growth":
+        rows[-1]["rss"] = rows[-1]["peak_rss"] = [1024, 1024 + 33 * 1024**2]
+    elif fault == "over_cap":
+        rows[-1]["rss"] = rows[-1]["peak_rss"] = [1024, 8193 * 1024**2]
+    else:
+        rows[0]["rss"][1] = float("nan")
+    write_rows(path / "samples.jsonl", rows)
+    # Bind the changed raw evidence so the resource check, not a stale hash,
+    # must reject it. Nonfinite evidence cannot be hashed in the first place.
+    if fault != "nonfinite":
+        bind_calibration_files(manifest, directories)
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert any(
+        "RSS" in reason or "rss" in reason or "Nonfinite" in reason for reason in report["reasons"]
+    )
+
+
+def test_candidate_cannot_change_a_frozen_solve_resource_class(tmp_path):
+    manifest, directories = make_evidence(tmp_path, baseline_failure=True)
+    key = manifest["baseline_failures"][0]
+    changed = {
+        "kind": "SolverError",
+        "message": "maximal clique enumeration exceeded max_cliques=10000; "
+        "increase max_cliques or pass None to disable the cap",
+    }
+    change_rows(
+        directories["candidate-capture"] / "vectors.jsonl",
+        lambda rows: next(row for row in rows if job_key(row["language"], row["case"]) == key)[
+            "response"
+        ].update(error=changed),
+    )
+    change_rows(
+        directories["candidate-profiles"] / "profiles.jsonl",
+        lambda rows: next(row for row in rows if row["key"] == key)["response"].update(
+            error=changed
+        ),
+    )
+    for name in ("run-1", "run-2"):
+        change_rows(
+            directories[name] / "results.jsonl",
+            lambda rows: next(row for row in rows if row["key"] == key)["responses"][1].update(
+                error=changed
+            ),
+        )
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert any("failure class changed" in reason for reason in report["reasons"])

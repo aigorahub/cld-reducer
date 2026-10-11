@@ -12,7 +12,7 @@ import time
 from contextlib import ExitStack
 from pathlib import Path
 
-from analysis import analyze, same_javascript_tools, select_gain_targets, valid_source
+from analysis import analyze, rss_growth, same_javascript_tools, select_gain_targets, valid_source
 from cases import frozen_manifest, job_key, jobs
 from common import (
     ROOT,
@@ -29,6 +29,11 @@ from common import (
 from profile_outcomes import freeze_preprocess_failures, validate_preprocess_outcomes
 from profile_settings import validate_solver_settings
 from resource_evidence import closed_response, record_driver, validate_resources
+from solve_outcomes import (
+    validate_calibration_failures,
+    validate_solve_captures,
+    validate_solve_profiles,
+)
 
 
 def read(path):
@@ -660,6 +665,7 @@ def freeze(args):
         metadata["source_before"]["baseline"]
     ):
         raise ValueError("Pilot source differs from the calibrated baseline")
+    rss_growth(calibration_manifest, samples)
     profile_meta = read(Path(args.profiles) / "metadata.json")
     if (
         not profile_meta["complete"]
@@ -734,16 +740,20 @@ def freeze(args):
     captures_data = [
         json.loads(line) for line in (Path(args.capture) / "vectors.jsonl").read_text().splitlines()
     ]
+    baseline_failure_classes = validate_solve_captures(m, captures_data)
+    validate_solve_profiles(m, rows, baseline_failure_classes)
+    calibration_results = [
+        json.loads(line)
+        for line in (Path(args.calibration) / "results.jsonl").read_text().splitlines()
+    ]
+    validate_calibration_failures(m, calibration_results, baseline_failure_classes)
     profile_resources = validate_resources(args.profiles, m, profile_meta, rows, "profiles")
     capture_resources = validate_resources(args.capture, m, capture_meta, captures_data, "capture")
     calibration_resources = validate_resources(
         args.calibration,
         m,
         metadata,
-        [
-            json.loads(line)
-            for line in (Path(args.calibration) / "results.jsonl").read_text().splitlines()
-        ],
+        calibration_results,
         "compare",
     )
 
@@ -774,6 +784,7 @@ def freeze(args):
     m["calibration_samples_sha256"] = digest(samples)
     m["calibration_harness"] = metadata["harness"]
     m["baseline_capture_sha256"] = digest(captures_data)
+    m["baseline_failure_classes"] = baseline_failure_classes
     m["profile_resource_sha256"] = profile_resources["sha256"]
     m["baseline_capture_resource_sha256"] = capture_resources["sha256"]
     m["calibration_resource_sha256"] = calibration_resources["sha256"]

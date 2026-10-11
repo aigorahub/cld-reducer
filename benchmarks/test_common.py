@@ -324,7 +324,7 @@ def test_version_identity_drops_load_times_and_source_but_binds_dependencies(lan
     assert version_identity(version)["timer"] == {
         key: value for key, value in version["timer"].items() if key != "resolution_ns"
     }
-    for field in ("runtime", "package_version", "dependencies", "solver", "settings", "timer"):
+    for field in ("runtime", "dependencies", "solver", "settings", "timer"):
         changed = copy.deepcopy(other)
         changed[field] = "changed"
         assert version_identity(version) != version_identity(changed)
@@ -773,3 +773,28 @@ def test_bad_requests_close_transport(tmp_path, monkeypatch, value, timeout):
     with pytest.raises(DriverError):
         driver.request(value, timeout)
     assert_closed(driver)
+
+
+@pytest.mark.parametrize(
+    "field,baseline,candidate",
+    [
+        ("package", "0.3.0", "0.4.0"),
+        ("package_version", "0.3.0", "0.4.0"),
+        (
+            "package",
+            {"name": "cldreducer", "version": "0.3.0"},
+            {"name": "cldreducer", "version": "0.4.0"},
+        ),
+    ],
+)
+def test_reducer_release_version_is_recorded_but_not_a_dependency(field, baseline, candidate):
+    before = {field: baseline, "dependencies": {"highs": "1.15.1"}, "runtime": "3.13"}
+    after = dict(copy.deepcopy(before), **{field: candidate})
+    assert version_identity(before) == version_identity(after)
+    assert before[field] == baseline and after[field] == candidate
+    after["dependencies"]["highs"] = "1.15.2"
+    assert version_identity(before) != version_identity(after)
+    if isinstance(candidate, dict):
+        after = copy.deepcopy(before)
+        after[field]["name"] = "another-package"
+        assert version_identity(before) != version_identity(after)
