@@ -20,9 +20,42 @@ recorded_driver_hashes = gates._driver_hashes
 recorded_measurement_hashes = gates._measurement_hashes
 
 
+def synthetic_code_hashes(languages):
+    return {
+        **{gates.DRIVERS[language]: digest(language) for language in languages},
+        **{
+            name: digest(name)
+            for name in gates.MEASUREMENT_FILES + gates.LIFECYCLE_FILES + gates.VALIDATION_FILES
+        },
+    }
+
+
+def mock_freeze_code(monkeypatch, harness=None):
+    import run
+
+    harness = harness or dict(
+        path="/freezing-harness",
+        head="c" * 40,
+        tree="f" * 40,
+        status="",
+        build_files={},
+        lock_files={},
+    )
+    monkeypatch.setattr(run, "source_binding", lambda *_, **__: copy.deepcopy(harness))
+    monkeypatch.setattr(
+        gates,
+        "_driver_hashes",
+        lambda _, languages: {gates.DRIVERS[language]: digest(language) for language in languages},
+    )
+    monkeypatch.setattr(
+        gates, "acceptance_hashes", lambda _, languages: synthetic_code_hashes(languages)
+    )
+
+
 @pytest.fixture(autouse=True)
 def synthetic_driver_source(monkeypatch):
     # Other tests use synthetic source commits. Exercise Git lookup separately.
+    mock_freeze_code(monkeypatch)
     monkeypatch.setattr(
         gates,
         "_driver_hashes",
@@ -35,11 +68,16 @@ def synthetic_driver_source(monkeypatch):
         "_measurement_hashes",
         lambda binding, languages: {
             **gates._driver_hashes(binding, languages),
-            **{
-                name: digest(name)
-                for name in ("benchmarks/run.py", "benchmarks/common.py", "benchmarks/analysis.py")
-            },
-            "benchmarks/process_guard.py": None,
+            **{name: digest(name) for name in gates.MEASUREMENT_FILES + gates.LIFECYCLE_FILES},
+        },
+    )
+
+    monkeypatch.setattr(
+        gates,
+        "acceptance_hashes",
+        lambda binding, languages: {
+            **gates._measurement_hashes(binding, languages),
+            **{name: digest(name) for name in gates.VALIDATION_FILES},
         },
     )
 
@@ -306,6 +344,8 @@ def make_evidence(
         baseline_source=base_source,
         pilot_source=copy.deepcopy(base_source),
         calibration_harness=harness,
+        freeze_harness=harness,
+        acceptance_code_sha256=synthetic_code_hashes([language]),
         baseline_versions={language: version},
         baseline_failures=[],
         baseline_failure_classes={},
@@ -1476,6 +1516,7 @@ def test_gate_requires_calibration_harness(tmp_path, fault):
         "benchmarks/run.py",
         "benchmarks/common.py",
         "benchmarks/analysis.py",
+        "benchmarks/cases.py",
         "benchmarks/process_guard.py",
         "benchmarks/resource_evidence.py",
     ],
@@ -1516,7 +1557,7 @@ def test_recorded_measurement_hashes_bind_optional_helper_presence(tmp_path, mon
     git("init", "-q")
     git("config", "user.name", "Test")
     git("config", "user.email", "test@example.invalid")
-    required = ("run.py", "common.py", "analysis.py", "python_driver.py")
+    required = ("run.py", "common.py", "analysis.py", "cases.py", "python_driver.py")
     for name in required:
         file = tmp_path / "benchmarks" / name
         file.parent.mkdir(exist_ok=True)
@@ -1816,3 +1857,100 @@ def test_audit_binds_raw_pilot_even_when_selection_is_unchanged(tmp_path):
     report = run_audit(manifest, directories)
     assert not report["pass"]
     assert "Pilot evidence differs from the frozen evidence" in report["reasons"]
+
+
+@pytest.mark.parametrize(
+    "fault", ["missing_hashes", "altered_hashes", "calibration_code", "freeze_code"]
+)
+def test_audit_checks_frozen_acceptance_code_again(tmp_path, monkeypatch, fault):
+    manifest, directories = make_evidence(tmp_path)
+    if fault == "missing_hashes":
+        manifest.pop("acceptance_code_sha256")
+    elif fault == "altered_hashes":
+        manifest["acceptance_code_sha256"]["benchmarks/profile_settings.py"] = "9" * 64
+    else:
+        original = gates.acceptance_hashes
+        changed_head = "9" * 40
+        if fault == "freeze_code":
+            manifest["freeze_harness"] = dict(manifest["freeze_harness"], head=changed_head)
+        else:
+            manifest["calibration_harness"] = dict(
+                manifest["calibration_harness"], head=changed_head
+            )
+
+        def altered(binding, languages):
+            values = original(binding, languages)
+            if binding["head"] == changed_head:
+                values["benchmarks/gates.py"] = "9" * 64
+            return values
+
+        monkeypatch.setattr(gates, "acceptance_hashes", altered)
+    bind_decision_manifest(manifest, directories)
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert any("acceptance code differs from frozen code" in r for r in report["reasons"])
+
+
+def test_freeze_rejects_code_change_before_it_saves_decision(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import run
+
+    _, directories = make_evidence(tmp_path)
+    calibration = directories["calibration"]
+    design = json.loads((calibration / "manifest.json").read_text())
+    monkeypatch.setattr(run, "load_manifest", lambda _: copy.deepcopy(design))
+    harness = json.loads((calibration / "metadata.json").read_text())["harness"]
+    observed = iter((harness, dict(harness, head="9" * 40)))
+    monkeypatch.setattr(run, "source_binding", lambda _: next(observed))
+    args = SimpleNamespace(
+        manifest="unused",
+        calibration=calibration,
+        pilot=directories["pilot"],
+        profiles=directories["baseline-profiles"],
+        capture=directories["baseline-capture"],
+        output=tmp_path / "frozen.json",
+    )
+    with pytest.raises(ValueError, match="Freezing harness changed"):
+        run.freeze(args)
+    assert not args.output.exists()
+
+
+@pytest.mark.parametrize("stage", ["profiles", "capture"])
+@pytest.mark.parametrize("fault", ["machine", "driver"])
+def test_freeze_checks_stage_context_before_candidate_timing(tmp_path, monkeypatch, stage, fault):
+    from types import SimpleNamespace
+
+    import run
+
+    _, directories = make_evidence(tmp_path)
+    calibration = directories["calibration"]
+    design = json.loads((calibration / "manifest.json").read_text())
+    monkeypatch.setattr(run, "load_manifest", lambda _: copy.deepcopy(design))
+    directory = directories["baseline-" + stage]
+    if fault == "machine":
+        change_json(
+            directory / "metadata.json", lambda meta: meta["machine"].update(machine="different")
+        )
+    else:
+        change_json(directory / "metadata.json", lambda meta: change_harness_head(meta, "9" * 40))
+        original = gates._driver_hashes
+
+        def altered(binding, languages):
+            hashes = original(binding, languages)
+            if binding["head"] == "9" * 40:
+                hashes[gates.DRIVERS[languages[0]]] = "9" * 64
+            return hashes
+
+        monkeypatch.setattr(gates, "_driver_hashes", altered)
+    args = SimpleNamespace(
+        manifest="unused",
+        calibration=calibration,
+        pilot=directories["pilot"],
+        profiles=directories["baseline-profiles"],
+        capture=directories["baseline-capture"],
+        output=tmp_path / "frozen.json",
+    )
+    with pytest.raises(ValueError, match="context differs from calibration.*differs"):
+        run.freeze(args)
+    assert not args.output.exists()

@@ -42,6 +42,20 @@ DRIVERS = {
     "r": "benchmarks/r_driver.R",
     "js": "benchmarks/js_driver.mjs",
 }
+MEASUREMENT_FILES = (
+    "benchmarks/run.py",
+    "benchmarks/common.py",
+    "benchmarks/analysis.py",
+    "benchmarks/cases.py",
+)
+LIFECYCLE_FILES = ("benchmarks/process_guard.py", "benchmarks/resource_evidence.py")
+VALIDATION_FILES = (
+    "benchmarks/gates.py",
+    "benchmarks/solve_outcomes.py",
+    "benchmarks/profile_outcomes.py",
+    "benchmarks/profile_settings.py",
+    "benchmarks/pilot_evidence.py",
+)
 
 
 def _object(pairs):
@@ -285,11 +299,14 @@ def _fixture_inventory(metadata):
 
 
 def _driver_hashes(binding, languages):
+    return _source_hashes(binding, [DRIVERS[language] for language in languages])
+
+
+def _source_hashes(binding, filenames):
     if not valid_source(binding):
         raise ValueError("Invalid recorded harness source binding")
     hashes = {}
-    for language in languages:
-        filename = DRIVERS[language]
+    for filename in filenames:
         try:
             raw = subprocess.check_output(
                 ["git", "-C", binding["path"], "show", f"{binding['head']}:{filename}"],
@@ -297,7 +314,7 @@ def _driver_hashes(binding, languages):
             )
         except subprocess.CalledProcessError as error:
             raise ValueError(
-                f"Recorded driver source is unavailable: {binding['head']}:{filename}"
+                f"Recorded harness source is unavailable: {binding['head']}:{filename}"
             ) from error
         hashes[filename] = hashlib.sha256(raw).hexdigest()
     return hashes
@@ -306,8 +323,6 @@ def _driver_hashes(binding, languages):
 def _measurement_hashes(binding, languages):
     """Bind measured code to calibration, including process lifecycle helpers."""
     hashes = _driver_hashes(binding, languages)
-    required = ("benchmarks/run.py", "benchmarks/common.py", "benchmarks/analysis.py")
-    optional = ("benchmarks/process_guard.py", "benchmarks/resource_evidence.py")
     try:
         present = subprocess.check_output(
             [
@@ -318,23 +333,54 @@ def _measurement_hashes(binding, languages):
                 "--name-only",
                 binding["head"],
                 "--",
-                *optional,
+                *LIFECYCLE_FILES,
             ],
             stderr=subprocess.DEVNULL,
             text=True,
         ).splitlines()
-        hashes.update(dict.fromkeys(optional))
-        for filename in required + tuple(present):
-            raw = subprocess.check_output(
-                ["git", "-C", binding["path"], "show", f"{binding['head']}:{filename}"],
-                stderr=subprocess.DEVNULL,
-            )
-            hashes[filename] = hashlib.sha256(raw).hexdigest()
+        hashes.update(dict.fromkeys(LIFECYCLE_FILES))
+        hashes.update(_source_hashes(binding, MEASUREMENT_FILES + tuple(present)))
     except subprocess.CalledProcessError as error:
         raise ValueError(
             f"Recorded measurement source is unavailable: {binding['head']}"
         ) from error
     return hashes
+
+
+def acceptance_hashes(binding, languages):
+    """Read the complete measurement and decision code from clean Git source.
+
+    These hashes come from Git blobs, never supplied metadata hash fields.
+    Commits outside this inventory may differ without changing the decision.
+    """
+    hashes = _measurement_hashes(binding, languages)
+    if any(value is None for value in hashes.values()):
+        raise ValueError("Acceptance code lacks a required process lifecycle helper")
+    hashes.update(_source_hashes(binding, VALIDATION_FILES))
+    return hashes
+
+
+def context_errors(metadata, machine, driver_hashes, languages):
+    """Use the same machine and language driver checks at freeze and audit."""
+    errors = []
+    if not isinstance(machine, dict) or not machine:
+        errors.append("Missing machine identity")
+    if metadata.get("machine") != machine:
+        errors.append("machine differs")
+    harness = metadata.get("harness")
+    if not valid_source(harness):
+        errors.append("invalid harness binding")
+    if metadata.get("harness_after") != harness:
+        errors.append("harness changed during collection")
+    if valid_source(harness):
+        observed = _driver_hashes(harness, languages)
+        if observed != driver_hashes:
+            errors.append("language driver source differs")
+        if "driver_sha256" in metadata and any(
+            metadata["driver_sha256"].get(name) != value for name, value in observed.items()
+        ):
+            errors.append("recorded driver hashes differ")
+    return errors
 
 
 def audit(
@@ -520,6 +566,15 @@ def audit(
             == common.source_identity(calibration_harness),
             "Calibration harness differs from the frozen binding",
         )
+        for label, code_binding in (
+            ("Calibration", calibration_harness),
+            ("Freezing", manifest.get("freeze_harness")),
+        ):
+            require(
+                acceptance_hashes(code_binding, languages)
+                == manifest.get("acceptance_code_sha256"),
+                f"{label} acceptance code differs from frozen code",
+            )
         calibration_start, calibration_finish = (
             calibration_metadata.get("started_unix"),
             calibration_metadata.get("finished_unix"),
@@ -725,22 +780,8 @@ def audit(
         require(isinstance(machine, dict) and bool(machine), "Missing machine identity")
 
         def context(metadata, label):
-            require(metadata.get("machine") == machine, f"{label}: machine differs")
-            require(valid_source(metadata.get("harness")), f"{label}: invalid harness binding")
-            require(
-                metadata.get("harness_after") == metadata.get("harness"),
-                f"{label}: harness changed during collection",
-            )
-            observed_drivers = _driver_hashes(metadata.get("harness"), languages)
-            require(observed_drivers == driver_hashes, f"{label}: language driver source differs")
-            if "driver_sha256" in metadata:
-                require(
-                    all(
-                        metadata["driver_sha256"].get(name) == value
-                        for name, value in observed_drivers.items()
-                    ),
-                    f"{label}: recorded driver hashes differ",
-                )
+            for error in context_errors(metadata, machine, driver_hashes, languages):
+                require(False, f"{label}: {error}")
 
         context(capture_meta["baseline"], "baseline capture")
         context(capture_meta["candidate"], "candidate capture")

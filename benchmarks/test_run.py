@@ -8,7 +8,12 @@ from types import SimpleNamespace
 import pytest
 import run
 from cases import frozen_manifest, job_key, jobs
-from test_gates import preprocess_response, solver_observations
+from test_gates import (
+    mock_freeze_code,
+    preprocess_response,
+    solver_observations,
+    synthetic_code_hashes,
+)
 from test_pilot_evidence import write_pilot_fixture
 from test_profile_settings import sample as settings_sample
 from test_resource_evidence import write_resource_fixture
@@ -246,6 +251,7 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
         }
     }
     harness = dict(copy.deepcopy(baseline), path="/harness", head="e" * 40)
+    mock_freeze_code(monkeypatch, harness)
     manifest["pilot_harness"] = copy.deepcopy(harness)
     manifest["iterations"] = {job_key("js", case): 1 for case in jobs(manifest)}
     calibration = tmp_path / "calibration"
@@ -254,6 +260,7 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
         calibration / "metadata.json",
         {
             "kind": "calibration",
+            "machine": {"test": True},
             "source_before": {"baseline": baseline, "candidate": baseline},
             "versions": [
                 {"language": "js", "process": process, "pids": [2 * process + 1, 2 * process + 2]}
@@ -363,6 +370,7 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
     ]
     metadata = {
         "complete": True,
+        "machine": {"test": True},
         "source": baseline,
         "source_after": baseline,
         "input_sha256": run.input_digest(manifest),
@@ -414,6 +422,8 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
     frozen = run.read(output)
     assert frozen["frozen"] is True
     assert frozen["calibration_harness"] == harness
+    assert frozen["freeze_harness"] == harness
+    assert frozen["acceptance_code_sha256"] == synthetic_code_hashes(manifest["languages"])
     assert frozen["baseline_source"] == baseline
     assert frozen["calibration_manifest_sha256"] == run.digest(manifest)
     assert frozen["calibration_samples_sha256"] == run.digest(calibration_samples)
@@ -860,7 +870,18 @@ def test_final_audit_binds_its_own_clean_executing_harness(tmp_path, monkeypatch
     monkeypatch.setattr(
         run, "source_binding", lambda path: (checks.append(path), next(observed))[1]
     )
-    monkeypatch.setattr(run, "load_manifest", lambda _: {"baseline_source": {"head": "a" * 40}})
+    monkeypatch.setattr(
+        run,
+        "load_manifest",
+        lambda _: {
+            "baseline_source": {"head": "a" * 40},
+            "languages": ["python"],
+            "acceptance_code_sha256": synthetic_code_hashes(["python"]),
+        },
+    )
+    monkeypatch.setattr(
+        gates, "acceptance_hashes", lambda _, languages: synthetic_code_hashes(languages)
+    )
     audits = []
 
     def audit(*args):

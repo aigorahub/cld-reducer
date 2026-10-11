@@ -513,6 +513,8 @@ def pilot(args):
 
 
 def compare(args):
+    from gates import acceptance_hashes
+
     m, out = load_manifest(args.manifest), output_dir(args.output)
     if args.kind == "candidate" and not m["frozen"]:
         raise ValueError("Candidate timing requires a frozen manifest")
@@ -538,11 +540,18 @@ def compare(args):
         m["baseline_failures"]
     ):
         raise ValueError("Iteration counts do not cover the timed case set")
+    harness = source_binding(ROOT)
+    if not valid_source(harness):
+        raise ValueError("Measurement harness must have a valid clean source binding")
+    if args.kind == "candidate" and acceptance_hashes(harness, m["languages"]) != m.get(
+        "acceptance_code_sha256"
+    ):
+        raise ValueError("Executing measurement or acceptance code differs from frozen code")
     meta = {
         "manifest_sha256": digest(m),
         "input_sha256": input_digest(m),
         "source_before": before,
-        "harness": source_binding(ROOT),
+        "harness": harness,
         "complete": False,
         "kind": args.kind,
         "run_id": args.run_id,
@@ -683,6 +692,8 @@ def compare(args):
 
 
 def freeze(args):
+    from gates import _driver_hashes, acceptance_hashes, context_errors
+
     m = load_manifest(args.manifest)
     if m["frozen"]:
         raise ValueError("Manifest is already frozen")
@@ -690,6 +701,28 @@ def freeze(args):
     if calibration_manifest.get("frozen") is not False or digest(calibration_manifest) != digest(m):
         raise ValueError("Calibration must contain this exact pre-freeze manifest")
     metadata = read(Path(args.calibration) / "metadata.json")
+    if not valid_source(
+        m.get("pilot_source"), require_js="js" in m["languages"]
+    ) or source_identity(m["pilot_source"]) != source_identity(
+        metadata["source_before"]["baseline"]
+    ):
+        raise ValueError("Pilot source differs from the calibrated baseline")
+    freeze_harness = source_binding(ROOT)
+    if not valid_source(freeze_harness):
+        raise ValueError("Freezing harness must have a valid clean source binding")
+    code_hashes = acceptance_hashes(freeze_harness, m["languages"])
+    if code_hashes != acceptance_hashes(metadata.get("harness"), m["languages"]):
+        raise ValueError("Executing acceptance code differs from calibration")
+    driver_hashes = _driver_hashes(metadata["harness"], m["languages"])
+
+    def context(stage_metadata, label):
+        errors = context_errors(
+            stage_metadata, metadata.get("machine"), driver_hashes, m["languages"]
+        )
+        if errors:
+            raise ValueError(f"{label} context differs from calibration: {'; '.join(errors)}")
+
+    context(metadata, "Calibration")
     samples = [
         json.loads(line)
         for line in (Path(args.calibration) / "samples.jsonl").read_text().splitlines()
@@ -701,14 +734,9 @@ def freeze(args):
         or metadata["kind"] != "calibration"
     ):
         raise ValueError("A/A calibration must pass for this exact manifest")
-    if not valid_source(
-        m.get("pilot_source"), require_js="js" in m["languages"]
-    ) or source_identity(m["pilot_source"]) != source_identity(
-        metadata["source_before"]["baseline"]
-    ):
-        raise ValueError("Pilot source differs from the calibrated baseline")
     rss_growth(calibration_manifest, samples)
     profile_meta = read(Path(args.profiles) / "metadata.json")
+    context(profile_meta, "Profile")
     if (
         not profile_meta["complete"]
         or not valid_source(profile_meta.get("harness"))
@@ -771,6 +799,7 @@ def freeze(args):
         ):
             raise ValueError("Profile dependency versions differ")
     capture_meta = read(Path(args.capture) / "metadata.json")
+    context(capture_meta, "Capture")
     if (
         not capture_meta.get("complete")
         or not valid_source(capture_meta.get("harness"))
@@ -798,6 +827,7 @@ def freeze(args):
     validate_calibration_failures(m, calibration_results, baseline_failure_classes)
     validate_comparison_results(m, calibration_results, samples, captures_data)
     pilot_evidence = validate_pilot(args.pilot, m, captures_data, baseline_failure_classes)
+    context(pilot_evidence["metadata"], "Pilot")
     profile_resources = validate_resources(args.profiles, m, profile_meta, rows, "profiles")
     capture_resources = validate_resources(args.capture, m, capture_meta, captures_data, "capture")
     calibration_resources = validate_resources(
@@ -843,18 +873,26 @@ def freeze(args):
     m["baseline_capture_resource_sha256"] = capture_resources["sha256"]
     m["calibration_resource_sha256"] = calibration_resources["sha256"]
     m["baseline_source"] = metadata["source_before"]["baseline"]
+    if source_binding(ROOT) != freeze_harness:
+        raise ValueError("Freezing harness changed during validation")
+    m["freeze_harness"] = freeze_harness
+    m["acceptance_code_sha256"] = code_hashes
     m["frozen"] = True
     save_artifact(args.output, m)
 
 
 def final_audit(args):
-    from gates import audit
+    from gates import acceptance_hashes, audit
 
     audit_harness = source_binding(ROOT)
     if not valid_source(audit_harness):
         raise ValueError("Audit harness must have a valid clean source binding")
+    manifest = load_manifest(args.manifest)
+    code_hashes = acceptance_hashes(audit_harness, manifest["languages"])
+    if code_hashes != manifest.get("acceptance_code_sha256"):
+        raise ValueError("Executing analysis or validation code differs from frozen code")
     report = audit(
-        load_manifest(args.manifest),
+        manifest,
         args.runs,
         args.baseline_capture,
         args.candidate_capture,
@@ -864,6 +902,7 @@ def final_audit(args):
         args.pilot,
     )
     report["audit_harness"] = audit_harness
+    report["acceptance_code_sha256"] = code_hashes
     report["audit_harness_after"] = source_binding(ROOT)
     if report["audit_harness_after"] != audit_harness:
         report["pass"] = False

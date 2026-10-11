@@ -545,7 +545,9 @@ def test_context_records_receipt_and_keeps_original_body_error(tmp_path, monkeyp
 def test_freeze_requires_baseline_profile_capture_and_calibration_receipts(
     tmp_path, monkeypatch, missing
 ):
-    from test_gates import make_evidence
+    from test_gates import make_evidence, mock_freeze_code
+
+    mock_freeze_code(monkeypatch)
 
     _, directories = make_evidence(tmp_path)
     manifest = json.loads((directories["calibration"] / "manifest.json").read_text())

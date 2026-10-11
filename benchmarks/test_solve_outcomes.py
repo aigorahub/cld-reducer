@@ -222,8 +222,9 @@ def test_shared_rss_gate_rejects_faults(fault):
 
 @pytest.mark.parametrize("fault", ["capture_healthy", "capture_crash", "calibration_growth"])
 def test_freeze_rejects_unstable_failures_and_bad_calibration_memory(tmp_path, monkeypatch, fault):
-    from test_gates import make_evidence, write_rows
+    from test_gates import make_evidence, mock_freeze_code, write_rows
 
+    mock_freeze_code(monkeypatch)
     manifest, directories = make_evidence(tmp_path, baseline_failure=True)
     path = directories["calibration"]
     design = json.loads((path / "manifest.json").read_text())
