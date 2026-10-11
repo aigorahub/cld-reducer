@@ -299,6 +299,8 @@ def test_version_identity_drops_load_times_and_source_but_binds_dependencies(lan
         "settings": {"presolve": "on", "threads": 1, "time_limit_ns": 5000},
         "timer": {
             "resolution_ns": 1,
+            "warnings": [],
+            "absolute_accuracy_calibrated": False,
             "name": "clock",
             "fallback": False,
             "monotonic": True,
@@ -319,11 +321,17 @@ def test_version_identity_drops_load_times_and_source_but_binds_dependencies(lan
         repo="/after",
     )
     other["timer"]["resolution_ns"] = 20
+    other["timer"]["warnings"] = ["clock warning"]
     assert version_identity(version) == version_identity(other)
     assert version_identity(version)["settings"] == version["settings"]
     assert version_identity(version)["timer"] == {
-        key: value for key, value in version["timer"].items() if key != "resolution_ns"
+        key: value
+        for key, value in version["timer"].items()
+        if key not in {"resolution_ns", "warnings"}
     }
+    changed = copy.deepcopy(other)
+    changed["timer"]["absolute_accuracy_calibrated"] = True
+    assert version_identity(version) != version_identity(changed)
     for field in ("runtime", "dependencies", "solver", "settings", "timer"):
         changed = copy.deepcopy(other)
         changed[field] = "changed"
@@ -486,6 +494,19 @@ for line in sys.stdin:
     assert driver.memory_receipt["guard_pid"] == driver.process.pid
     assert driver.memory_receipt["child_pid"] != driver.process.pid
     assert driver.peak_rss >= driver.memory_receipt["peak_rss_bytes"] > 0
+
+
+def test_close_allows_bounded_healthy_shutdown_after_eof(tmp_path, monkeypatch):
+    source = """import json,sys,time
+for line in sys.stdin:
+    print(json.dumps({'ok':True,'action':'version'}),flush=True)
+time.sleep(0.8)
+"""
+    with fake_driver(tmp_path, monkeypatch, source) as driver:
+        assert driver.request({"action": "version"})["ok"]
+    assert_closed(driver)
+    assert driver.resource_error is None
+    assert driver.memory_receipt["exitstatus"] == 0
 
 
 @pytest.mark.parametrize("memory_mb", [48, 128])

@@ -293,10 +293,12 @@ def version_identity(version):
         # Python reports its own version as a string; R reports name/version.
         identity.pop("package", None)
     if isinstance(identity.get("timer"), dict):
-        # R observes clock resolution in every fresh process. Its clock name,
-        # method, monotonic flag and fallback status are stable provenance.
+        # R observes clock resolution and warnings in every fresh process.
+        # Keep the clock, accuracy, method and fallback descriptions bound.
         identity["timer"] = {
-            key: value for key, value in identity["timer"].items() if key != "resolution_ns"
+            key: value
+            for key, value in identity["timer"].items()
+            if key not in {"resolution_ns", "warnings"}
         }
     return identity
 
@@ -524,7 +526,7 @@ class Driver:
                     with suppress(OSError, ValueError):
                         self.process.stdin.close()
                 try:
-                    self.process.wait(timeout=0.5)
+                    self.process.wait(timeout=2)
                 except subprocess.TimeoutExpired:
                     with suppress(ProcessLookupError):
                         os.killpg(self.process.pid, signal.SIGTERM)
