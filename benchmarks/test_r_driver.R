@@ -7,6 +7,7 @@ driver <- bench_driver(repo)
 handle <- driver$handle
 version <- handle(list(action = "version"))
 stopifnot(version$ok, identical(version$settings$presolve, "off"),
+          identical(version$settings_kind, "declared_contract"),
           version$module_load_ns >= 0, version$solver_load_ns >= 0,
           isTRUE(version$timer$monotonic), version$timer$resolution_ns > 0)
 runtime <- driver$state$runtime
@@ -48,6 +49,79 @@ stopifnot(identical(measure$result, capture$result), identical(measure$result, p
           profile$phases_ns$final_validation <= profile$profile_notes$render_result_total_ns,
           grepl("^[a-f0-9]{64}$", profile$profile_notes$temporary_patch$sha256),
           profile$metrics$solver_counters$available)
+settings <- profile$metrics$solver_settings
+stopifnot(settings$available, length(settings$records) == profile$metrics$solve_count,
+          identical(settings$excluded_from_stable_comparison, list("time_limit")),
+          identical(settings$records[[1L]]$solve, 1L),
+          identical(settings$records[[1L]]$values$presolve, "off"),
+          identical(settings$records[[1L]]$values$parallel, "off"),
+          settings$records[[1L]]$values$mip_rel_gap == 0,
+          settings$records[[1L]]$values$mip_abs_gap == 0,
+          settings$records[[1L]]$values$primal_feasibility_tolerance == 1e-9,
+          settings$records[[1L]]$values$mip_feasibility_tolerance == 1e-9,
+          settings$records[[1L]]$values$r_global_threads == get("get_number_of_threads", highs)(),
+          is.numeric(settings$records[[1L]]$values$threads),
+          !"time_limit" %in% names(settings$records[[1L]]$values),
+          identical(settings$records[[1L]]$excluded_values$time_limit, "Inf"),
+          !preprocess$metrics$solver_settings$available,
+          !length(preprocess$metrics$solver_settings$records))
+overhead <- profile$profile_notes$full_call_overhead
+stopifnot(overhead$reference_ns >= 0,
+          overhead$instrumented_ns == profile$phases_ns$total,
+          overhead$instrumented_minus_reference_ns == profile$phases_ns$total - overhead$reference_ns,
+          overhead$ratio == profile$phases_ns$total / overhead$reference_ns,
+          overhead$uninstrumented_calls == 1L)
+unchanged(runtime, original_runtime)
+unchanged(highs, original_highs)
+
+# Read native values independently. The package global setting and native option
+# are separate observations; neither is copied from the version declaration.
+real_native_run <- get("solver_run", highs)
+native_threads <- NULL
+unlockBinding("solver_run", highs)
+assign("solver_run", function(solver) {
+  native_threads <<- highs::hi_solver_get_int_option(solver, "threads")
+  real_native_run(solver)
+}, highs)
+lockBinding("solver_run", highs)
+stopifnot(request("measure", iterations = 1L)$ok,
+          identical(settings$records[[1L]]$values$threads, native_threads))
+unlockBinding("solver_run", highs)
+assign("solver_run", real_native_run, highs)
+lockBinding("solver_run", highs)
+
+# Changing actual production setup must be visible even if version stays fixed.
+production_lp <- runtime$solve_lp
+mutated_lp <- production_lp
+source_text <- paste(deparse(body(mutated_lp)), collapse = "\n")
+stopifnot(grepl("mip_rel_gap = 0", source_text, fixed = TRUE))
+body(mutated_lp) <- parse(text = sub("mip_rel_gap = 0", "mip_rel_gap = 0.025",
+                                   source_text, fixed = TRUE))[[1L]]
+runtime$solve_lp <- mutated_lp
+mutated_profile <- request("profile")
+stopifnot(mutated_profile$ok, mutated_profile$metrics$solver_settings$available,
+          mutated_profile$metrics$solver_settings$records[[1L]]$values$mip_rel_gap == 0.025,
+          handle(list(action = "version"))$settings$mip_rel_gap == 0,
+          identical(runtime$solve_lp, mutated_lp))
+runtime$solve_lp <- production_lp
+
+# Native option getters are profiling hooks only. Capture, measure and version
+# must work when observations are unavailable. Failed profile reads must restore.
+getter <- get("hi_solver_get_str_option", highs)
+unlockBinding("hi_solver_get_str_option", highs)
+assign("hi_solver_get_str_option", function(...) stop("injected getter failure"), highs)
+lockBinding("hi_solver_get_str_option", highs)
+before_getter_failure <- snapshot(highs)
+for (action in c("measure", "capture", "preprocess", "version")) {
+  stopifnot(request(action, iterations = 1L)$ok)
+}
+missing_settings <- request("profile")
+stopifnot(missing_settings$ok, !missing_settings$metrics$solver_settings$available,
+          length(missing_settings$metrics$solver_settings$errors) == missing_settings$metrics$solve_count)
+unchanged(highs, before_getter_failure)
+unlockBinding("hi_solver_get_str_option", highs)
+assign("hi_solver_get_str_option", getter, highs)
+lockBinding("hi_solver_get_str_option", highs)
 unchanged(runtime, original_runtime)
 unchanged(highs, original_highs)
 
@@ -102,6 +176,18 @@ stopifnot(trial_profile$ok, trial_profile$metrics$canonical_feasible_trials > 0,
           trial_profile$phases_ns$canonical_trials == trial_profile$metrics$canonical_feasible_trials_ns +
             trial_profile$metrics$canonical_infeasible_trials_ns,
           identical(trial_profile$canonical, request("capture", trial_case)$canonical))
+stopifnot(trial_profile$metrics$solver_settings$available,
+          identical(vapply(trial_profile$metrics$solver_settings$records, function(x) x$solve, integer(1)),
+                    seq_len(trial_profile$metrics$solve_count)))
+limited_case <- trial_case
+limited_case$options$time_limit <- 10
+limited_profile <- request("profile", limited_case)
+stopifnot(limited_profile$ok, limited_profile$metrics$solver_settings$available)
+for (record in limited_profile$metrics$solver_settings$records) {
+  stopifnot(is.numeric(record$excluded_values$time_limit), record$excluded_values$time_limit > 0,
+            record$excluded_values$time_limit <= 10,
+            identical(record$values, settings$records[[1L]]$values))
+}
 
 for (iterations in list(NULL, 0L, -1L, 1.5, TRUE, "1")) {
   stopifnot(!request("measure", iterations = iterations)$ok)

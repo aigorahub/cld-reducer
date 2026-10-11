@@ -113,6 +113,7 @@ def main():
     assert len(lines) == len(requests) + 3, result.stdout[-2000:]
     responses = [json.loads(line) for line in lines]
     assert responses[0]["ok"] and responses[0]["settings"]["presolve"] == "off"
+    assert responses[0]["settings_kind"] == "declared_contract"
     for case, response in zip(reductions, responses[1 : 1 + len(reductions)], strict=True):
         assert response["ok"], (case["id"], response)
         check_result(response["result"], case["expected"])
@@ -139,6 +140,32 @@ def main():
     assert profile["result"] == measure["result"] == responses[1]["result"]
     assert profile["canonical"] == responses[1]["canonical"]
     assert "result" not in preprocess and preprocess["metrics"]["solve_count"] == 0
+    settings = profile["metrics"]["solver_settings"]
+    assert settings["available"] is True
+    assert settings["excluded_from_stable_comparison"] == ["time_limit"]
+    assert [record["solve"] for record in settings["records"]] == list(
+        range(1, profile["metrics"]["solve_count"] + 1)
+    )
+    for record in settings["records"]:
+        values = record["values"]
+        assert values["presolve"] == "off" and values["parallel"] == "off"
+        assert values["mip_rel_gap"] == values["mip_abs_gap"] == 0
+        assert values["primal_feasibility_tolerance"] == 1e-9
+        assert values["mip_feasibility_tolerance"] == 1e-9
+        assert type(values["threads"]) is int and type(values["r_global_threads"]) is int
+        assert "time_limit" not in values and "time_limit" in record["excluded_values"]
+    overhead = profile["profile_notes"]["full_call_overhead"]
+    assert type(overhead["reference_ns"]) is int and overhead["reference_ns"] >= 0
+    assert overhead["instrumented_ns"] == profile["phases_ns"]["total"]
+    assert (
+        overhead["instrumented_minus_reference_ns"]
+        == overhead["instrumented_ns"] - overhead["reference_ns"]
+    )
+    assert overhead["ratio"] == overhead["instrumented_ns"] / overhead["reference_ns"]
+    assert preprocess["metrics"]["solver_settings"]["available"] is False
+    assert preprocess["metrics"]["solver_settings"]["records"] == []
+    assert "full_call_overhead" not in preprocess["profile_notes"]
+    assert "metrics" not in measure
     assert (
         measure["iterations"] == 2
         and type(measure["elapsed_ns"]) is int

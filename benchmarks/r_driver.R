@@ -80,7 +80,11 @@ bench_driver <- function(repo, presolve = "off") {
       repo = repo, timer = clock$description,
       settings = list(presolve = "off", threads = 1L, parallel = "off", mip_rel_gap = 0,
                       mip_abs_gap = 0, primal_feasibility_tolerance = 1e-9,
-                      mip_feasibility_tolerance = 1e-9)
+                      mip_feasibility_tolerance = 1e-9),
+      settings_kind = "declared_contract",
+      settings_notes = paste("These values declare the production adapter contract; version does not validate them.",
+                             "threads is the R highs control setting, not the native model threads option.",
+                             "Profile metrics.solver_settings records observations before each real native run.")
     )
     invisible(NULL)
   }
@@ -198,6 +202,8 @@ bench_driver <- function(repo, presolve = "off") {
     observation$feasible_ns <- 0
     observation$infeasible_ns <- 0
     observation$counters <- list()
+    observation$solver_settings <- list()
+    observation$settings_errors <- list()
     observation$trial <- FALSE
     observation$required <- NULL
     observation$model <- NULL
@@ -352,7 +358,36 @@ bench_driver <- function(repo, presolve = "off") {
         notes$model_load <- "Native new_solver call includes both solver creation and model loading; the native API does not split them."
       } else notes$unavailable$model_load <- "The highs namespace has no new_solver wrapper."
       if (exists("solver_run", highs, inherits = FALSE)) {
-        hook(highs, "solver_run", after = function(answer, args, elapsed) {
+        hook(highs, "solver_run", before = function(args) {
+          # Read actual options after production setup and before native execution.
+          # highs 1.14.0.2 misindexes hi_solver_get_options(keys=...). Reading all
+          # options also queries unsupported entries. Use the typed getters.
+          tryCatch({
+            solver <- args[[1L]]
+            values <- list()
+            for (key in c("presolve", "parallel", "solver")) {
+              values[[key]] <- highs::hi_solver_get_str_option(solver, key)
+            }
+            for (key in c("threads", "random_seed")) {
+              values[[key]] <- highs::hi_solver_get_int_option(solver, key)
+            }
+            for (key in c("mip_rel_gap", "mip_abs_gap", "primal_feasibility_tolerance",
+                          "dual_feasibility_tolerance", "mip_feasibility_tolerance")) {
+              values[[key]] <- highs::hi_solver_get_dbl_option(solver, key)
+            }
+            values$r_global_threads <- get("get_number_of_threads", highs)()
+            if (any(vapply(values, function(value) length(value) != 1L || is.na(value), logical(1)))) {
+              stop("An observed solver setting is missing")
+            }
+            time_limit <- highs::hi_solver_get_dbl_option(solver, "time_limit")
+            observation$solver_settings[[length(observation$solver_settings) + 1L]] <- list(
+              solve = observation$solve_count, values = values,
+              excluded_values = list(time_limit = if (is.infinite(time_limit)) "Inf" else time_limit))
+          }, error = function(error) {
+            observation$settings_errors[[length(observation$settings_errors) + 1L]] <- list(
+              solve = observation$solve_count, message = conditionMessage(error))
+          })
+        }, after = function(answer, args, elapsed) {
           if (!observation$trial) add_phase("initial_optimization", elapsed)
         })
       } else notes$unavailable$initial_optimization <- "The highs namespace has no solver_run wrapper."
@@ -376,6 +411,24 @@ bench_driver <- function(repo, presolve = "off") {
       list(available = TRUE, source = "highs native solver_info", by_solve = observation$counters)
     } else list(available = FALSE, reason = if (identical(action, "preprocess"))
       "Preprocessing does not run the solver." else "No highs solver_info call was observed.")
+    settings <- list(
+      available = observation$solve_count > 0L && !length(observation$settings_errors) &&
+        identical(vapply(observation$solver_settings, function(record) record$solve, integer(1)),
+                  seq_len(observation$solve_count)),
+      records = observation$solver_settings,
+      source = paste("HiGHS typed native option getters immediately before solver_run.",
+                     "r_global_threads comes from highs namespace get_number_of_threads()."),
+      excluded_from_stable_comparison = list("time_limit"),
+      notes = paste("values.threads is the native model option; 0 means native automatic selection.",
+                    "values.r_global_threads is the R package global thread setting used by its scheduler wrapper.",
+                    "It is not a native worker count. Neither value substitutes for the other.",
+                    "excluded_values.time_limit is the changing per-solve budget in seconds; Inf denotes no limit.")
+    )
+    if (!settings$available) {
+      settings$reason <- if (!observation$solve_count) "No native solver run was observed." else
+        "The native option observations do not cover every solve."
+      settings$errors <- observation$settings_errors
+    }
     metrics <- list(
       vertices_before = length(observation$graph$groups),
       vertices_after = nrow(observation$reduced$adjacency),
@@ -394,7 +447,7 @@ bench_driver <- function(repo, presolve = "off") {
       essential_cover = observation$strategy$coverage(model, essential),
       selected = if (is.null(canonical)) NULL else canonical$selected,
       objective = if (is.null(canonical)) NULL else canonical$objective,
-      solver_counters = counters
+      solver_counters = counters, solver_settings = settings
     )
     if (identical(action, "preprocess")) {
       for (name in c("adapter_setup", "model_load", "initial_optimization", "canonical_trials",
@@ -447,7 +500,33 @@ bench_driver <- function(repo, presolve = "off") {
       for (i in seq_len(iterations)) result <- do.call(fun, args)
       elapsed_ns <- duration(started)
       answer <- list(elapsed_ns = elapsed_ns, iterations = iterations, result = normalize(result))
-    } else answer <- instrument(prepared, action)
+    } else {
+      if (identical(action, "profile")) {
+        # No hooks are installed yet. The harness warms this same profile path
+        # before collecting observations. Keep the reference call outside total.
+        started <- now()
+        reference <- invoke(prepared)
+        reference_ns <- duration(started)
+      }
+      answer <- instrument(prepared, action)
+      if (identical(action, "profile")) {
+        if (!identical(normalize(reference), answer$result)) {
+          stop("Profile and uninstrumented overhead reference returned different results")
+        }
+        answer$profile_notes$full_call_overhead <- list(
+          reference_ns = reference_ns,
+          instrumented_ns = answer$phases_ns$total,
+          instrumented_minus_reference_ns = answer$phases_ns$total - reference_ns,
+          ratio = if (reference_ns > 0) answer$phases_ns$total / reference_ns else NULL,
+          uninstrumented_calls = 1L,
+          note = paste("One uninstrumented full API reference call precedes hook setup, outside profile total.",
+                       "The harness warms this same profile path before collection; one standalone request can be cold.",
+                       "Both calls exclude request conversion and result normalization.",
+                       "The signed difference includes order, cache, GC and timer noise; it can be negative.",
+                       "This is a diagnostic observation, not an overhead correction or acceptance timing.")
+        )
+      }
+    }
     c(list(ok = TRUE, action = action), answer)
   }
   handle <- function(request) {
