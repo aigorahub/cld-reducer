@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 import run
 from cases import frozen_manifest, job_key, jobs
+from test_resource_evidence import write_resource_fixture
 
 
 def javascript_source():
@@ -223,17 +224,23 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
         calibration / "metadata.json",
         {
             "kind": "calibration",
-            "source_before": {"baseline": baseline},
+            "source_before": {"baseline": baseline, "candidate": baseline},
+            "versions": [{"language": "js", "pids": [1, 2]}],
             "harness": harness,
             "harness_after": harness,
         },
     )
     (calibration / "samples.jsonl").write_text("")
+    (calibration / "results.jsonl").write_text("")
+    calibration_metadata = run.read(calibration / "metadata.json")
+    write_resource_fixture(calibration, calibration_metadata, [], "compare")
+    run.save(calibration / "metadata.json", calibration_metadata)
     profiles, capture = tmp_path / "profiles", tmp_path / "capture"
     profile_rows = [
         {
             "key": job_key("js", case),
             "case": case,
+            "peak_rss": 1024,
             "response": {
                 "ok": True,
                 "metrics": {"solver_total_ns": 40, "essential_cover": True},
@@ -270,7 +277,11 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
         (profiles, "profiles.jsonl", profile_rows),
         (capture, "vectors.jsonl", capture_rows),
     ):
-        run.save(directory / "metadata.json", metadata)
+        stage_metadata = copy.deepcopy(metadata)
+        write_resource_fixture(
+            directory, stage_metadata, rows, "profiles" if directory == profiles else "capture"
+        )
+        run.save(directory / "metadata.json", stage_metadata)
         (directory / name).write_text("".join(json.dumps(row) + "\n" for row in rows))
     path, output = tmp_path / "manifest.json", tmp_path / "frozen.json"
     run.save(path, manifest)
@@ -407,6 +418,8 @@ def setup_collection(tmp_path, monkeypatch, *, changed=False, warmup_failure=Fal
 
     class FakeDriver:
         peak_rss = 1024
+        resource_error = None
+        process = SimpleNamespace(pid=100)
 
         def request(self, request, seconds):
             requests.append((copy.deepcopy(request), seconds))
@@ -434,7 +447,7 @@ def setup_collection(tmp_path, monkeypatch, *, changed=False, warmup_failure=Fal
         def __exit__(self, *_):
             pass
 
-    monkeypatch.setattr(run, "driver", lambda *_: FakeDriver())
+    monkeypatch.setattr(run, "driver", lambda *_, **__: FakeDriver())
     return (
         SimpleNamespace(manifest=path, repo=repo, output=tmp_path / "output", include_opt_in=False),
         manifest,

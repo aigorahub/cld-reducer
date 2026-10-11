@@ -356,18 +356,8 @@ def test_freeze_requires_baseline_profile_capture_and_calibration_receipts(
 ):
     from test_gates import make_evidence
 
-    manifest, directories = make_evidence(tmp_path)
-    manifest["frozen"] = False
-    profiles_path = directories["baseline-profiles"] / "profiles.jsonl"
-    rows = [json.loads(line) for line in profiles_path.read_text().splitlines()]
-    for row in rows:
-        if row["case"]["tier"] == "solve":
-            row["response"]["metrics"] = {"solver_total_ns": 50, "essential_cover": True}
-    profiles_path.write_text("".join(json.dumps(row) + "\n" for row in rows))
-    calibration_path = directories["run-1"] / "metadata.json"
-    metadata = json.loads(calibration_path.read_text())
-    metadata["kind"] = "calibration"
-    calibration_path.write_text(json.dumps(metadata))
+    _, directories = make_evidence(tmp_path)
+    manifest = json.loads((directories["calibration"] / "manifest.json").read_text())
     monkeypatch.setattr(run, "load_manifest", lambda _: copy.deepcopy(manifest))
     monkeypatch.setattr(
         run, "analyze", lambda m, *_: {"pass": True, "manifest_sha256": common.digest(m)}
@@ -376,11 +366,11 @@ def test_freeze_requires_baseline_profile_capture_and_calibration_receipts(
         manifest="unused",
         profiles=directories["baseline-profiles"],
         capture=directories["baseline-capture"],
-        calibration=directories["run-1"],
+        calibration=directories["calibration"],
         output=tmp_path / "frozen.json",
     )
     if missing:
-        next(directories["run-1"].glob("*.resource.json")).unlink()
+        next(directories["calibration"].glob("*.resource.json")).unlink()
         with pytest.raises(ValueError, match="receipt"):
             run.freeze(args)
         assert not args.output.exists()

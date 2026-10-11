@@ -404,6 +404,27 @@ def make_evidence(
         finished_unix=200,
         run_id="calibration",
     )
+    calibration_results = [
+        dict(
+            key=key,
+            process=0,
+            baseline_failure=True,
+            pids=[10000 + 2 * index, 10001 + 2 * index],
+            responses=[
+                next(
+                    row["response"]
+                    for row in captures["baseline"]
+                    if job_key(language, row["case"]) == key
+                )
+            ]
+            * 2,
+        )
+        for index, key in enumerate(manifest["baseline_failures"])
+    ]
+    calibration_resources = write_resource_fixture(
+        directories["calibration"], calibration_metadata, calibration_results, "compare"
+    )
+    write_rows(directories["calibration"] / "results.jsonl", calibration_results)
     calibration_report = analyze(calibration_manifest, calibration_metadata, calibration_samples)
     assert calibration_report["pass"], calibration_report["reasons"]
     for name, value in (
@@ -418,6 +439,7 @@ def make_evidence(
         calibration_metadata_sha256=digest(calibration_metadata),
         calibration_samples_sha256=digest(calibration_samples),
         calibration_sha256=digest(calibration_report),
+        calibration_resource_sha256=digest(calibration_resources),
     )
     for run in (1, 2):
         process_versions, samples, results = [], [], []
@@ -1049,6 +1071,7 @@ def test_gate_requires_calibration_harness(tmp_path, fault):
         "benchmarks/common.py",
         "benchmarks/analysis.py",
         "benchmarks/process_guard.py",
+        "benchmarks/resource_evidence.py",
     ],
 )
 def test_measurement_code_change_fails_with_unchanged_drivers(tmp_path, monkeypatch, changed):
@@ -1077,7 +1100,8 @@ def test_measurement_code_change_fails_with_unchanged_drivers(tmp_path, monkeypa
     )
 
 
-def test_recorded_measurement_hashes_bind_optional_guard_presence(tmp_path, monkeypatch):
+@pytest.mark.parametrize("helper", ["process_guard.py", "resource_evidence.py"])
+def test_recorded_measurement_hashes_bind_optional_helper_presence(tmp_path, monkeypatch, helper):
     def git(*args):
         return subprocess.check_output(
             ["git", "-C", str(tmp_path), *args], stderr=subprocess.DEVNULL, text=True
@@ -1103,21 +1127,22 @@ def test_recorded_measurement_hashes_bind_optional_guard_presence(tmp_path, monk
     )
     monkeypatch.setattr(gates, "_driver_hashes", recorded_driver_hashes)
     absent = recorded_measurement_hashes(binding, ["python"])
-    assert absent["benchmarks/process_guard.py"] is None
-    (tmp_path / "benchmarks/process_guard.py").write_text("guard\n")
+    assert absent[f"benchmarks/{helper}"] is None
+    (tmp_path / "benchmarks" / helper).write_text("guard\n")
     git("add", ".")
     git("commit", "-qm", "Add process guard")
     binding.update(head=git("rev-parse", "HEAD"), tree=git("rev-parse", "HEAD^{tree}"))
     present = recorded_measurement_hashes(binding, ["python"])
-    assert present["benchmarks/process_guard.py"] == hashlib.sha256(b"guard\n").hexdigest()
-    assert all(
-        absent[name] == present[name] for name in absent if not name.endswith("process_guard.py")
-    )
+    assert present[f"benchmarks/{helper}"] == hashlib.sha256(b"guard\n").hexdigest()
+    assert all(absent[name] == present[name] for name in absent if not name.endswith(helper))
     (tmp_path / "benchmarks/run.py").write_text("different uncommitted loop\n")
     assert recorded_measurement_hashes(binding, ["python"]) == present
+
+
 @pytest.mark.parametrize(
     "stage",
     [
+        "calibration",
         "baseline-capture",
         "candidate-capture",
         "baseline-profiles",

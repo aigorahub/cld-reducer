@@ -269,17 +269,27 @@ def _driver_hashes(binding, languages):
 
 
 def _measurement_hashes(binding, languages):
-    """Bind measured code to calibration; an absent process guard is explicit."""
+    """Bind measured code to calibration, including process lifecycle helpers."""
     hashes = _driver_hashes(binding, languages)
     required = ("benchmarks/run.py", "benchmarks/common.py", "benchmarks/analysis.py")
-    guard = "benchmarks/process_guard.py"
+    optional = ("benchmarks/process_guard.py", "benchmarks/resource_evidence.py")
     try:
-        guard_present = subprocess.check_output(
-            ["git", "-C", binding["path"], "ls-tree", "--name-only", binding["head"], "--", guard],
+        present = subprocess.check_output(
+            [
+                "git",
+                "-C",
+                binding["path"],
+                "ls-tree",
+                "--name-only",
+                binding["head"],
+                "--",
+                *optional,
+            ],
             stderr=subprocess.DEVNULL,
-        ).strip()
-        hashes[guard] = None
-        for filename in required + ((guard,) if guard_present else ()):
+            text=True,
+        ).splitlines()
+        hashes.update(dict.fromkeys(optional))
+        for filename in required + tuple(present):
             raw = subprocess.check_output(
                 ["git", "-C", binding["path"], "show", f"{binding['head']}:{filename}"],
                 stderr=subprocess.DEVNULL,
@@ -413,6 +423,17 @@ def audit(
         calibration_report = analyze(
             calibration_manifest, calibration_metadata, calibration_samples
         )
+        calibration_resources = validate_resources(
+            calibration_dir,
+            calibration_manifest,
+            calibration_metadata,
+            _rows(calibration_dir, "results.jsonl"),
+            "compare",
+        )
+        require(
+            calibration_resources["sha256"] == manifest.get("calibration_resource_sha256"),
+            "Calibration resources differ from the frozen evidence",
+        )
         require(
             calibration_manifest.get("frozen") is False
             and calibration_metadata.get("kind") == "calibration"
@@ -470,6 +491,7 @@ def audit(
             "directory": str(calibration_dir),
             "analysis": calibration_report,
             "samples_sha256": digest(calibration_samples),
+            "resources": calibration_resources,
         }
         capture_dirs = {"baseline": baseline_capture_dir, "candidate": candidate_capture_dir}
         capture_meta = {label: _read(path, "metadata.json") for label, path in capture_dirs.items()}
