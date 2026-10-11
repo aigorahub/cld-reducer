@@ -197,6 +197,7 @@ bench_driver <- function(repo, presolve = "off") {
     observation$phases <- stats::setNames(rep(list(NULL), length(phase_names)), phase_names)
     observation$solve_count <- 0L
     observation$solver_total_ns <- 0
+    observation$probe_ns <- 0
     observation$feasible <- 0L
     observation$infeasible <- 0L
     observation$feasible_ns <- 0
@@ -213,14 +214,21 @@ bench_driver <- function(repo, presolve = "off") {
       previous <- observation$phases[[name]]
       observation$phases[[name]] <- if (is.null(previous)) elapsed else previous + elapsed
     }
-    hook <- function(env, name, phase = NULL, before = NULL, after = NULL) {
+    measure_probe <- function(callback) {
+      started <- now()
+      on.exit({ observation$probe_ns <- observation$probe_ns + duration(started) }, add = TRUE)
+      callback()
+    }
+    hook <- function(env, name, phase = NULL, before = NULL, after = NULL, exclude_probes = FALSE) {
       original <- get(name, envir = env, inherits = FALSE)
       wrapper <- function(...) {
         args <- list(...)
         if (!is.null(before)) before(args)
+        probes_before <- observation$probe_ns
         started <- now()
         answer <- do.call(original, args)
         elapsed <- duration(started)
+        if (exclude_probes) elapsed <- elapsed - (observation$probe_ns - probes_before)
         if (!is.null(phase)) add_phase(phase, elapsed)
         if (!is.null(after)) after(answer, args, elapsed)
         answer
@@ -257,7 +265,10 @@ bench_driver <- function(repo, presolve = "off") {
       source_head = state$version$source_head, timer = clock$description,
       timing = paste("Profiles include hook overhead. Total includes the public API call only.",
                      "Canonical trials include adapter setup, model loading and optimization.",
+                     "Solver and trial times exclude measured diagnostic probe_ns; total includes it.",
                      "Do not sum overlapping stages. Profile times are not acceptance timings."),
+      probe_scope = paste("probe_ns measures added native option observations and counter record callbacks.",
+                          "The production solver_info call and all production reads remain in solver time."),
       model_dimensions = "Constraints and nonzeros describe the actual initial builder model, before canonical cap rows.",
       edges = "edges counts the input graph; edges_after counts the reduced graph.",
       unavailable = stats::setNames(list(), character())
@@ -276,7 +287,7 @@ bench_driver <- function(repo, presolve = "off") {
     notes$overhead_probe <- list(
       iterations = 1000L, direct_ns = direct_probe_ns, wrapped_ns = wrapped_probe_ns,
       note = paste("Empty function probe outside total. The difference estimates minimum wrapper overhead.",
-                   "Metric callbacks and the validation function copy add costs. No cost is subtracted.")
+                   "Metric callbacks and the validation function copy add costs. This estimate is not subtracted.")
     )
     if (identical(action, "preprocess")) {
       replace(runtime, "solve_canonical", function(model, time_limit, strategy) {
@@ -330,7 +341,7 @@ bench_driver <- function(repo, presolve = "off") {
         validation_ns <- observation$phases$final_validation
         add_phase("output_expansion", elapsed - if (is.null(validation_ns)) 0 else validation_ns)
       })
-      hook(runtime, "solve_lp", before = function(args) {
+      hook(runtime, "solve_lp", exclude_probes = TRUE, before = function(args) {
         observation$solve_count <- observation$solve_count + 1L
         # Production passes sum_limit as the fourth positional argument.
         cap <- if ("sum_limit" %in% names(args)) args$sum_limit else
@@ -362,7 +373,7 @@ bench_driver <- function(repo, presolve = "off") {
           # Read actual options after production setup and before native execution.
           # highs 1.14.0.2 misindexes hi_solver_get_options(keys=...). Reading all
           # options also queries unsupported entries. Use the typed getters.
-          tryCatch({
+          measure_probe(function() tryCatch({
             solver <- args[[1L]]
             values <- list()
             for (key in c("presolve", "parallel", "solver")) {
@@ -386,15 +397,17 @@ bench_driver <- function(repo, presolve = "off") {
           }, error = function(error) {
             observation$settings_errors[[length(observation$settings_errors) + 1L]] <- list(
               solve = observation$solve_count, message = conditionMessage(error))
-          })
+          }))
         }, after = function(answer, args, elapsed) {
           if (!observation$trial) add_phase("initial_optimization", elapsed)
         })
       } else notes$unavailable$initial_optimization <- "The highs namespace has no solver_run wrapper."
       if (exists("solver_info", highs, inherits = FALSE)) {
         hook(highs, "solver_info", after = function(answer, args, elapsed) {
-          observation$counters[[length(observation$counters) + 1L]] <- list(
-            solve = observation$solve_count, canonical_trial = observation$trial, info = answer)
+          measure_probe(function() {
+            observation$counters[[length(observation$counters) + 1L]] <- list(
+              solve = observation$solve_count, canonical_trial = observation$trial, info = answer)
+          })
         })
       }
     }
@@ -439,6 +452,7 @@ bench_driver <- function(repo, presolve = "off") {
       constraints = nrow(problem$matrix), nonzeros = Matrix::nnzero(problem$matrix),
       essential_decisions = length(observation$required), solve_count = observation$solve_count,
       solver_total_ns = observation$solver_total_ns,
+      probe_ns = observation$probe_ns,
       canonical_feasible_trials = observation$feasible,
       canonical_infeasible_trials = observation$infeasible,
       canonical_feasible_trials_ns = observation$feasible_ns,

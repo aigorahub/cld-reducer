@@ -9,6 +9,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -88,6 +89,8 @@ def test_capture_profile_measure_and_model_structure(runtime, method):
     assert metrics["essential_cover"] is True
     assert metrics["solve_count"] == 1
     assert metrics["solver_total_ns"] == sum(r["elapsed_ns"] for r in metrics["solve_records"])
+    assert metrics["probe_ns"] == sum(r["probe_ns"] for r in metrics["solve_records"])
+    assert metrics["solver_total_ns"] + metrics["probe_ns"] <= profile["phases_ns"]["total"]
     if method == "letter_minimum":
         assert (
             metrics["decision_variables"],
@@ -234,7 +237,7 @@ def test_canonical_trials_use_only_decisions_and_weighted_objective(runtime, mon
     assert metrics["canonical_feasible_trials"] > 0
     assert metrics["solve_count"] == 1 + metrics["canonical_feasible_trials"] + vector.count(0)
     assert response["phases_ns"]["canonical_trials"] == (
-        metrics["canonical_feasible_ns"] + metrics["canonical_infeasible_ns"]
+        metrics["canonical_feasible_trials_ns"] + metrics["canonical_infeasible_trials_ns"]
     )
 
 
@@ -388,3 +391,61 @@ def test_preprocessing_has_no_solver_settings_or_full_call_reference(runtime):
     assert response["metrics"]["solver_settings"]["available"] is False
     assert response["metrics"]["solver_settings"]["records"] == []
     assert response["profile_notes"]["full_call_overhead"] is None
+    assert response["metrics"]["probe_ns"] == 0
+
+
+def test_adapter_timing_subtracts_only_diagnostic_reads(runtime, monkeypatch):
+    clock = 0
+    monkeypatch.setattr(driver.time, "perf_counter_ns", lambda: clock)
+    profile = driver.Profile(runtime, preprocess=False)
+    statuses = iter((runtime.solver.OPTIMAL, runtime.solver.OPTIMAL, runtime.solver.INFEASIBLE))
+
+    class Native:
+        def passModel(self):
+            nonlocal clock
+            clock += 5
+
+        def run(self):
+            nonlocal clock
+            clock += 11
+
+        def getInfo(self):
+            nonlocal clock
+            clock += 1000
+            return SimpleNamespace(
+                mip_node_count=1, simplex_iteration_count=2, ipm_iteration_count=3
+            )
+
+        def getOptionValue(self, name):
+            nonlocal clock
+            clock += 1000
+            return None, float("inf") if name == "time_limit" else 0
+
+    def adapter(**_):
+        nonlocal clock
+        clock += 2
+        native = driver.HighsProxy(Native(), profile)
+        native.passModel()
+        native.run()
+        # Production reads must remain in adapter time, even when the added
+        # diagnostic probes use the same native methods.
+        native.getInfo()
+        native.getOptionValue("presolve")
+        clock += 3
+        return SimpleNamespace(status=next(statuses))
+
+    monkeypatch.setattr(runtime.solver, "run", adapter)
+    wrapped = next(
+        replacement
+        for target, name, replacement in profile.hooks()
+        if target is runtime.solver and name == "run"
+    )
+    for cap in (None, 1, 1):
+        wrapped(sum_limit=cap)
+    probe_per_solve = 1000 * (len(runtime.solver.OPTION_NAMES) + 2)
+    assert profile.probe_ns == 3 * probe_per_solve
+    assert [record["probe_ns"] for record in profile.solve_records] == [probe_per_solve] * 3
+    assert [record["elapsed_ns"] for record in profile.solve_records] == [2021] * 3
+    assert profile.native_totals == {"model_load": 15, "native_optimization": 33}
+    assert clock == 3 * 2021 + profile.probe_ns
+    assert [record["primary"] for record in profile.solve_records] == [True, False, False]

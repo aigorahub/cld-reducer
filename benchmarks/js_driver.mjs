@@ -79,16 +79,21 @@ function replace(target, key, replacement, restores) {
   });
 }
 
-function collector() {
+export function collector() {
   const phases = Object.fromEntries(PHASES.map(key => [key, null]));
   const state = {
     phases, model: null, context: null, required: null, canonical: null,
     verticesBefore: null, edgesBefore: null, solves: 0, feasible: 0, infeasible: 0,
-    feasibleNs: 0, infeasibleNs: 0, solverTotalNs: 0, counters: [], nativeRuns: 0, solverSettings: [],
+    feasibleNs: 0, infeasibleNs: 0, solverTotalNs: 0, probeNs: 0,
+    counters: [], nativeRuns: 0, solverSettings: [],
     add(key, duration) { phases[key] = (phases[key] ?? 0) + duration; },
     timed(key, callback) {
       const start = now();
       try { return callback(); } finally { state.add(key, elapsed(start)); }
+    },
+    probe(callback) {
+      const start = now();
+      try { return callback(); } finally { state.probeNs += elapsed(start); }
     },
     markGraph(adjacency) {
       state.verticesBefore = adjacency.length;
@@ -145,17 +150,18 @@ function readCounters(model) {
   return result;
 }
 
-function instrumentSolver(runtime, state, restores) {
+export function instrumentSolver(runtime, state, restores) {
   const hooks = runtime.solver.hooks;
   const originalRun = hooks.run;
   replace(hooks, 'run', function (...args) {
     const trial = args[3] !== null;
     state.solves++;
+    const probesBefore = state.probeNs;
     const start = now();
     let outcome;
     try { outcome = originalRun.apply(this, args); return outcome; }
     finally {
-      const duration = elapsed(start);
+      const duration = elapsed(start) - (state.probeNs - probesBefore);
       state.solverTotalNs += duration;
       if (trial) {
         state.add('canonical_trials', duration);
@@ -184,15 +190,17 @@ function instrumentSolver(runtime, state, restores) {
       try { outcome = run.apply(this, values); return outcome; }
       finally {
         const duration = elapsed(start);
-        const keys = ['presolve', 'output_flag', 'mip_rel_gap', 'mip_abs_gap',
-          'primal_feasibility_tolerance', 'mip_feasibility_tolerance'];
-        state.solverSettings.push({ solve: state.nativeRuns,
-          values: Object.fromEntries(keys.map(key => [key, model.options.get(key)])),
-          excluded_values: { time_limit: Number.isFinite(model.options.get('time_limit'))
-            ? model.options.get('time_limit') : null } });
         if (first) state.add('initial_optimization', duration);
-        state.counters.push({ run: state.nativeRuns, model_status: outcome?.modelStatus ?? null,
-          elapsed_ns: duration, values: readCounters(model) });
+        state.probe(() => {
+          const keys = ['presolve', 'output_flag', 'mip_rel_gap', 'mip_abs_gap',
+            'primal_feasibility_tolerance', 'mip_feasibility_tolerance'];
+          const timeLimit = model.options.get('time_limit');
+          state.solverSettings.push({ solve: state.nativeRuns,
+            values: Object.fromEntries(keys.map(key => [key, model.options.get(key)])),
+            excluded_values: { time_limit: Number.isFinite(timeLimit) ? timeLimit : null } });
+          state.counters.push({ run: state.nativeRuns, model_status: outcome?.modelStatus ?? null,
+            elapsed_ns: duration, values: readCounters(model) });
+        });
       }
     }, restores);
     return model;
@@ -220,8 +228,11 @@ function metricsOf(runtime, state) {
     essential_cover: strategy.coverage(model, decisions.map(k => essential.has(k))),
     solve_count: state.solves,
     solver_total_ns: state.solverTotalNs,
+    probe_ns: state.probeNs,
     canonical_feasible_trials: state.feasible,
     canonical_infeasible_trials: state.infeasible,
+    canonical_feasible_trials_ns: state.feasibleNs,
+    canonical_infeasible_trials_ns: state.infeasibleNs,
     final_zero_decisions: selected ? selected.filter(value => value === 0).length : null,
     selected,
     objective: state.canonical?.objective ?? null,
@@ -280,7 +291,8 @@ function profileNotes(state, patch, preprocessing = false) {
   return {
     ...patch,
     clock: 'process.hrtime.bigint, integer nanoseconds',
-    timings: 'Instrumented diagnostic timings. canonical_trials includes adapter_setup, model_load and native optimization for trial calls. Do not sum overlapping phases. total includes probe overhead but excludes hook installation, result normalization and metric reporting.',
+    timings: 'Instrumented diagnostic timings. solver_total_ns and canonical trial times exclude measured native diagnostic probes (metrics.probe_ns). Trial times include adapter_setup, model_load and native optimization. Do not sum overlapping phases. total includes all probe overhead but excludes hook installation, result normalization and metric reporting.',
+    probe_scope: 'Only added native option/counter reads and their record assembly are subtracted. Production reads and wrapper overhead remain in adapter/trial times.',
     phase_scope: {
       input: 'Public graph normalization, method and control validation; JSON conversion is outside timing',
       model_construction: 'Actual graphContext plus strategy.builder',
@@ -293,8 +305,6 @@ function profileNotes(state, patch, preprocessing = false) {
     unavailable_phases: reasons,
     unavailable_metrics: preprocessing ? { selected: 'No optimization was requested', objective: 'No optimization was requested',
       final_zero_decisions: 'No optimization was requested' } : {},
-    canonical_feasible_trials_ns: state.feasibleNs,
-    canonical_infeasible_trials_ns: state.infeasibleNs,
     full_call_overhead: preprocessing ? null : state.overhead,
   };
 }
@@ -430,7 +440,7 @@ export class Driver {
       state.overhead = { reference_ns: referenceNs, instrumented_ns: state.phases.total, uninstrumented_calls: 1,
         instrumented_minus_reference_ns: state.phases.total - referenceNs,
         ratio: referenceNs > 0 ? state.phases.total / referenceNs : null,
-        note: 'One preceding uninstrumented full call. The signed difference includes runtime noise and probe cost; no subtraction is applied. Warmup requests use this same profile module.' };
+        note: 'One preceding uninstrumented full call. The signed difference includes runtime noise and probe cost; this reference difference is not subtracted. Warmup requests use this same profile module.' };
       response.profile_notes = profileNotes(state, copy.notes);
     }
     return response;

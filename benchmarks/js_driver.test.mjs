@@ -6,7 +6,7 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { Driver, prepareCase, profileSource } from './js_driver.mjs';
+import { Driver, collector, instrumentSolver, prepareCase, profileSource } from './js_driver.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixture = async name => JSON.parse(await readFile(join(repo, 'conformance', 'fixtures', `${name}.json`), 'utf8')).cases;
@@ -91,6 +91,8 @@ test('capture and profile preserve complete output and restore hooks with presol
         assert.equal(profiled.metrics.solve_count, 1);
         assert.ok(profiled.metrics.solver_total_ns >= profiled.phases_ns.initial_optimization);
         assert.ok(profiled.metrics.solver_total_ns < profiled.phases_ns.total);
+        assert.ok(profiled.metrics.probe_ns >= 0);
+        assert.ok(profiled.metrics.solver_total_ns + profiled.metrics.probe_ns <= profiled.phases_ns.total);
         assert.equal(profiled.result.stats.reduction_pct, 0);
         assert.deepEqual(profiled.result.groups, ['', '__proto__', '2']);
         assert.equal(profiled.profile_notes.patch_sha256.length, 64);
@@ -116,8 +118,8 @@ test('profile counts feasible and infeasible canonical trials on a graph with no
     assert.equal(m.canonical_infeasible_trials, m.final_zero_decisions);
     assert.ok(m.canonical_infeasible_trials > 0);
     assert.ok(m.canonical_feasible_trials > 0);
-    assert.equal(result.phases_ns.canonical_trials, result.profile_notes.canonical_feasible_trials_ns +
-      result.profile_notes.canonical_infeasible_trials_ns);
+    assert.equal(result.phases_ns.canonical_trials, m.canonical_feasible_trials_ns +
+      m.canonical_infeasible_trials_ns);
     assert.equal(m.solver_counters.runs.length, m.solve_count);
   } finally { await driver.close(); }
 });
@@ -334,5 +336,60 @@ test('profile observes changed native options and records input and reduced edge
     assert.equal(pre.metrics.solver_settings.available, false);
     assert.deepEqual(pre.metrics.solver_settings.records, []);
     assert.equal(pre.profile_notes.full_call_overhead, null);
+    assert.equal(pre.metrics.probe_ns, 0);
   } finally { highs.createModel = original; await driver.close(); }
+});
+
+test('solver and trial timers exclude measured probes and retain production reads', () => {
+  let clock = 0n;
+  const nativeClock = process.hrtime.bigint;
+  const advance = ns => { clock += BigInt(ns); };
+  const state = collector();
+  const restores = [];
+  const highs = {
+    createModel() {
+      advance(3);
+      return {
+        passModel() { advance(5); },
+        options: { set() { advance(7); }, get() { advance(1000); return 0; } },
+        info: { get(name) { advance(name === 'production_read' ? 13 : 1000); return 0; } },
+        run() { advance(11); return { modelStatus: 'Optimal' }; },
+      };
+    },
+  };
+  const outcomes = ['optimal', 'optimal', 'infeasible'];
+  const runtime = { solver: { loadedSolver: () => highs, hooks: {
+    run() {
+      advance(2);
+      const model = highs.createModel();
+      model.options.set({});
+      model.passModel();
+      model.run();
+      model.info.get('production_read');
+      advance(17);
+      return { status: outcomes.shift() };
+    },
+  } } };
+  const original = runtime.solver.hooks.run;
+  process.hrtime.bigint = () => clock;
+  try {
+    instrumentSolver(runtime, state, restores);
+    state.timed('total', () => {
+      for (const cap of [null, 1, 1]) runtime.solver.hooks.run(null, null, null, cap);
+    });
+    assert.equal(state.probeNs, 33000);
+    assert.equal(state.solverTotalNs, 174);
+    assert.equal(state.phases.canonical_trials, 116);
+    assert.equal(state.feasibleNs, 58);
+    assert.equal(state.infeasibleNs, 58);
+    assert.equal(state.phases.initial_optimization, 11);
+    assert.equal(state.phases.model_load, 15);
+    assert.equal(state.phases.adapter_setup, 30);
+    assert.equal(state.phases.total, state.solverTotalNs + state.probeNs);
+    assert.deepEqual(state.counters.map(record => record.elapsed_ns), [11, 11, 11]);
+  } finally {
+    for (const restore of restores.reverse()) restore();
+    process.hrtime.bigint = nativeClock;
+  }
+  assert.equal(runtime.solver.hooks.run, original);
 });

@@ -234,6 +234,10 @@ class HighsProxy:
 
     def run(self, *args, **kwargs):
         result = self.profile.time_native("native_optimization", self.native.run, *args, **kwargs)
+        self.profile.time_probe(self.observe)
+        return result
+
+    def observe(self):
         # Query counters after the native run timer. Never read solution values here.
         info = self.native.getInfo()
         counters = {}
@@ -263,7 +267,6 @@ class HighsProxy:
                 },
             }
         )
-        return result
 
 
 class HighspyProxy:
@@ -287,6 +290,7 @@ class Profile:
         self.native_calls = dict.fromkeys(self.native_totals, 0)
         self.native_counters = []
         self.native_settings = []
+        self.probe_ns = 0
         self.solve_records = []
         self.model = self.context = self.original_adjacency = self.reduced = None
         self.required = None
@@ -301,6 +305,13 @@ class Profile:
         finally:
             self.native_totals[phase] += time.perf_counter_ns() - started
             self.native_calls[phase] += 1
+
+    def time_probe(self, function):
+        started = time.perf_counter_ns()
+        try:
+            return function()
+        finally:
+            self.probe_ns += time.perf_counter_ns() - started
 
     def builder(self, original):
         def wrapped(context):
@@ -373,13 +384,16 @@ class Profile:
 
         def run(*args, **kwargs):
             before = dict(self.native_totals)
+            probes_before = self.probe_ns
             started = time.perf_counter_ns()
             outcome = original_run(*args, **kwargs)
-            elapsed = time.perf_counter_ns() - started
+            inclusive = time.perf_counter_ns() - started
+            probes = self.probe_ns - probes_before
             self.solve_records.append(
                 {
                     "status": outcome.status,
-                    "elapsed_ns": elapsed,
+                    "elapsed_ns": inclusive - probes,
+                    "probe_ns": probes,
                     "primary": kwargs.get("sum_limit") is None,
                     **{
                         name + "_ns": value - before[name]
@@ -456,7 +470,7 @@ class Profile:
                     "note": (
                         "One preceding uninstrumented full call. "
                         "The signed difference includes runtime noise and probe cost; "
-                        "no subtraction is applied."
+                        "this reference difference is not subtracted."
                     ),
                 },
                 "instrumentation": "Temporary Python wrappers and a forwarding highspy proxy",
@@ -472,11 +486,13 @@ class Profile:
                 "timing": [
                     "All times use perf_counter_ns; wrapper overhead is included",
                     "total includes the public API and hooks; it excludes conversion and metrics",
+                    "solver_total_ns and trial times exclude measured native diagnostic probes",
+                    "probe_ns includes only added settings/counter reads and record assembly",
                     "model_construction includes graph_context and the actual strategy builder",
                     "initial_optimization is the initial native Highs.run call",
                     "canonical_trials sums later adapter calls with setup, load and native run",
                     "adapter_setup is adapter call time minus native load and native run",
-                    "adapter_setup includes assembly, options, result reads and proxy overhead",
+                    "adapter_setup includes production assembly, options, reads and wrappers",
                     "model_load sums native passModel calls across all solves",
                     "final_validation includes relationship checks, statistics and result assembly",
                     "Stages overlap; do not sum phases or use profile total for acceptance",
@@ -531,16 +547,17 @@ class Profile:
             "essential_cover": essential_cover,
             "solve_count": len(self.solve_records),
             "solver_total_ns": sum(record["elapsed_ns"] for record in self.solve_records),
+            "probe_ns": self.probe_ns,
             "canonical_feasible_trials": sum(
                 r["status"] == self.runtime.solver.OPTIMAL for r in trials
             ),
             "canonical_infeasible_trials": sum(
                 r["status"] == self.runtime.solver.INFEASIBLE for r in trials
             ),
-            "canonical_feasible_ns": sum(
+            "canonical_feasible_trials_ns": sum(
                 r["elapsed_ns"] for r in trials if r["status"] == self.runtime.solver.OPTIMAL
             ),
-            "canonical_infeasible_ns": sum(
+            "canonical_infeasible_trials_ns": sum(
                 r["elapsed_ns"] for r in trials if r["status"] == self.runtime.solver.INFEASIBLE
             ),
             "final_zero_decisions": None

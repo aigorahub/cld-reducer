@@ -49,6 +49,9 @@ stopifnot(identical(measure$result, capture$result), identical(measure$result, p
           profile$phases_ns$final_validation <= profile$profile_notes$render_result_total_ns,
           grepl("^[a-f0-9]{64}$", profile$profile_notes$temporary_patch$sha256),
           profile$metrics$solver_counters$available)
+stopifnot(profile$metrics$probe_ns >= 0,
+          profile$metrics$solver_total_ns + profile$metrics$probe_ns <= profile$phases_ns$total,
+          preprocess$metrics$probe_ns == 0)
 settings <- profile$metrics$solver_settings
 stopifnot(settings$available, length(settings$records) == profile$metrics$solve_count,
           identical(settings$excluded_from_stable_comparison, list("time_limit")),
@@ -188,6 +191,67 @@ for (record in limited_profile$metrics$solver_settings$records) {
             record$excluded_values$time_limit <= 10,
             identical(record$values, settings$records[[1L]]$values))
 }
+
+# Advance a fake clock at native calls. This does not sleep or apply timing
+# thresholds. Production solver_info time must remain in the adapter total.
+check_probe_clock <- function() {
+  ticks <- new.env(parent = emptyenv())
+  ticks$ns <- 0
+  ticks$reads <- 0L
+  original_clock <- bench_clock
+  bench_clock <<- function() list(now = function() ticks$ns,
+                                  description = list(name = "test clock", monotonic = TRUE,
+                                                     fallback = FALSE, resolution_ns = 1))
+  on.exit({ bench_clock <<- original_clock }, add = TRUE)
+  delayed <- bench_driver(repo)
+  stopifnot(delayed$handle(list(action = "version"))$ok)
+  natives <- list()
+  on.exit({
+    for (name in names(natives)) {
+      unlockBinding(name, highs)
+      assign(name, natives[[name]], highs)
+      lockBinding(name, highs)
+    }
+  }, add = TRUE)
+  delay <- function(name, ns, diagnostic = FALSE) {
+    force(ns)
+    force(diagnostic)
+    native <- get(name, highs)
+    natives[[name]] <<- native
+    unlockBinding(name, highs)
+    assign(name, function(...) {
+      ticks$ns <- ticks$ns + ns
+      if (diagnostic) ticks$reads <- ticks$reads + 1L
+      native(...)
+    }, highs)
+    lockBinding(name, highs)
+  }
+  delay("solver_run", 500)
+  delay("solver_info", 700)
+  for (name in c("hi_solver_get_str_option", "hi_solver_get_int_option", "hi_solver_get_dbl_option")) {
+    delay(name, 100000, TRUE)
+  }
+  original_lp <- delayed$state$runtime$solve_lp
+  delayed$state$runtime$solve_lp <- function(...) {
+    ticks$ns <- ticks$ns + 900
+    original_lp(...)
+  }
+  answer <- delayed$handle(list(action = "profile", case = trial_case))
+  stopifnot(answer$ok)
+  metrics <- answer$metrics
+  stopifnot(metrics$canonical_feasible_trials > 0L, metrics$canonical_infeasible_trials > 0L,
+            ticks$reads == 11L * metrics$solve_count,
+            metrics$probe_ns == 100000 * ticks$reads,
+            metrics$solver_total_ns == 2100 * metrics$solve_count,
+            answer$phases_ns$initial_optimization == 500,
+            metrics$canonical_feasible_trials_ns == 2100 * metrics$canonical_feasible_trials,
+            metrics$canonical_infeasible_trials_ns == 2100 * metrics$canonical_infeasible_trials,
+            answer$phases_ns$total == metrics$solver_total_ns + metrics$probe_ns,
+            answer$phases_ns$canonical_trials == metrics$canonical_feasible_trials_ns +
+              metrics$canonical_infeasible_trials_ns)
+}
+check_probe_clock()
+unchanged(highs, original_highs)
 
 for (iterations in list(NULL, 0L, -1L, 1.5, TRUE, "1")) {
   stopifnot(!request("measure", iterations = iterations)$ok)
