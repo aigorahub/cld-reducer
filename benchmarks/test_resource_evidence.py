@@ -102,10 +102,24 @@ def fixture(tmp_path, stage="profiles"):
             }
         ]
     elif stage == "compare":
+        manifest.update(
+            methods=["letter_minimum"],
+            cases=[{"id": name, "tier": "solve", "options": {}} for name in ("case", "failed")],
+            processes=2,
+            batches=3,
+            baseline_failures=["python|letter_minimum|failed"],
+        )
         metadata["source_before"] = {
             variant: {"path": f"/{variant}"} for variant in ("baseline", "candidate")
         }
-        metadata["versions"] = [{"language": "python", "pids": [11, 12]}]
+        metadata["versions"] = [
+            {
+                "language": "python",
+                "process": process,
+                "pids": [11 + 10 * process, 12 + 10 * process],
+            }
+            for process in range(manifest["processes"])
+        ]
         rows = [
             {
                 "baseline_failure": True,
@@ -117,6 +131,23 @@ def fixture(tmp_path, stage="profiles"):
                 ],
             }
         ]
+        (tmp_path / "samples.jsonl").write_text(
+            "".join(
+                json.dumps(
+                    {
+                        "key": "python|letter_minimum|case",
+                        "language": "python",
+                        "process": process,
+                        "batch": batch,
+                        "rss": [1024, 1024],
+                        "peak_rss": [1024, 1024],
+                    }
+                )
+                + "\n"
+                for process in range(manifest["processes"])
+                for batch in range(manifest["batches"])
+            )
+        )
     records = write_resource_fixture(tmp_path, metadata, rows, stage)
     return manifest, metadata, rows, records
 
@@ -284,6 +315,160 @@ def test_timing_and_excluded_processes_cannot_share_receipts(tmp_path):
         resources.validate_resources(tmp_path, manifest, metadata, rows, "compare")
 
 
+def comparison_samples(directory):
+    return [json.loads(line) for line in (directory / "samples.jsonl").read_text().splitlines()]
+
+
+@pytest.mark.parametrize("field", ["rss", "peak_rss"])
+@pytest.mark.parametrize("process", [0, 1])
+@pytest.mark.parametrize("variant", [0, 1])
+def test_comparison_samples_are_bound_to_each_paired_pid(tmp_path, field, process, variant):
+    manifest, metadata, rows, records = fixture(tmp_path, "compare")
+    samples = comparison_samples(tmp_path)
+    pid = metadata["versions"][process]["pids"][variant]
+    # Other processes and native receipts have higher peaks. They cannot cover
+    # a sample above this PID's final sampled peak, even below the memory cap.
+    for record in records:
+        receipt = record["receipt"]
+        receipt["ru_maxrss"] = receipt["peak_rss_bytes"] = record["peak_rss"] = 4096
+        record["sampled_peak_rss"] = 1024 if record["guard_pid"] == pid else 4096
+        (tmp_path / record["receipt_file"]).write_text(json.dumps(receipt))
+    write_records(tmp_path, records)
+    sample = next(sample for sample in samples if sample["process"] == process)
+    sample[field][variant] = 2048
+    # Version row order has no meaning. The process field owns the PID pair.
+    metadata["versions"].reverse()
+    with pytest.raises(ValueError, match=f"sample {field} exceeds process {pid} sampled peak"):
+        resources.validate_resources(tmp_path, manifest, metadata, rows, "compare", samples=samples)
+
+
+def test_comparison_accepts_receipt_bounds_independent_of_row_order(tmp_path):
+    manifest, metadata, rows, records = fixture(tmp_path, "compare")
+    samples = comparison_samples(tmp_path)
+    for record in records:
+        peak = 1024 * record["guard_pid"]
+        record["sampled_peak_rss"] = record["peak_rss"] = peak
+        record["receipt"]["ru_maxrss"] = record["receipt"]["peak_rss_bytes"] = peak
+        (tmp_path / record["receipt_file"]).write_text(json.dumps(record["receipt"]))
+    write_records(tmp_path, records)
+    for sample in samples:
+        sample["rss"] = sample["peak_rss"] = [
+            pid * 1024 for pid in metadata["versions"][sample["process"]]["pids"]
+        ]
+    metadata["versions"].reverse()
+    assert resources.validate_resources(
+        tmp_path, manifest, metadata, rows, "compare", samples=samples[::-1]
+    )["sha256"] == common.digest(records)
+
+
+def test_comparison_separates_languages_with_the_same_process_index(tmp_path):
+    manifest, metadata, rows, _ = fixture(tmp_path, "compare")
+    manifest["languages"].append("js")
+    manifest["presolve"]["js"] = "on"
+    manifest["baseline_failures"].append("js|letter_minimum|failed")
+    metadata["versions"].extend(
+        {"language": "js", "process": process, "pids": [31 + 10 * process, 32 + 10 * process]}
+        for process in range(manifest["processes"])
+    )
+    samples = comparison_samples(tmp_path)
+    samples += [
+        dict(sample, key=sample["key"].replace("python|", "js|"), language="js")
+        for sample in samples
+    ]
+    write_resource_fixture(tmp_path, metadata, rows, "compare")
+    assert resources.validate_resources(
+        tmp_path, manifest, metadata, rows, "compare", samples=samples
+    )
+    samples[-1]["peak_rss"] = [1024, 2048]
+    with pytest.raises(ValueError, match="sample peak_rss exceeds process 42 sampled peak"):
+        resources.validate_resources(tmp_path, manifest, metadata, rows, "compare", samples=samples)
+
+
+def test_comparison_requires_receipts_for_every_manifest_process_pair(tmp_path):
+    manifest, metadata, rows, records = fixture(tmp_path, "compare")
+    removed = metadata["versions"].pop()["pids"]
+    metadata["resource_processes"] = [
+        entry for entry in metadata["resource_processes"] if entry["pid"] not in removed
+    ]
+    for record in records:
+        if record["guard_pid"] in removed:
+            (tmp_path / record["receipt_file"]).unlink()
+    write_records(tmp_path, [record for record in records if record["guard_pid"] not in removed])
+    with pytest.raises(ValueError, match="incomplete timing process inventory"):
+        resources.validate_resources(tmp_path, manifest, metadata, rows, "compare")
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing",
+        "duplicate",
+        "extra",
+        "batch",
+        "bool_batch",
+        "language",
+        "rss",
+        "peak_rss",
+        "current_gt_peak",
+    ],
+)
+def test_comparison_requires_valid_complete_samples(tmp_path, fault):
+    manifest, metadata, rows, _ = fixture(tmp_path, "compare")
+    samples = comparison_samples(tmp_path)
+    if fault == "missing":
+        samples.pop()
+    elif fault == "duplicate":
+        samples.append(copy.deepcopy(samples[0]))
+    elif fault == "extra":
+        samples[0]["key"] = "python|letter_minimum|extra"
+    elif fault == "batch":
+        samples[0]["batch"] = 3
+    elif fault == "bool_batch":
+        samples[0]["batch"] = False
+    elif fault == "language":
+        samples[0]["language"] = "js"
+    elif fault in ("rss", "peak_rss"):
+        samples[0].pop(fault)
+    else:
+        samples[0]["peak_rss"][0] = 512
+    with pytest.raises(ValueError):
+        resources.validate_resources(tmp_path, manifest, metadata, rows, "compare", samples=samples)
+
+
+@pytest.mark.parametrize(
+    "fault", ["missing_process", "duplicate_process", "bool_process", "process_range"]
+)
+def test_comparison_requires_complete_version_process_pairs(tmp_path, fault):
+    manifest, metadata, rows, _ = fixture(tmp_path, "compare")
+    if fault == "missing_process":
+        metadata["versions"][0].pop("process")
+    elif fault == "duplicate_process":
+        metadata["versions"][0]["process"] = 1
+    elif fault == "bool_process":
+        metadata["versions"][0]["process"] = False
+    else:
+        metadata["versions"][0]["process"] = 2
+    with pytest.raises(ValueError, match="timing process identity"):
+        resources.validate_resources(tmp_path, manifest, metadata, rows, "compare")
+
+
+@pytest.mark.parametrize("fault", ["missing_file", "missing_sample", "exceeded_peak"])
+def test_comparison_loads_and_checks_samples_when_caller_omits_them(tmp_path, fault):
+    manifest, metadata, rows, _ = fixture(tmp_path, "compare")
+    path = tmp_path / "samples.jsonl"
+    samples = comparison_samples(tmp_path)
+    if fault == "missing_file":
+        path.unlink()
+    else:
+        if fault == "missing_sample":
+            samples.pop()
+        else:
+            samples[0]["rss"] = samples[0]["peak_rss"] = [2048, 2048]
+        path.write_text("".join(json.dumps(sample) + "\n" for sample in samples))
+    with pytest.raises((ValueError, OSError)):
+        resources.validate_resources(tmp_path, manifest, metadata, rows, "compare")
+
+
 @pytest.mark.parametrize("failure", ["memory", "wall"])
 def test_profile_collector_records_native_resource_failure_after_close(
     tmp_path, monkeypatch, failure
@@ -373,6 +558,7 @@ def test_freeze_requires_baseline_profile_capture_and_calibration_receipts(
         profiles=directories["baseline-profiles"],
         capture=directories["baseline-capture"],
         calibration=directories["calibration"],
+        pilot=directories["pilot"],
         output=tmp_path / "frozen.json",
     )
     if missing:

@@ -28,6 +28,71 @@ def case_input_digest(case):
     return digest({name: case.get(name) for name in ("call", "input", "options")})
 
 
+def ordered_samples(manifest, records):
+    """Validate the full sample inventory and return the collection order.
+
+    Collection visits languages, paired processes, manifest jobs, then batches.
+    The order of JSONL rows must not change the endpoints of a process lifetime.
+    Rows and their baseline/candidate pair order remain unchanged.
+    """
+    languages = manifest.get("languages")
+    if (
+        not isinstance(languages, list)
+        or not languages
+        or any(not isinstance(language, str) or language not in LANGUAGES for language in languages)
+        or len(set(languages)) != len(languages)
+        or any(
+            type(manifest.get(name)) is not int or manifest[name] < 1
+            for name in ("processes", "batches")
+        )
+    ):
+        raise ValueError("Invalid sample process design")
+    specs = {}
+    for language in languages:
+        for case in jobs(manifest):
+            key = job_key(language, case)
+            if key in specs:
+                raise ValueError(f"Duplicate sample job: {key}")
+            specs[key] = language
+    failures = manifest.get("baseline_failures")
+    if (
+        not isinstance(failures, list)
+        or any(not isinstance(key, str) or key not in specs for key in failures)
+        or len(set(failures)) != len(failures)
+    ):
+        raise ValueError("Invalid baseline failure set")
+    measured = {key: language for key, language in specs.items() if key not in failures}
+    needed = [
+        (key, process, batch)
+        for language in languages
+        for process in range(manifest["processes"])
+        for key, job_language in measured.items()
+        if job_language == language
+        for batch in range(manifest["batches"])
+    ]
+    if not isinstance(records, list):
+        raise ValueError("Samples must be a list")
+    observed = {}
+    for row in records:
+        if (
+            not isinstance(row, dict)
+            or not isinstance(row.get("key"), str)
+            or row["key"] not in measured
+            or any(type(row.get(name)) is not int for name in ("process", "batch"))
+            or not 0 <= row["process"] < manifest["processes"]
+            or not 0 <= row["batch"] < manifest["batches"]
+            or ("language" in row and row["language"] != measured[row["key"]])
+        ):
+            raise ValueError("Invalid or unexpected sample identity")
+        index = (row["key"], row["process"], row["batch"])
+        if index in observed:
+            raise ValueError(f"Duplicate sample: {index}")
+        observed[index] = row
+    if set(observed) != set(needed):
+        raise ValueError("Missing or invalid sample indices")
+    return [observed[index] for index in needed]
+
+
 def rss_growth(manifest, records):
     """Apply the same sampled RSS cap and paired growth bound to A/A and candidates."""
 
@@ -53,16 +118,8 @@ def rss_growth(manifest, records):
         for process in range(manifest["processes"])
     }
     by_process = defaultdict(list)
-    for row in records:
-        if (
-            not isinstance(row, dict)
-            or row.get("key") not in specs
-            or type(row.get("process")) is not int
-        ):
-            raise ValueError("Invalid RSS sample identity")
+    for row in ordered_samples(manifest, records):
         identity = (specs[row["key"]], row["process"])
-        if identity not in expected:
-            raise ValueError("Unexpected RSS process")
         for field in ("rss", "peak_rss"):
             values = row.get(field)
             if not (
@@ -517,26 +574,15 @@ def analyze(manifest, metadata, records, *, calibration_targets=None):
         failures = []
     failures = set(failures)
     by_key = defaultdict(dict)
-    if not isinstance(records, list):
-        reasons.append("Samples must be a list")
-        records = []
+    try:
+        records = ordered_samples(manifest, records)
+    except (KeyError, TypeError, ValueError) as error:
+        reasons.append(str(error))
+        return report
     for row in records:
-        if (
-            not isinstance(row, dict)
-            or not isinstance(row.get("key"), str)
-            or any(type(row.get(name)) is not int for name in ("process", "batch"))
-        ):
-            reasons.append("Invalid sample record")
-            continue
         key = row["key"]
         index = (row["process"], row["batch"])
-        if index in by_key[key]:
-            reasons.append(f"Duplicate sample: {key} {index}")
         by_key[key][index] = row
-    if set(by_key) - set(expected):
-        reasons.append("Unexpected cases are present")
-    if set(by_key) & failures:
-        reasons.append("Baseline failure cases must not contain timing samples")
     aa = metadata.get("kind") == "calibration"
     draws = manifest["bootstrap_resamples"]
     log_draws = {}

@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common
-from analysis import analyze, estimate, select_gain_targets
+from analysis import analyze, estimate, ordered_samples, rss_growth, select_gain_targets
 from cases import frozen_manifest, job_key, jobs, multipartite
 from common import Driver, DriverError, digest, input_digest
 from run import fixture_mismatch, load_manifest
@@ -133,6 +133,112 @@ def calibration(meta):
         meta[key]["candidate"] = dict(copy.deepcopy(meta[key]["baseline"]), path="/candidate")
     for row in meta["versions"]:
         row["versions"][1]["source_head"] = "a" * 40
+
+
+def memory_samples():
+    manifest = {
+        "languages": ["python", "js"],
+        "methods": ["letter_minimum", "assignment_minimum"],
+        "cases": [
+            {"id": name, "tier": "solve", "options": {}}
+            for name in ("z-first", "excluded", "a-last")
+        ],
+        "processes": 2,
+        "batches": 3,
+        "baseline_failures": [
+            f"{language}|{method}|excluded"
+            for language in ("python", "js")
+            for method in ("letter_minimum", "assignment_minimum")
+        ],
+        "memory_limit_mb": 128,
+        "memory_growth_tolerance_mb": 1,
+    }
+    rows = [
+        {
+            "key": job_key(language, case),
+            "language": language,
+            "process": process,
+            "batch": batch,
+            "order": [1, 0] if batch % 2 else [0, 1],
+            "rss": [1024, 1024],
+            "peak_rss": [1024, 1024],
+        }
+        for language in manifest["languages"]
+        for process in range(manifest["processes"])
+        for case in jobs(manifest)
+        if job_key(language, case) not in manifest["baseline_failures"]
+        for batch in range(manifest["batches"])
+    ]
+    return manifest, rows
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_memory_growth_uses_manifest_jobs_and_batch_order(reverse):
+    manifest, rows = memory_samples()
+    # The last manifest job sorts before the first job. File and lexical order
+    # must not turn this 2 MiB process growth into an apparent decrease.
+    rows[-1]["rss"] = rows[-1]["peak_rss"] = [1024, 1024 + 2 * 1024**2]
+    if reverse:
+        rows.reverse()
+    with pytest.raises(ValueError, match="exceeds baseline and allowance for js/1"):
+        rss_growth(manifest, rows)
+
+
+def test_memory_endpoints_and_pair_order_do_not_depend_on_file_order():
+    manifest, rows = memory_samples()
+    for row in rows:
+        if row["key"].endswith("assignment_minimum|a-last") and row["batch"] == 2:
+            row["rss"] = row["peak_rss"] = [2048, 3072]
+    expected = rss_growth(manifest, rows)
+    shuffled = rows[1::2][::-1] + rows[::2][::-1]
+    assert rss_growth(manifest, shuffled) == expected
+    ordered = ordered_samples(manifest, shuffled)
+    assert all(actual is original for actual, original in zip(ordered, rows, strict=True))
+    assert all(row["first_rss"] == [1024, 1024] for row in expected)
+    assert all(row["last_rss"] == [2048, 3072] for row in expected)
+    assert all(row["excess_candidate_growth_bytes"] == 1024 for row in expected)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing",
+        "duplicate",
+        "extra",
+        "excluded",
+        "language",
+        "process",
+        "batch",
+        "bool",
+        "missing_batch",
+    ],
+)
+def test_memory_samples_require_the_complete_index_inventory(fault):
+    manifest, rows = memory_samples()
+    if fault == "missing":
+        rows.pop(1)
+    elif fault == "duplicate":
+        rows.append(copy.deepcopy(rows[0]))
+    elif fault in ("extra", "excluded"):
+        rows[0]["key"] = "python|letter_minimum|" + fault
+    elif fault == "language":
+        rows[0]["language"] = "js"
+    elif fault in ("process", "batch"):
+        rows[0][fault] = manifest[{"process": "processes", "batch": "batches"}[fault]]
+    elif fault == "bool":
+        rows[0]["batch"] = False
+    else:
+        rows[0].pop("batch")
+    with pytest.raises(ValueError, match="sample"):
+        rss_growth(manifest, rows)
+
+
+def test_timing_analysis_uses_shared_sample_identity_validation():
+    manifest, metadata, rows = evidence()
+    rows[0]["language"] = "js"
+    report = analyze(manifest, metadata, rows)
+    assert not report["pass"]
+    assert "Invalid or unexpected sample identity" in report["reasons"]
 
 
 def test_exact_gain_and_paired_process_noise():

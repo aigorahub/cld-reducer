@@ -8,6 +8,7 @@ import re
 from contextlib import contextmanager
 from pathlib import Path
 
+from analysis import ordered_samples
 from common import DriverError, digest
 from process_guard import COVERAGE, ProcessGuardError, read_receipt
 
@@ -166,12 +167,63 @@ def _expected(metadata, rows, stage):
     return expected
 
 
-def validate_resources(directory, manifest, metadata, rows, stage):
+def _comparison_samples(manifest, metadata, samples, observed, limit):
+    """Bind each current and peak RSS sample to its actual paired process."""
+    samples = ordered_samples(manifest, samples)
+    pairs = {}
+    for pair in metadata["versions"]:
+        language, process = pair.get("language"), pair.get("process")
+        _require(
+            isinstance(language, str)
+            and language in manifest["languages"]
+            and type(process) is int
+            and 0 <= process < manifest["processes"],
+            "invalid timing process identity",
+        )
+        identity = (language, process)
+        _require(identity not in pairs, "duplicate timing process identity")
+        pairs[identity] = pair["pids"]
+    _require(
+        set(pairs)
+        == {
+            (language, process)
+            for language in manifest["languages"]
+            for process in range(manifest["processes"])
+        },
+        "incomplete timing process inventory",
+    )
+    for row in samples:
+        pids = pairs[row["key"].split("|", 1)[0], row["process"]]
+        for field in ("rss", "peak_rss"):
+            values = row.get(field)
+            _require(
+                isinstance(values, list)
+                and len(values) == 2
+                and all(
+                    type(value) in (int, float) and math.isfinite(value) and 0 < value <= limit
+                    for value in values
+                ),
+                f"invalid or exceeded sample {field} bound",
+            )
+            for pid, value in zip(pids, values, strict=True):
+                _require(
+                    value <= observed[pid]["sampled_peak_rss"],
+                    f"sample {field} exceeds process {pid} sampled peak",
+                )
+        _require(
+            all(current <= peak for current, peak in zip(row["rss"], row["peak_rss"], strict=True)),
+            "current RSS exceeds recorded sample peak",
+        )
+
+
+def validate_resources(directory, manifest, metadata, rows, stage, *, samples=None):
     """Validate raw receipts and exact PID coverage. Return a frozen evidence digest.
 
     A profile memory failure can exceed the cap only with the exact external
     memory error. The caller must separately check its frozen outcome class.
     Missing receipts and unrelated resource errors always fail.
+    Compare samples must cover the full design and match their paired receipts.
+    If the caller does not supply samples, read them from this evidence directory.
     """
     directory = Path(directory)
     expected = _expected(metadata, rows, stage)
@@ -319,6 +371,12 @@ def validate_resources(directory, manifest, metadata, rows, stage):
                 row.get("peak_rss") == observed[row["pid"]]["peak_rss"],
                 "row peak differs from receipt",
             )
+    if stage == "compare":
+        if samples is None:
+            samples = [
+                _parse(line) for line in (directory / "samples.jsonl").read_text().splitlines()
+            ]
+        _comparison_samples(manifest, metadata, samples, observed, limit)
     return {
         "sha256": digest(records),
         "processes": sorted(expected),
