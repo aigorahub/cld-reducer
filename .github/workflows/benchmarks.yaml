@@ -1,0 +1,18 @@
+name: benchmark harness
+
+on:
+  push:
+  pull_request:
+
+permissions: read-all
+
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uv venv --python 3.13
+      - run: uv pip install -e './python[dev]' -r benchmarks/requirements.txt
+      - run: uv run --no-project python -m pytest -q benchmarks/test_harness.py benchmarks/test_python_driver.py
+      - run: uv run --no-project ruff check --config python/pyproject.toml benchmarks
