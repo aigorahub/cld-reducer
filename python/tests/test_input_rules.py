@@ -18,7 +18,6 @@ from cld_reducer import (
     reduce_letters,
 )
 
-SINGLETON = np.array([[True]])
 PATH3 = np.array([[1, 1, 0], [1, 1, 1], [0, 1, 1]], dtype=bool)
 
 
@@ -32,7 +31,7 @@ def all_pairs(labels: list[str], nonsignificant: set[tuple[int, int]]) -> list[d
 
 @pytest.mark.parametrize("value", [2.0, -1.0, np.inf], ids=["two", "minus-one", "infinite"])
 def test_membership_outside_zero_and_one_is_invalid(
-    monkeypatch: pytest.MonkeyPatch, value, reference_engine
+    monkeypatch: pytest.MonkeyPatch, value, solver_graph
 ) -> None:
     real = _solver.run
 
@@ -44,7 +43,7 @@ def test_membership_outside_zero_and_one_is_invalid(
 
     monkeypatch.setattr(_solver, "run", wrapper)
     with pytest.raises(SolverError, match="HiGHS returned an invalid solution"):
-        reduce_from_adjacency(SINGLETON, method="assignment_minimum")
+        reduce_from_adjacency(solver_graph, method="assignment_minimum")
 
 
 def test_empty_adjacency_matrix_is_rejected() -> None:

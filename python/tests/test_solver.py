@@ -49,11 +49,11 @@ def record_runs(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
 
 
 def test_every_solve_uses_the_documented_settings(
-    monkeypatch: pytest.MonkeyPatch, presolve: str, reference_engine
+    monkeypatch: pytest.MonkeyPatch, presolve: str, solver_graph
 ) -> None:
     seen = record_runs(monkeypatch)
 
-    reduce_from_adjacency(SIMPLE, method="assignment_minimum")
+    reduce_from_adjacency(solver_graph, method="assignment_minimum")
 
     assert len(seen) >= 2
     for options in seen:
@@ -73,21 +73,19 @@ def test_highs_version_is_reported() -> None:
 @pytest.mark.parametrize("method", ["assignment_minimum", "letter_minimum"])
 @pytest.mark.parametrize("clock_value", [None, 500.2], ids=["real", "rounding"])
 def test_time_limit_is_passed_to_highs(
-    monkeypatch: pytest.MonkeyPatch, method: str, clock_value: float | None, reference_engine
+    monkeypatch: pytest.MonkeyPatch, method: str, clock_value: float | None, solver_graph
 ) -> None:
     if clock_value is not None:
         monkeypatch.setattr(canonical, "_now", lambda: clock_value)
     seen = record_runs(monkeypatch)
 
-    reduce_from_adjacency(SIMPLE, method=method, time_limit=30)
+    reduce_from_adjacency(solver_graph, method=method, time_limit=30)
 
     # Deadline subtraction can round a few ULPs above the input budget.
     assert 0 < seen[0]["time_limit"] <= 30 + 1e-9
 
 
-def test_time_budget_is_shared_across_solves(
-    monkeypatch: pytest.MonkeyPatch, reference_engine
-) -> None:
+def test_time_budget_is_shared_across_solves(monkeypatch: pytest.MonkeyPatch, solver_graph) -> None:
     clock = {"now": 0.0}
     real = _solver.run
     limits: list[float | None] = []
@@ -102,13 +100,13 @@ def test_time_budget_is_shared_across_solves(
     monkeypatch.setattr(_solver, "run", wrapper)
 
     with pytest.raises(SolverError, match="assignment-minimum MILP failed: Time limit reached"):
-        reduce_from_adjacency(SIMPLE, time_limit=5, method="assignment_minimum")
+        reduce_from_adjacency(solver_graph, time_limit=5, method="assignment_minimum")
 
     # The first solve got the whole budget; the second would get -5 seconds, so it never ran.
     assert limits == [5.0]
 
 
-def test_no_time_limit_means_no_deadline(monkeypatch: pytest.MonkeyPatch, reference_engine) -> None:
+def test_no_time_limit_means_no_deadline(monkeypatch: pytest.MonkeyPatch, solver_graph) -> None:
     limits: list[float | None] = []
     real = _solver.run
 
@@ -118,7 +116,7 @@ def test_no_time_limit_means_no_deadline(monkeypatch: pytest.MonkeyPatch, refere
 
     monkeypatch.setattr(_solver, "run", wrapper)
 
-    reduce_from_adjacency(SIMPLE, method="assignment_minimum")
+    reduce_from_adjacency(solver_graph, method="assignment_minimum")
 
     assert limits and all(limit is None for limit in limits)
 
@@ -132,16 +130,16 @@ def test_no_time_limit_means_no_deadline(monkeypatch: pytest.MonkeyPatch, refere
     ],
 )
 def test_non_optimal_first_solve_raises_solver_error(
-    monkeypatch: pytest.MonkeyPatch, status: str, text: str, reference_engine
+    monkeypatch: pytest.MonkeyPatch, status: str, text: str, solver_graph
 ) -> None:
     monkeypatch.setattr(_solver, "run", lambda *a, **k: _solver.Outcome(status, text))
 
     with pytest.raises(SolverError, match=f"assignment-minimum MILP failed: {text}"):
-        reduce_from_adjacency(SIMPLE, method="assignment_minimum")
+        reduce_from_adjacency(solver_graph, method="assignment_minimum")
 
 
 def test_non_optimal_later_solve_raises_solver_error(
-    monkeypatch: pytest.MonkeyPatch, reference_engine
+    monkeypatch: pytest.MonkeyPatch, solver_graph
 ) -> None:
     real = _solver.run
     calls = {"n": 0}
@@ -155,7 +153,7 @@ def test_non_optimal_later_solve_raises_solver_error(
     monkeypatch.setattr(_solver, "run", wrapper)
 
     with pytest.raises(SolverError, match="assignment-minimum MILP failed: Memory limit"):
-        reduce_from_adjacency(SIMPLE, method="assignment_minimum")
+        reduce_from_adjacency(solver_graph, method="assignment_minimum")
 
 
 def corrupt(outcome: _solver.Outcome, change) -> _solver.Outcome:
@@ -170,18 +168,18 @@ def corrupt(outcome: _solver.Outcome, change) -> _solver.Outcome:
         lambda v: v.__setitem__(slice(0, None), 0.0),  # nothing selected: groups uncovered
         lambda v: v.__setitem__(0, 0.5),  # fractional membership
         lambda v: v.__setitem__(0, np.nan),
-        lambda v: v.__setitem__(slice(0, 9), 1.0),  # every membership: sum(x) is not the minimum
+        lambda v: v.__setitem__(slice(0, 24), 1.0),  # every membership: sum(x) is not the minimum
     ],
     ids=["all-zero", "fractional", "nan", "sum-differs-from-objective"],
 )
 def test_scripted_invalid_first_solution_raises(
-    monkeypatch: pytest.MonkeyPatch, change, reference_engine
+    monkeypatch: pytest.MonkeyPatch, change, solver_graph
 ) -> None:
     real = _solver.run
     monkeypatch.setattr(_solver, "run", lambda *a, **k: corrupt(real(*a, **k), change))
 
     with pytest.raises(SolverError, match="HiGHS returned an invalid solution"):
-        reduce_from_adjacency(SIMPLE, method="assignment_minimum")
+        reduce_from_adjacency(solver_graph, method="assignment_minimum")
 
 
 def wheat_pairs() -> pd.DataFrame:
@@ -266,7 +264,7 @@ def test_solution_violating_a_fixing_is_invalid(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_solution_that_leaves_an_edge_uncovered_is_invalid(
-    monkeypatch: pytest.MonkeyPatch, reference_engine
+    monkeypatch: pytest.MonkeyPatch, solver_graph
 ) -> None:
     real = _solver.run
 
@@ -284,7 +282,7 @@ def test_solution_that_leaves_an_edge_uncovered_is_invalid(
     monkeypatch.setattr(_solver, "run", wrapper)
 
     with pytest.raises(SolverError, match="HiGHS returned an invalid solution"):
-        reduce_from_adjacency(SIMPLE, method="assignment_minimum")
+        reduce_from_adjacency(solver_graph, method="assignment_minimum")
 
 
 def test_stats_use_the_documented_status_and_unrounded_percentage() -> None:

@@ -23,6 +23,8 @@ The fixed eligibility rule selects every case whose essential set covers the gra
 
 Use the recorded profile rule without retuning on candidate results. All six groups are gain targets. All timed cases remain regression checks. A/A calibration and the frozen manifest must precede candidate timing. Implementation and correctness checks can proceed while calibration waits for an idle host.
 
+The selection table comes from `baseline-v5-preflight.json` in the external evidence directory. Its SHA256 is `7eadab1cdbeed99523e154b47fee08599b6799132d227981d183e5b5f17962ce`. It supersedes the historical table in `../clique-performance/baseline.md`. The preflight record binds the source, harness, pilot, capture and profile resource evidence.
+
 ## Proof
 
 Let D be the ordered binary decisions. Let E be the essential decisions returned by the existing exact scan. Every feasible decision vector contains E. Every decision has a positive integer primary cost. Every auxiliary variable has zero primary cost.
@@ -40,6 +42,8 @@ This proof applies to C and weighted sigma. It does not claim that optional deci
 5. Keep a private engine argument to disable the certificate for differential tests. The public API has no new option. Use `_certificate=True` in Python, `certificate = TRUE` in R, and a fourth internal `certificate = true` argument in JavaScript.
 6. Return through the existing expansion, rendering, statistics, and final relationship checks. Preserve labels, C default, method aliases, weights, clique ordering and cap behavior. Preserve JavaScript module and WASM loading.
 7. Keep benchmark acceptance code fixed. Existing profiles must show zero actual solves on certified calls. Record certificate time separately with temporary diagnostic wrappers around the private helper. Such diagnostics do not enter the full API speed gate.
+
+The external evidence directory contains `diagnostics/certificate_python.py`, `diagnostics/certificate_r.R`, and `diagnostics/certificate_js.mjs`. These temporary wrappers are syntax checked. Their measurements remain pending until calibration and freeze pass. Each output records the source, script, case and frozen manifest hashes.
 
 Private helper names: Python `_essential_cover_certificate`, R `essential_cover_certificate`, JavaScript `essentialCoverCertificate`. Each returns either the selected vector and minimum or no certificate. It has no clock, solver call, global cache, or public output side effect. The canonical engine owns the deadline.
 

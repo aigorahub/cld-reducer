@@ -4,6 +4,7 @@ import json
 from functools import partial
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from cld_reducer import _solver, canonical, reduction
@@ -43,3 +44,10 @@ def reference_engine(monkeypatch):
     monkeypatch.setattr(
         reduction, "_solve_canonical", partial(canonical._solve_canonical, _certificate=False)
     )
+
+
+@pytest.fixture
+def solver_graph():
+    """K(2,2,2) has no essential decisions and reaches the solver for both methods."""
+    parts = np.arange(6) // 2
+    return (parts[:, None] != parts[None, :]) | np.eye(6, dtype=bool)

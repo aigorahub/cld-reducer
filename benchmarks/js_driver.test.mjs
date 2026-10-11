@@ -348,6 +348,10 @@ test('profile observes changed native options and records input and reduced edge
       assert.equal(overhead.ratio, overhead.instrumented_ns / overhead.reference_ns);
       assert.equal(driver.profileRuntime.probe.current, null);
     }
+    const twin = check(await call(driver, 'profile', c));
+    assert.equal(twin.metrics.edges, 5);
+    assert.equal(twin.metrics.edges_after, 2);
+    assert.equal(twin.metrics.solve_count, 0);
     const pre = check(await call(driver, 'preprocess', c));
     assert.equal(pre.metrics.edges, 5);
     assert.equal(pre.metrics.edges_after, 2);
