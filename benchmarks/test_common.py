@@ -2,7 +2,10 @@
 
 import copy
 import hashlib
+import json
+import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -418,7 +421,8 @@ def fake_driver(tmp_path, monkeypatch, source, memory_mb=128):
     directory.mkdir(exist_ok=True)
     (directory / "python_driver.py").write_text(source)
     monkeypatch.setattr(common, "ROOT", tmp_path)
-    return Driver("python", tmp_path, "on", tmp_path / "driver.stderr", memory_mb)
+    number = len(list(tmp_path.glob("driver*.stderr")))
+    return Driver("python", tmp_path, "on", tmp_path / f"driver{number}.stderr", memory_mb)
 
 
 def assert_closed(driver):
@@ -427,6 +431,7 @@ def assert_closed(driver):
     assert driver.process.stdin.closed
     assert driver.process.stdout.closed
     assert driver.stderr.closed
+    assert driver.memory_receipt is not None or driver.resource_error is not None
     driver.close()
     with pytest.raises(DriverError, match="closed"):
         driver.request({"action": "version"})
@@ -475,6 +480,122 @@ for line in sys.stdin:
         assert driver.request({"action": "version"})["ok"]
         assert driver.rss > 0
         assert driver.peak_rss >= driver.rss
+    assert_closed(driver)
+    assert driver.resource_error is None
+    assert driver.memory_receipt["exitstatus"] == 0
+    assert driver.memory_receipt["guard_pid"] == driver.process.pid
+    assert driver.memory_receipt["child_pid"] != driver.process.pid
+    assert driver.peak_rss >= driver.memory_receipt["peak_rss_bytes"] > 0
+
+
+@pytest.mark.parametrize("memory_mb", [48, 128])
+def test_close_checks_native_peak_after_memory_was_released(tmp_path, monkeypatch, memory_mb):
+    source = """import json,mmap,os,sys
+sys.stdin.readline()
+region = mmap.mmap(-1, 64 * 1024 * 1024)
+for offset in range(0, len(region), mmap.PAGESIZE): region[offset] = 1
+region.close()
+print(json.dumps({'ok':True,'action':'version','pid':os.getpid()}),flush=True)
+sys.stdin.buffer.read()
+"""
+    driver = fake_driver(tmp_path, monkeypatch, source, memory_mb)
+    # Model the watchdog missing a short spike. Native wait4 evidence must still
+    # catch it after release and after the process has exited.
+    monkeypatch.setattr(driver, "_check_memory", lambda: None)
+    try:
+        response = driver.request({"action": "version"})
+        sampled_after_release = psutil.Process(response["pid"]).memory_info().rss
+        assert driver.peak_rss == 0
+        if memory_mb == 48:
+            with pytest.raises(DriverError, match="lifetime memory limit"):
+                driver.close()
+            assert "lifetime memory limit" in driver.resource_error
+        else:
+            driver.close()
+            assert driver.resource_error is None
+        assert driver.memory_receipt["peak_rss_bytes"] >= 64 * 1024 * 1024
+        assert driver.peak_rss > sampled_after_release + 32 * 1024 * 1024
+        assert_closed(driver)
+    finally:
+        driver.close()
+
+
+def test_close_rejects_missing_receipt_and_remains_idempotent(tmp_path, monkeypatch):
+    source = """import json,sys
+for line in sys.stdin: print(json.dumps({'ok':True,'action':'version'}),flush=True)
+"""
+    driver = fake_driver(tmp_path, monkeypatch, source)
+    try:
+        assert driver.request({"action": "version"})["ok"]
+        os.killpg(driver.process.pid, signal.SIGKILL)
+        driver.process.wait(timeout=2)
+        with pytest.raises(DriverError, match="Missing or invalid"):
+            driver.close()
+        assert driver.memory_receipt is None
+        assert "Missing or invalid" in driver.resource_error
+        assert_closed(driver)
+    finally:
+        driver.close()
+
+
+def test_close_binds_receipt_to_the_guard_pid(tmp_path, monkeypatch):
+    driver = fake_driver(tmp_path, monkeypatch, "import sys;sys.stdin.buffer.read()\n")
+    try:
+        driver.process.stdin.close()
+        driver.process.wait(timeout=2)
+        receipt = json.loads(driver.receipt_path.read_text())
+        receipt["guard_pid"] += 1
+        driver.receipt_path.write_text(json.dumps(receipt))
+        with pytest.raises(DriverError, match="another guard|invalid process IDs"):
+            driver.close()
+        assert driver.memory_receipt is None
+        assert driver.resource_error is not None
+        assert_closed(driver)
+    finally:
+        driver.close()
+
+
+def test_successful_response_cannot_hide_abnormal_native_exit(tmp_path, monkeypatch):
+    source = """import json,sys
+sys.stdin.readline()
+print(json.dumps({'ok':True,'action':'version'}),flush=True)
+sys.stdin.buffer.read()
+sys.exit(7)
+"""
+    driver = fake_driver(tmp_path, monkeypatch, source)
+    try:
+        assert driver.request({"action": "version"})["ok"]
+        with pytest.raises(DriverError, match="exited 7"):
+            driver.close()
+        assert driver.memory_receipt["exitstatus"] == 7
+        assert "exited 7" in driver.resource_error
+        assert_closed(driver)
+    finally:
+        driver.close()
+
+
+@pytest.mark.parametrize("failure", ["timeout", "memory"])
+def test_request_failure_inside_context_keeps_failed_profile_collectable(
+    tmp_path, monkeypatch, failure
+):
+    source = "import sys,time\nsys.stdin.readline()\n"
+    if failure == "memory":
+        source += "data=bytearray(80*1024*1024)\n"
+    source += "time.sleep(30)\n"
+    driver = fake_driver(tmp_path, monkeypatch, source, memory_mb=64)
+    with driver:
+        try:
+            driver.request({"action": "profile"}, timeout=0.2 if failure == "timeout" else 2)
+        except DriverError as error:
+            # bounded_request catches this inside its context and emits a row.
+            response = {"ok": False, "error": str(error)}
+        else:
+            pytest.fail("Expected the request to fail")
+    assert not response["ok"]
+    assert ("wall limit" if failure == "timeout" else "memory limit") in response["error"]
+    assert driver.memory_receipt is not None
+    if failure == "memory":
+        assert "memory limit" in driver.resource_error
     assert_closed(driver)
 
 

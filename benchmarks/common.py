@@ -17,6 +17,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import psutil
+from process_guard import ProcessGuardError, guarded_command, read_receipt
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_RESPONSE_BYTES = 32 * 1024 * 1024
@@ -333,7 +334,7 @@ class DriverError(RuntimeError):
 
 
 class Driver:
-    """One runtime process. A timeout or memory violation terminates its process group."""
+    """One guarded runtime, sampled tree RSS, and required lifetime peak evidence."""
 
     def __init__(self, language, repo, presolve, output, memory_mb=8192):
         commands = {
@@ -354,15 +355,27 @@ class Driver:
         self.process = None
         self.selector = None
         self._closed = False
+        self._request_failed = False
         self.buffer = b""
         self.memory_limit = memory_mb * 1024 * 1024
         self.peak_rss = 0
         self.rss = 0
+        self.memory_receipt = None
+        self.resource_error = None
+        output = Path(output).resolve()
+        self.receipt_path = output.with_name(output.name + ".resource.json")
+        self.command = commands[language] + [
+            "--repo",
+            str(Path(repo).resolve()),
+            "--presolve",
+            presolve,
+        ]
         env = dict(os.environ, OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1")
         try:
+            command = guarded_command(self.command, self.receipt_path)
             self.stderr = open(output, "w")  # noqa: SIM115 - Driver.close owns this stream.
             self.process = subprocess.Popen(
-                commands[language] + ["--repo", str(Path(repo).resolve()), "--presolve", presolve],
+                command,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=self.stderr,
@@ -375,7 +388,8 @@ class Driver:
             self.selector = selectors.DefaultSelector()
             self.selector.register(self.process.stdout, selectors.EVENT_READ)
         except BaseException:
-            self.close()
+            with suppress(DriverError):
+                self.close()
             raise
 
     def _check_memory(self):
@@ -470,29 +484,70 @@ class Driver:
             self._check_memory()
             return response
         except BaseException as error:
-            self.close()
+            self._request_failed = True
+            try:
+                self.close()
+            except DriverError as cleanup_error:
+                if hasattr(error, "add_note"):
+                    error.add_note(f"Driver cleanup failed: {cleanup_error}")
             if isinstance(error, (OSError, psutil.Error, ValueError, TypeError)):
                 raise DriverError(f"Driver transport failed: {error}") from error
             raise
 
     def close(self):
+        """Collect peak evidence once. Keep cleanup errors on the closed object."""
         if self._closed:
             return
         self._closed = True
+        failures = []
         try:
             if self.process is not None:
-                # The leader can exit while children retain the pipe or ignore
-                # SIGTERM. Terminate the whole session in both cases.
-                with suppress(ProcessLookupError):
-                    os.killpg(self.process.pid, signal.SIGTERM)
                 try:
-                    self.process.wait(timeout=2)
+                    self._check_memory()
+                except (DriverError, OSError, psutil.Error) as error:
+                    failures.append(str(error))
+                # EOF lets a healthy driver exit and the guard publish its
+                # receipt. The guard does not retain the child's input pipe.
+                if self.process.stdin is not None:
+                    with suppress(OSError, ValueError):
+                        self.process.stdin.close()
+                try:
+                    self.process.wait(timeout=0.5)
                 except subprocess.TimeoutExpired:
-                    pass
+                    with suppress(ProcessLookupError):
+                        os.killpg(self.process.pid, signal.SIGTERM)
+                    try:
+                        # The guard gives the direct driver at most one second
+                        # before SIGKILL, then publishes its wait4 receipt.
+                        self.process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        failures.append("Driver guard did not stop after SIGTERM")
                 finally:
+                    # A direct driver can exit while descendants keep running.
+                    # Clean the owned group even when the guard has exited.
                     with suppress(ProcessLookupError):
                         os.killpg(self.process.pid, signal.SIGKILL)
-                    self.process.wait(timeout=2)
+                    try:
+                        self.process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        failures.append("Driver guard did not stop after SIGKILL")
+                try:
+                    self.memory_receipt = read_receipt(
+                        self.receipt_path,
+                        expected_guard_pid=self.process.pid,
+                        expected_command=self.command,
+                    )
+                    self.peak_rss = max(self.peak_rss, self.memory_receipt["peak_rss_bytes"])
+                    if self.memory_receipt["exitstatus"] != self.process.returncode:
+                        failures.append("Driver receipt exit status differs from guard status")
+                    if self.peak_rss > self.memory_limit:
+                        failures.append("Driver lifetime memory limit exceeded")
+                    if not self._request_failed and self.memory_receipt["exitstatus"] != 0:
+                        failures.append(
+                            f"Driver exited {self.memory_receipt['exitstatus']} during close"
+                        )
+                except ProcessGuardError as error:
+                    failures.append(str(error))
         finally:
             if self.selector is not None:
                 self.selector.close()
@@ -504,6 +559,9 @@ class Driver:
                     with suppress(OSError, ValueError):
                         stream.close()
             self.buffer = b""
+        if failures:
+            self.resource_error = "; ".join(failures)
+            raise DriverError(self.resource_error)
 
     def __enter__(self):
         return self
