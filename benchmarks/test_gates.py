@@ -118,6 +118,7 @@ def preprocess_response(case, language, settings):
             vertices_before=vertices,
             vertices_after=vertices,
             edges=edges,
+            edges_after=edges,
             maximal_cliques=3**parts,
             decision_variables=decisions,
             auxiliary_variables=auxiliary,
@@ -1055,6 +1056,19 @@ def test_new_preprocessing_completion_is_unscored(tmp_path):
         "baseline": "external_wall_timeout",
         "outcome": "completed_preprocessing",
         "scored": False,
+        "structure": {
+            "vertices_before": 24,
+            "vertices_after": 24,
+            "edges": 252,
+            "edges_after": 252,
+            "maximal_cliques": 6561,
+            "decision_variables": 6561,
+            "auxiliary_variables": 0,
+            "constraints": 276,
+            "nonzeros": 236196,
+            "essential_decisions": 0,
+            "essential_cover": False,
+        },
     }
 
 

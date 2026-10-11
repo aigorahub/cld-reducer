@@ -763,6 +763,7 @@ def freeze(args):
         metadata,
         calibration_results,
         "compare",
+        samples=samples,
     )
 
     def keys(row):

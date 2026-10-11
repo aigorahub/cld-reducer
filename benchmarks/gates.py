@@ -470,6 +470,7 @@ def audit(
             calibration_metadata,
             calibration_results,
             "compare",
+            samples=calibration_samples,
         )
         require(
             calibration_resources["sha256"] == manifest.get("calibration_resource_sha256"),
@@ -772,7 +773,10 @@ def audit(
                 path, manifest, metadata, profile_rows, "profiles"
             )
             preprocess_outcomes = validate_preprocess_outcomes(
-                manifest, profile_rows, candidate=label == "candidate"
+                manifest,
+                profile_rows,
+                candidate=label == "candidate",
+                baseline_rows=list(profiles["baseline"].values()) if label == "candidate" else None,
             )
             solver_settings[label] = {}
             if label == "baseline":
@@ -981,7 +985,9 @@ def audit(
             )
             growth = rss_growth(manifest, samples)
             response_rows = _rows(path, "results.jsonl")
-            run_resources = validate_resources(path, manifest, metadata, response_rows, "compare")
+            run_resources = validate_resources(
+                path, manifest, metadata, response_rows, "compare", samples=samples
+            )
             validate_comparison_results(
                 manifest,
                 response_rows,
