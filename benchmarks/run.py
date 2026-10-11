@@ -12,7 +12,14 @@ import time
 from contextlib import ExitStack
 from pathlib import Path
 
-from analysis import analyze, rss_growth, same_javascript_tools, select_gain_targets, valid_source
+from analysis import (
+    analyze,
+    paired_orders,
+    rss_growth,
+    same_javascript_tools,
+    select_gain_targets,
+    valid_source,
+)
 from cases import frozen_manifest, job_key, jobs
 from common import (
     ROOT,
@@ -66,13 +73,6 @@ def save_artifact(path, value):
 def emit(stream, value):
     stream.write(json.dumps(value, allow_nan=False) + "\n")
     stream.flush()
-
-
-def paired_orders(rng, count, process):
-    """Balance first position per process; alternate any odd surplus."""
-    first = [(batch + process) % 2 for batch in range(count)]
-    rng.shuffle(first)
-    return [[value, 1 - value] for value in first]
 
 
 def driver(language, repo, manifest, output, suffix, *, metadata, allow_close_failure=False):

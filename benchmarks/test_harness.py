@@ -2,6 +2,7 @@
 
 import copy
 import json
+import random
 import sys
 from pathlib import Path
 
@@ -10,7 +11,15 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import common
-from analysis import analyze, estimate, ordered_samples, rss_growth, select_gain_targets
+from analysis import (
+    analyze,
+    estimate,
+    measurement_orders,
+    ordered_samples,
+    paired_orders,
+    rss_growth,
+    select_gain_targets,
+)
 from cases import frozen_manifest, job_key, jobs, multipartite
 from common import Driver, DriverError, digest, input_digest
 from run import fixture_mismatch, load_manifest
@@ -109,6 +118,7 @@ def evidence(ratio=0.8, targets=True):
         for p in range(8)
         for b in range(9)
     ]
+    set_sample_orders(m, rows)
     before = {"baseline": source(), "candidate": source("/candidate", "e" * 40)}
     meta = {
         "complete": True,
@@ -125,6 +135,12 @@ def evidence(ratio=0.8, targets=True):
         ],
     }
     return m, meta, rows
+
+
+def set_sample_orders(manifest, rows):
+    orders = measurement_orders(manifest)
+    for row in rows:
+        row["order"] = orders[row["key"], row["process"], row["batch"]]
 
 
 def calibration(meta):
@@ -248,6 +264,113 @@ def test_exact_gain_and_paired_process_noise():
     assert report["scope"] == "single_run"
     assert all(g["ratio"] == pytest.approx(0.8) for g in report["groups"].values())
     assert all(g["interval_95"][1] == pytest.approx(0.8) for g in report["groups"].values())
+
+
+def test_measurement_orders_preserves_rng_progression_and_skips():
+    from run import paired_orders as collection_paired_orders
+
+    assert collection_paired_orders is paired_orders
+    manifest, _ = memory_samples()
+    manifest.update(order_seed=17, warmup_batches=3, batches=9)
+    orders = measurement_orders(manifest)
+    # These first positions come from the original collection loop: one RNG
+    # per language/process, then warmup and measurement shuffles for each job.
+    expected = [
+        [
+            [1, 1, 0, 0, 0, 1, 0, 1, 0],
+            [1, 1, 0, 1, 0, 1, 0, 0, 0],
+            [1, 0, 1, 1, 0, 0, 0, 1, 0],
+            [1, 1, 1, 0, 0, 0, 1, 0, 0],
+        ],
+        [
+            [1, 1, 1, 1, 0, 1, 0, 0, 0],
+            [0, 1, 0, 1, 1, 0, 1, 0, 1],
+            [1, 0, 1, 0, 1, 1, 0, 1, 0],
+            [0, 1, 1, 0, 0, 0, 1, 1, 1],
+        ],
+    ]
+    for language in manifest["languages"]:
+        keys = [
+            job_key(language, case)
+            for case in jobs(manifest)
+            if job_key(language, case) not in manifest["baseline_failures"]
+        ]
+        for process in range(2):
+            assert [
+                [orders[key, process, batch][0] for batch in range(9)] for key in keys
+            ] == expected[process]
+    assert len(orders) == 2 * 2 * 4 * 9
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing",
+        "not_list",
+        "short",
+        "duplicate",
+        "bool",
+        "float",
+        "unbalanced",
+        "seed",
+        "warmups",
+        "reset_per_job",
+    ],
+)
+def test_analysis_rejects_invalid_or_changed_pair_schedule(fault):
+    manifest, metadata, rows = evidence()
+    if fault == "missing":
+        rows[0].pop("order")
+    elif fault in ("not_list", "short", "duplicate", "bool", "float"):
+        rows[0]["order"] = {
+            "not_list": "10",
+            "short": [1],
+            "duplicate": [1, 1],
+            "bool": [True, False],
+            "float": [1.0, 0.0],
+        }[fault]
+    elif fault == "unbalanced":
+        for row in rows:
+            row["order"] = [0, 1]
+    elif fault in ("seed", "warmups"):
+        other = copy.deepcopy(manifest)
+        other["order_seed" if fault == "seed" else "warmup_batches"] += 1
+        set_sample_orders(other, rows)
+    else:
+        for row in rows:
+            rng = random.Random(manifest["order_seed"] + row["process"])
+            paired_orders(rng, manifest["warmup_batches"], row["process"])
+            row["order"] = paired_orders(rng, manifest["batches"], row["process"])[row["batch"]]
+    report = analyze(manifest, metadata, rows)
+    assert not report["pass"]
+    assert any("pair order differs" in reason for reason in report["reasons"])
+
+
+def test_analysis_accepts_reordered_rows_with_the_same_pair_schedule():
+    manifest, metadata, rows = evidence()
+    original = analyze(manifest, metadata, rows)
+    assert original["pass"]
+    assert analyze(manifest, metadata, rows[::-1]) == original
+
+
+def test_analysis_schedule_skips_baseline_failures_without_rng_use():
+    manifest, metadata, rows = evidence(ratio=1, targets=False)
+    calibration(metadata)
+    original_orders = measurement_orders(manifest)
+    failed = list(manifest["iterations"])[3]
+    manifest["baseline_failures"] = [failed]
+    manifest["iterations"].pop(failed)
+    rows = [row for row in rows if row["key"] != failed]
+    set_sample_orders(manifest, rows)
+    metadata["manifest_sha256"] = digest(manifest)
+    metadata["input_sha256"] = input_digest(manifest)
+    report = analyze(manifest, metadata, rows[::-1])
+    assert report["pass"], report["reasons"]
+    for row in rows:
+        row["order"] = original_orders[row["key"], row["process"], row["batch"]]
+    report = analyze(manifest, metadata, rows)
+    assert not report["pass"]
+    assert any("pair order differs" in reason for reason in report["reasons"])
 
 
 @pytest.mark.parametrize(
@@ -690,6 +813,7 @@ def test_invalid_gain_target_membership_cannot_pass(fault):
         failed = keys[0]
         m["baseline_failures"] = [failed]
         rows = [row for row in rows if row["key"] != failed]
+        set_sample_orders(m, rows)
     meta["manifest_sha256"] = digest(m)
     meta["input_sha256"] = input_digest(m)
     assert not analyze(m, meta, rows)["pass"]

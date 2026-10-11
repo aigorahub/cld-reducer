@@ -7,6 +7,7 @@ independent passing run and the separate correctness and resource gates.
 from __future__ import annotations
 
 import math
+import random
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -26,6 +27,29 @@ def at_most(value, limit):
 
 def case_input_digest(case):
     return digest({name: case.get(name) for name in ("call", "input", "options")})
+
+
+def paired_orders(rng, count, process):
+    """Balance first position per process; alternate any odd surplus."""
+    first = [(batch + process) % 2 for batch in range(count)]
+    rng.shuffle(first)
+    return [[value, 1 - value] for value in first]
+
+
+def measurement_orders(manifest):
+    """Reconstruct collection RNG use, including warmups and skipped jobs."""
+    orders = {}
+    for language in manifest["languages"]:
+        for process in range(manifest["processes"]):
+            rng = random.Random(manifest["order_seed"] + process)
+            for case in jobs(manifest):
+                key = job_key(language, case)
+                if key in manifest["baseline_failures"]:
+                    continue
+                paired_orders(rng, manifest["warmup_batches"], process)
+                for batch, order in enumerate(paired_orders(rng, manifest["batches"], process)):
+                    orders[key, process, batch] = order
+    return orders
 
 
 def ordered_samples(manifest, records):
@@ -584,9 +608,21 @@ def analyze(manifest, metadata, records, *, calibration_targets=None):
     except (KeyError, TypeError, ValueError) as error:
         reasons.append(str(error))
         return report
+    orders = measurement_orders(manifest)
     for row in records:
         key = row["key"]
         index = (row["process"], row["batch"])
+        order = row.get("order")
+        if (
+            not isinstance(order, list)
+            or len(order) != 2
+            or any(type(value) is not int for value in order)
+            or order != orders[(key, *index)]
+        ):
+            reasons.append(
+                f"Recorded pair order differs from the collection schedule: {key} {index}"
+            )
+            return report
         by_key[key][index] = row
     aa = metadata.get("kind") == "calibration"
     draws = manifest["bootstrap_resamples"]
