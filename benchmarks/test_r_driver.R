@@ -77,6 +77,24 @@ stopifnot(overhead$reference_ns >= 0,
 unchanged(runtime, original_runtime)
 unchanged(highs, original_highs)
 
+# The two middle vertices are true twins. Profile counts must distinguish
+# original edges from edges after the twin reduction.
+twin_case <- list(id = "true_twins4", call = "adjacency", input = list(
+  adjacency = list(list(1, 1, 1, 0), list(1, 1, 1, 1),
+                   list(1, 1, 1, 1), list(0, 1, 1, 1)),
+  groups = list("a", "b", "c", "d")))
+for (method in c("letter_minimum", "assignment_minimum")) {
+  twin_case$options <- list(method = method)
+  twin_profile <- request("profile", twin_case)
+  stopifnot(isTRUE(twin_profile$ok),
+            isTRUE(twin_profile$metrics$vertices_before == 4L),
+            isTRUE(twin_profile$metrics$vertices_after == 3L),
+            isTRUE(twin_profile$metrics$edges == 5L),
+            isTRUE(twin_profile$metrics$edges_after == 2L))
+}
+unchanged(runtime, original_runtime)
+unchanged(highs, original_highs)
+
 # Read native values independently. The package global setting and native option
 # are separate observations; neither is copied from the version declaration.
 real_native_run <- get("solver_run", highs)
