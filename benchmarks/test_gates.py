@@ -408,6 +408,7 @@ def make_evidence(
                     metrics={
                         "essential_cover": True,
                         "solver_total_ns": 40,
+                        "probe_ns": 0,
                         "solve_count": 1,
                         "solver_settings": solver_observations(language, version["settings"], 1),
                         "decision_variables": 1,

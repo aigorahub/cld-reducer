@@ -309,6 +309,7 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
                 "action": "profile",
                 "metrics": {
                     "solver_total_ns": 40,
+                    "probe_ns": 0,
                     "essential_cover": True,
                     "solve_count": 1,
                     "solver_settings": solver_observations("js", settings, 1),

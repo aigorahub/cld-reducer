@@ -826,8 +826,8 @@ def freeze(args):
     m["gain_targets"] = eligible
     m["candidate"] = "essential-cover-certificate"
     m["eligibility_rule"] = (
-        "essential_cover and measured inclusive adapter wall time "
-        ">= 25 percent of profiled full API time"
+        "essential_cover and solver adapter time after measured probe subtraction "
+        ">= 25 percent of profiled full API time after the same probe subtraction"
     )
     m["profile_sha256"] = digest(rows)
     m["calibration_sha256"] = digest(calibration)
