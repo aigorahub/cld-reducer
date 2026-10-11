@@ -34,6 +34,8 @@ R requires `microbenchmark::get_nanotime`; a missing microbenchmark package stop
 
 R loads repository source functions into a private environment. Its module load includes source evaluation and Matrix loading. Its measured API calls execute those source functions. The timing scope is this source environment, not an installed package.
 
+The external profile wall limit covers the whole request. This includes the uninstrumented reference and instrumented full call. Preprocessing has no reference call.
+
 A profile-only temporary source patch must have its hash and source head in profile_notes. The measurement build must stay unmodified. Drivers must also work on the later runtime branch.
 
 Profiles report `metrics.solver_settings`. It contains one ordered record per actual native solve. Each record contains stable native values. Store the changing shared deadline value separately under `excluded_values.time_limit`. Record no observed settings when no solver runs. JavaScript records its single thread API constraint separately because that API has no native thread option. R records both native and package global thread settings. The acceptance gate checks these observations against the declared settings.
