@@ -34,6 +34,8 @@ python benchmarks/run.py audit --manifest "$evidence_dir/frozen.json" --runs "$e
 
 The final audit reads raw evidence again. One timing run cannot establish acceptance. Each target must show a geometric mean ratio of at most 0.90. Its 95 percent upper confidence bound must be below 1. Each case's upper bound must be at most 1.05. Both independent runs must pass. Correctness and resource failures block acceptance.
 
+The default process tree memory limit is 8,192 MiB. The audit records RSS at every response and compares growth from the first to the last measured response in each process. Candidate growth must not exceed baseline growth by more than the predeclared 32 MiB allowance. This allowance does not raise the absolute memory limit.
+
 Each timing process runs three warmup batches, then nine or more measured batches. The default design uses eight fresh process pairs. The baseline pilot sets iterations to reach about 50 milliseconds per batch. The estimator takes a median across batches within each process, then a median across processes. The bootstrap resamples paired batches within each original process before it resamples the resulting process values. It uses the same draws across target cases.
 
 Module and solver load costs appear in version records. The pilot records the first full API call and warm calls separately. Profile hooks and result serialization are outside timed calls. A profile records inclusive regions and explains overlap. Profile times choose candidate targets. They do not prove a speed gain.
