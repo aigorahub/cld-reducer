@@ -147,6 +147,7 @@ def make_evidence(
     cases_per_split=5,
     preprocess_failure=None,
     memory_growth_tolerance_mb=32,
+    optional_profile=None,
 ):
     base_source = dict(
         path=str(tmp_path / "source"),
@@ -258,6 +259,19 @@ def make_evidence(
                 input={"adjacency": [[1]], "groups": ["v" if oracle_match else "blocked"]},
             )
         )
+    if optional_profile is not None:
+        cases.append(
+            dict(
+                id="optional/stress",
+                split="optional",
+                classification="stress",
+                tier="opt-in",
+                wall_seconds=60,
+                call="adjacency",
+                input={"adjacency": [[1]], "groups": ["optional"]},
+                options={},
+            )
+        )
     for parts in (6, 7, 8, 9):
         cases.append(
             dict(
@@ -353,9 +367,18 @@ def make_evidence(
         captures[variant] = rows
         capture_map = {job_key(row["language"], row["case"]): row for row in rows}
         profile_rows = []
-        for case in jobs(manifest, tiers=("solve", "preprocess", "expected-error")):
+        for case in jobs(manifest, tiers=("solve", "preprocess", "expected-error", "opt-in")):
             key = job_key(language, case)
-            if case["tier"] == "expected-error":
+            if case["tier"] == "opt-in" and optional_profile == "failure":
+                response = dict(
+                    ok=False,
+                    action="profile",
+                    error={
+                        "kind": "ExternalLimit",
+                        "message": "Driver external wall limit exceeded",
+                    },
+                )
+            elif case["tier"] == "expected-error":
                 response = dict(
                     ok=False,
                     action="preprocess",
@@ -375,7 +398,7 @@ def make_evidence(
                             "message": "Driver " + preprocess_failure + " limit exceeded",
                         },
                     )
-            elif "response" in capture_map[key]:
+            elif key in capture_map and "response" in capture_map[key]:
                 response = dict(failure, action="profile")
             else:
                 response = dict(
@@ -394,7 +417,14 @@ def make_evidence(
                         "selected": [1],
                         "objective": 1,
                     },
-                    **{name: capture_map[key][name] for name in ("result", "canonical")},
+                    **(
+                        {name: capture_map[key][name] for name in ("result", "canonical")}
+                        if key in capture_map
+                        else {
+                            "result": result(case["input"]["groups"][0], case["options"]["method"]),
+                            "canonical": {"selected": [1], "objective": 1},
+                        }
+                    ),
                 )
             peak = (
                 (manifest["memory_limit_mb"] + 1) * 1024**2
@@ -649,6 +679,77 @@ def run_audit(manifest, directories, runs=None):
         directories["calibration"],
         directories["pilot"],
     )
+
+
+@pytest.mark.parametrize("optional_profile", ["success", "failure"])
+def test_optional_profiles_freeze_and_audit_agree(tmp_path, monkeypatch, optional_profile):
+    from types import SimpleNamespace
+
+    import run
+
+    manifest, directories = make_evidence(tmp_path, optional_profile=optional_profile)
+    # The audit fixture uses one method to keep raw sampling evidence small.
+    # Exercise freeze's real evidence checks with that same synthetic design.
+    monkeypatch.setattr(run, "load_manifest", run.read)
+    args = SimpleNamespace(
+        manifest=directories["calibration"] / "manifest.json",
+        calibration=directories["calibration"],
+        pilot=directories["pilot"],
+        profiles=directories["baseline-profiles"],
+        capture=directories["baseline-capture"],
+        output=tmp_path / "frozen.json",
+    )
+    original = (args.profiles / "profiles.jsonl").read_bytes()
+    if optional_profile == "failure":
+        with pytest.raises(ValueError, match="Failed optional profile.*separate run"):
+            run.freeze(args)
+        assert not args.output.exists()
+        report = run_audit(manifest, directories)
+        assert not report["pass"]
+        assert any("failed required case" in reason for reason in report["reasons"])
+    else:
+        run.freeze(args)
+        manifest = run.read(args.output)
+        bind_decision_manifest(manifest, directories)
+        report = run_audit(manifest, directories)
+        assert report["pass"], report["reasons"]
+    assert (args.profiles / "profiles.jsonl").read_bytes() == original
+
+
+@pytest.mark.parametrize("fault", ["unknown", "duplicate", "input", "language"])
+def test_freeze_validates_every_optional_profile(tmp_path, monkeypatch, fault):
+    from types import SimpleNamespace
+
+    import run
+
+    _, directories = make_evidence(tmp_path, optional_profile="success")
+    args = SimpleNamespace(
+        manifest=directories["calibration"] / "manifest.json",
+        calibration=directories["calibration"],
+        pilot=directories["pilot"],
+        profiles=directories["baseline-profiles"],
+        capture=directories["baseline-capture"],
+        output=tmp_path / "frozen.json",
+    )
+    monkeypatch.setattr(run, "load_manifest", run.read)
+
+    def change(rows):
+        row = next(row for row in rows if row["case"]["tier"] == "opt-in")
+        if fault == "unknown":
+            row["key"] += "-unknown"
+        elif fault == "duplicate":
+            rows.append(copy.deepcopy(row))
+        elif fault == "input":
+            row["case"]["input"]["groups"] = ["changed"]
+        else:
+            row["key"] = row["key"].replace("python|", "r|", 1)
+
+    change_rows(args.profiles / "profiles.jsonl", change)
+    original = (args.profiles / "profiles.jsonl").read_bytes()
+    with pytest.raises(ValueError, match="Profile (rows|inputs)"):
+        run.freeze(args)
+    assert not args.output.exists()
+    assert (args.profiles / "profiles.jsonl").read_bytes() == original
 
 
 def change_json(path, change):

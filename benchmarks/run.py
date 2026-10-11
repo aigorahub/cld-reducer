@@ -31,6 +31,7 @@ from profile_outcomes import freeze_preprocess_failures, validate_preprocess_out
 from profile_settings import validate_solver_settings
 from resource_evidence import closed_response, record_driver, validate_resources
 from solve_outcomes import (
+    solve_failure_class,
     validate_calibration_failures,
     validate_comparison_results,
     validate_solve_captures,
@@ -382,6 +383,7 @@ def captures(args):
                     reference.setdefault(identity, value)
                     if mismatch:
                         failures.append({"language": language, "id": c["id"], "mismatch": mismatch})
+                    completed_exclusion = job_key(language, c) in m["baseline_failures"]
                     emit(
                         f,
                         {
@@ -393,9 +395,22 @@ def captures(args):
                             "case": c,
                             **value,
                             "mismatch": mismatch,
+                            **({"baseline_failure_completed": True} if completed_exclusion else {}),
                         },
                     )
                     metadata["checked"] += 1
+                    if completed_exclusion:
+                        key = job_key(language, c)
+                        if not m["frozen"]:
+                            raise ValueError(
+                                f"Excluded baseline solve succeeded in capture: {key}. "
+                                "Keep this evidence and run a new pilot before calibration."
+                            )
+                        print(
+                            f"capture {key}: listed baseline failure completed; "
+                            "independent correctness evidence is required",
+                            flush=True,
+                        )
                     if index % 100 == 0:
                         print(f"capture {language}: {index + 1}/{len(cases)}", flush=True)
     metadata["failures"] = failures
@@ -456,8 +471,29 @@ def pilot(args):
                     "warmups": warmups,
                     "peak_rss": d.peak_rss,
                 }
+                if d.resource_error is not None:
+                    row["close_error"] = d.resource_error
+                    emit(f, row)
+                    print(
+                        f"pilot {key}: failed [unsupported_close] "
+                        f"ExternalLimit: {d.resource_error}",
+                        flush=True,
+                    )
+                    raise ValueError(f"Unsupported pilot close failure: {key}: {d.resource_error}")
                 if not warm["ok"]:
+                    emit(f, row)
+                    error = warm.get("error", {})
+                    detail = f"{error.get('kind')}: {error.get('message')}"
+                    try:
+                        failure_class = solve_failure_class(warm, language, c, "measure")
+                    except ValueError as error:
+                        print(f"pilot {key}: failed [unsupported] {detail}", flush=True)
+                        raise ValueError(f"Unsupported pilot failure: {key}: {detail}") from error
+                    print(f"pilot {key}: failed [{failure_class}] {detail}", flush=True)
+                    if failure_class == "external_memory_limit":
+                        raise ValueError(f"Unsupported pilot solve memory failure: {key}")
                     m["baseline_failures"].append(key)
+                    continue
                 else:
                     iterations = max(
                         1, min(100000, math.ceil(m["batch_target_ns"] / warm["elapsed_ns"]))
@@ -690,18 +726,25 @@ def freeze(args):
     expected = {
         job_key(lang, c): c
         for lang in m["languages"]
-        for c in jobs(m, tiers=("solve", "preprocess", "expected-error"))
+        for c in jobs(m, tiers=("solve", "preprocess", "expected-error", "opt-in"))
     }
-    required_rows = [row for row in rows if row["case"]["tier"] != "opt-in"]
-    if len(required_rows) != len(expected) or {row["key"] for row in required_rows} != set(
-        expected
-    ):
+    required = {key for key, case in expected.items() if case["tier"] != "opt-in"}
+    present = {row["key"] for row in rows}
+    if len(present) != len(rows) or not required <= present <= set(expected):
         raise ValueError("Profile rows are incomplete, duplicated, or unexpected")
+    if any(row["case"] != expected[row["key"]] for row in rows):
+        raise ValueError("Profile inputs differ")
+    for row in rows:
+        if row["case"]["tier"] == "opt-in" and row["response"].get("ok") is not True:
+            raise ValueError(
+                f"Failed optional profile cannot enter frozen acceptance: {row['key']}. "
+                "Keep this diagnostic file. Collect required profiles in a separate run "
+                "without --include-opt-in."
+            )
+    required_rows = [row for row in rows if row["key"] in required]
     m["baseline_preprocess_failures"] = freeze_preprocess_failures(m, rows)
     validate_preprocess_outcomes(m, rows)
     for row in required_rows:
-        if row["case"] != expected[row["key"]]:
-            raise ValueError("Profile inputs differ")
         tier, response = row["case"]["tier"], row["response"]
         if tier == "preprocess":
             continue  # The shared outcome gate checks successful and failed preprocessing.

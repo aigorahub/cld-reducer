@@ -717,6 +717,128 @@ def test_pilot_retains_original_input_and_all_warm_calls(tmp_path, monkeypatch):
     )
 
 
+@pytest.mark.parametrize("when", ["first", "warm"])
+@pytest.mark.parametrize(
+    "failure_class", ["external_wall_timeout", "solver_time_limit", "clique_cap"]
+)
+def test_pilot_reports_exact_supported_failure(tmp_path, monkeypatch, capsys, when, failure_class):
+    args, manifest, _ = setup_collection(tmp_path, monkeypatch)
+    request = run.bounded_request
+    counts = {}
+
+    def fail(driver, payload, seconds):
+        response = request(driver, payload, seconds)
+        key = job_key("python", payload["case"])
+        counts[key] = counts.get(key, 0) + 1
+        if when == "warm" and counts[key] == 1:
+            return response
+        method = payload["case"]["options"]["method"].replace("_", "-")
+        kind, message = {
+            "external_wall_timeout": ("ExternalLimit", "Driver external wall limit exceeded"),
+            "solver_time_limit": ("SolverError", f"{method} MILP failed: Time limit reached"),
+            "clique_cap": (
+                "SolverError",
+                "maximal clique enumeration exceeded max_cliques=10000"
+                "; increase max_cliques or pass None to disable the cap",
+            ),
+        }[failure_class]
+        return dict(ok=False, action="measure", error={"kind": kind, "message": message})
+
+    monkeypatch.setattr(run, "bounded_request", fail)
+    run.pilot(args)
+    rows = [json.loads(line) for line in (args.output / "pilot.jsonl").read_text().splitlines()]
+    keys = [job_key("python", case) for case in jobs(manifest)]
+    assert run.read(args.output / "manifest.json")["baseline_failures"] == keys
+    output = capsys.readouterr().out
+    for row in rows:
+        error = row["warm"]["error"]
+        assert (
+            f"pilot {row['key']}: failed [{failure_class}] {error['kind']}: {error['message']}"
+            in output
+        )
+        assert row["first"]["ok"] is (when == "warm")
+        assert len(row["warmups"]) == (1 if when == "warm" else 0)
+    assert run.read(args.output / "metadata.json")["complete"] is True
+
+
+@pytest.mark.parametrize("failure", ["crash", "close", "close_after_timeout", "solver", "memory"])
+def test_pilot_stops_on_unsupported_failure_and_keeps_raw_evidence(
+    tmp_path, monkeypatch, capsys, failure
+):
+    args, _, _ = setup_collection(tmp_path, monkeypatch)
+    if failure in ("close", "close_after_timeout"):
+        factory = run.driver
+
+        def driver(*args, **kwargs):
+            instance = factory(*args, **kwargs)
+            instance.resource_error = "Missing native process memory receipt"
+            instance.memory_limit = 8192 * 1024**2
+            return instance
+
+        monkeypatch.setattr(run, "driver", driver)
+        if failure == "close_after_timeout":
+            monkeypatch.setattr(
+                run,
+                "bounded_request",
+                lambda *_: dict(
+                    ok=False,
+                    action="measure",
+                    error={
+                        "kind": "ExternalLimit",
+                        "message": "Driver external wall limit exceeded",
+                    },
+                ),
+            )
+    else:
+        error = {
+            "crash": {"kind": "ExternalLimit", "message": "Driver exited before response"},
+            "solver": {"kind": "SolverError", "message": "Unexpected solver failure"},
+            "memory": {"kind": "ExternalLimit", "message": "Driver memory limit exceeded"},
+        }[failure]
+        monkeypatch.setattr(
+            run,
+            "bounded_request",
+            lambda *_: dict(ok=False, action="measure", error=error),
+        )
+    with pytest.raises(ValueError, match="Unsupported pilot"):
+        run.pilot(args)
+    rows = [json.loads(line) for line in (args.output / "pilot.jsonl").read_text().splitlines()]
+    assert len(rows) == 1
+    assert rows[0]["warm"]["ok"] is False
+    assert not (args.output / "manifest.json").exists()
+    assert run.read(args.output / "metadata.json")["complete"] is False
+    output = capsys.readouterr().out
+    assert rows[0]["key"] in output
+    assert rows[0].get("close_error", rows[0]["warm"]["error"]["message"]) in output
+    failure_class = (
+        "unsupported_close"
+        if failure.startswith("close")
+        else "external_memory_limit"
+        if failure == "memory"
+        else "unsupported"
+    )
+    assert f"[{failure_class}]" in output
+
+
+@pytest.mark.parametrize("frozen", [False, True])
+def test_capture_reports_completed_baseline_exclusion(tmp_path, monkeypatch, capsys, frozen):
+    args, manifest, requests = setup_collection(tmp_path, monkeypatch)
+    excluded = job_key("python", next(jobs(manifest)))
+    manifest.update(frozen=frozen, baseline_failures=[excluded])
+    run.save(args.manifest, manifest)
+    if frozen:
+        run.captures(args)
+        assert "listed baseline failure completed" in capsys.readouterr().out
+    else:
+        with pytest.raises(ValueError, match="Excluded baseline solve succeeded.*new pilot"):
+            run.captures(args)
+        assert len([request for request, _ in requests if request["action"] == "capture"]) == 1
+    rows = [json.loads(line) for line in (args.output / "vectors.jsonl").read_text().splitlines()]
+    assert rows[0]["baseline_failure_completed"] is True
+    assert rows[0]["result"]["stats"]["objective"] == rows[0]["canonical"]["objective"] == 1
+    assert run.read(args.output / "metadata.json")["complete"] is frozen
+
+
 @pytest.mark.parametrize("fault", [None, "dirty", "changed"])
 def test_final_audit_binds_its_own_clean_executing_harness(tmp_path, monkeypatch, fault):
     import gates
