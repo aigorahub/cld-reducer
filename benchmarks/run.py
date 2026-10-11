@@ -26,6 +26,8 @@ from common import (
     source_identity,
     version_identity,
 )
+from profile_outcomes import freeze_preprocess_failures, validate_preprocess_outcomes
+from profile_settings import validate_solver_settings
 from resource_evidence import closed_response, record_driver, validate_resources
 
 
@@ -683,10 +685,14 @@ def freeze(args):
         expected
     ):
         raise ValueError("Profile rows are incomplete, duplicated, or unexpected")
+    m["baseline_preprocess_failures"] = freeze_preprocess_failures(m, rows)
+    validate_preprocess_outcomes(m, rows)
     for row in required_rows:
         if row["case"] != expected[row["key"]]:
             raise ValueError("Profile inputs differ")
         tier, response = row["case"]["tier"], row["response"]
+        if tier == "preprocess":
+            continue  # The shared outcome gate checks successful and failed preprocessing.
         if tier == "expected-error":
             if response[
                 "ok"
@@ -696,6 +702,14 @@ def freeze(args):
                 raise ValueError("Expected clique cap was not reached")
         elif not response["ok"] and row["key"] not in m["baseline_failures"]:
             raise ValueError("Unexpected baseline profile or preprocessing failure")
+    for row in rows:
+        if row["response"].get("ok") is True:
+            language = row["key"].split("|", 1)[0]
+            observed = validate_solver_settings(
+                language, row["response"], profile_meta["versions"][language]["settings"]
+            )
+            if row["case"]["tier"] != "preprocess" and observed is None:
+                raise ValueError("Baseline full API profile must observe real solver settings")
     for language in m["languages"]:
         if version_identity(profile_meta["versions"][language]) != version_identity(
             m["baseline_versions"][language]

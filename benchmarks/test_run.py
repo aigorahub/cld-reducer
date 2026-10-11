@@ -8,6 +8,8 @@ from types import SimpleNamespace
 import pytest
 import run
 from cases import frozen_manifest, job_key, jobs
+from test_gates import preprocess_response, solver_observations
+from test_profile_settings import sample as settings_sample
 from test_resource_evidence import write_resource_fixture
 
 
@@ -57,6 +59,14 @@ def test_invalid_design(tmp_path, field, value):
     path.write_text(json.dumps(manifest))
     with pytest.raises(ValueError):
         run.load_manifest(path)
+
+
+def test_zero_memory_growth_allowance_is_a_valid_design(tmp_path):
+    manifest = frozen_manifest(Path(__file__).resolve().parents[1])
+    manifest["memory_growth_tolerance_mb"] = 0
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest))
+    assert run.load_manifest(path)["memory_growth_tolerance_mb"] == 0
 
 
 @pytest.mark.parametrize(
@@ -204,8 +214,10 @@ def test_freeze_rechecks_pilot_binding(tmp_path, monkeypatch, fault):
 
 
 @pytest.mark.parametrize("small_sigma", [False, True])
+@pytest.mark.parametrize("preprocess_failure", [None, "external wall", "memory"])
+@pytest.mark.parametrize("native_fault", [None, "gap", "missing", "zero"])
 def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
-    tmp_path, monkeypatch, small_sigma
+    tmp_path, monkeypatch, small_sigma, preprocess_failure, native_fault
 ):
     manifest = frozen_manifest(Path(__file__).resolve().parents[1])
     manifest["languages"] = ["js"]
@@ -215,10 +227,17 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
         for case in [c for c in manifest["cases"] if c["split"] == split and c["tier"] == "solve"][
             :5
         ]
-    ]
+    ] + [c for c in manifest["cases"] if c["tier"] == "preprocess"]
     baseline = javascript_source()
     manifest["pilot_source"] = dict(copy.deepcopy(baseline), path="/pilot-checkout")
-    manifest["baseline_versions"] = {"js": {"language": "javascript", "runtime": "synthetic"}}
+    settings = settings_sample("js")[0]
+    manifest["baseline_versions"] = {
+        "js": {
+            "language": "javascript",
+            "runtime": "synthetic",
+            "settings": settings,
+        }
+    }
     harness = dict(copy.deepcopy(baseline), path="/harness", head="e" * 40)
     calibration = tmp_path / "calibration"
     run.save(calibration / "manifest.json", manifest)
@@ -245,7 +264,13 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
             "peak_rss": 1024,
             "response": {
                 "ok": True,
-                "metrics": {"solver_total_ns": 40, "essential_cover": True},
+                "action": "profile",
+                "metrics": {
+                    "solver_total_ns": 40,
+                    "essential_cover": True,
+                    "solve_count": 1,
+                    "solver_settings": solver_observations("js", settings, 1),
+                },
                 "phases_ns": {"total": 100},
             },
         }
@@ -260,6 +285,29 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
                 and row["case"]["options"]["method"] == "assignment_minimum"
             )
             row["response"]["metrics"]["solver_total_ns"] = 24
+    declared_failures = {}
+    for case in jobs(manifest, tiers=("preprocess",)):
+        response = preprocess_response(case, "js", settings)
+        peak = 1024
+        if preprocess_failure and case["id"].endswith("multipartite-8x3"):
+            response = dict(
+                ok=False,
+                action="preprocess",
+                error={
+                    "kind": "ExternalLimit",
+                    "message": f"Driver {preprocess_failure} limit exceeded",
+                },
+            )
+            declared_failures[job_key("js", case)] = (
+                "external_memory_limit"
+                if preprocess_failure == "memory"
+                else "external_wall_timeout"
+            )
+            if preprocess_failure == "memory":
+                peak = (manifest["memory_limit_mb"] + 1) * 1024**2
+        profile_rows.append(
+            dict(key=job_key("js", case), case=case, response=response, peak_rss=peak)
+        )
     capture_rows = [
         {"language": "js", "id": case["id"], "method": case["options"]["method"], "mismatch": []}
         for case in jobs(manifest)
@@ -275,6 +323,14 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
         "harness": harness,
         "harness_after": harness,
     }
+    if native_fault:
+        metrics = profile_rows[0]["response"]["metrics"]
+        if native_fault == "gap":
+            metrics["solver_settings"]["records"][0]["values"]["mip_rel_gap"] = 0.1
+        elif native_fault == "missing":
+            metrics.pop("solver_settings")
+        else:
+            metrics.update(solve_count=0, solver_settings={"available": False, "records": []})
     for directory, name, rows in (
         (profiles, "profiles.jsonl", profile_rows),
         (capture, "vectors.jsonl", capture_rows),
@@ -290,21 +346,26 @@ def test_freeze_records_calibration_harness_with_equal_source_at_other_path(
     monkeypatch.setattr(
         run, "analyze", lambda *_: {"pass": True, "manifest_sha256": run.digest(manifest)}
     )
-    run.freeze(
-        SimpleNamespace(
-            manifest=path,
-            calibration=calibration,
-            profiles=profiles,
-            capture=capture,
-            output=output,
-        )
+    args = SimpleNamespace(
+        manifest=path,
+        calibration=calibration,
+        profiles=profiles,
+        capture=capture,
+        output=output,
     )
+    if native_fault:
+        with pytest.raises(ValueError, match="solver settings"):
+            run.freeze(args)
+        assert not output.exists()
+        return
+    run.freeze(args)
     frozen = run.read(output)
     assert frozen["frozen"] is True
     assert frozen["calibration_harness"] == harness
     assert frozen["baseline_source"] == baseline
     assert frozen["calibration_manifest_sha256"] == run.digest(manifest)
     assert frozen["calibration_samples_sha256"] == run.digest([])
+    assert frozen["baseline_preprocess_failures"] == declared_failures
     assert set(frozen["gain_targets"]) == (
         {"js|letter_minimum"} if small_sigma else {"js|letter_minimum", "js|assignment_minimum"}
     )

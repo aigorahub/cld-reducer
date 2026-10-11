@@ -12,6 +12,7 @@ from analysis import analyze, select_gain_targets
 from cases import job_key, jobs, multipartite
 from common import digest, input_digest
 from gates import audit
+from profile_outcomes import PREPROCESS_PHASES, UNUSED_PHASES, freeze_preprocess_failures
 from test_resource_evidence import write_resource_fixture
 
 recorded_driver_hashes = gates._driver_hashes
@@ -75,6 +76,65 @@ def result(group="v", method="letter_minimum"):
     )
 
 
+def solver_observations(language, settings, count):
+    values = copy.deepcopy(settings)
+    values.pop("thread_setting", None)
+    values.pop("time_limit", None)
+    values["random_seed"] = 0
+    observed = dict(available=count > 0, records=[], source="Synthetic native option read")
+    if language == "r":
+        values["r_global_threads"] = values["threads"]
+    elif language == "js":
+        values.pop("threads")
+        values.pop("parallel", None)
+        observed.update(
+            thread_constraint=dict(kind="single_threaded_api", threads=1, native_option=False),
+            thread_control="The test models the single-threaded package API.",
+        )
+    observed["records"] = [dict(solve=i + 1, values=copy.deepcopy(values)) for i in range(count)]
+    return observed
+
+
+def preprocess_response(case, language, settings):
+    vertices = len(case["input"]["adjacency"])
+    parts = vertices // 3
+    edges = vertices * (vertices - 3) // 2
+    sigma = case["options"]["method"] == "assignment_minimum"
+    decisions = parts * 3**parts if sigma else 3**parts
+    auxiliary = parts * (parts - 1) // 2 * 3**parts if sigma else 0
+    return dict(
+        ok=True,
+        action="preprocess",
+        phases_ns={
+            **dict.fromkeys(PREPROCESS_PHASES, 10),
+            **dict.fromkeys(UNUSED_PHASES),
+            "total": 100,
+        },
+        metrics=dict(
+            solve_count=0,
+            solver_total_ns=0,
+            solver_settings=solver_observations(language, settings, 0),
+            vertices_before=vertices,
+            vertices_after=vertices,
+            edges=edges,
+            maximal_cliques=3**parts,
+            decision_variables=decisions,
+            auxiliary_variables=auxiliary,
+            constraints=vertices + edges + 2 * auxiliary,
+            nonzeros=decisions + 5 * auxiliary
+            if sigma
+            else 3**parts * (parts + parts * (parts - 1) // 2),
+            essential_decisions=0,
+            essential_cover=False,
+            canonical_feasible_trials=0,
+            canonical_infeasible_trials=0,
+            selected=None,
+            objective=None,
+            final_zero_decisions=None,
+        ),
+    )
+
+
 def make_evidence(
     tmp_path,
     *,
@@ -83,6 +143,8 @@ def make_evidence(
     oracle_match=False,
     language="python",
     cases_per_split=5,
+    preprocess_failure=None,
+    memory_growth_tolerance_mb=32,
 ):
     base_source = dict(
         path=str(tmp_path / "source"),
@@ -116,14 +178,18 @@ def make_evidence(
         source_head=base_source["head"],
         module_load_ns=10,
         settings=dict(
-            presolve="on",
+            presolve="off" if language == "r" else "on",
             threads=1,
             mip_rel_gap=0,
             mip_abs_gap=0,
             primal_feasibility_tolerance=1e-9,
             mip_feasibility_tolerance=1e-9,
+            output_flag=False,
         ),
     )
+    if language == "r":
+        version["settings"].pop("output_flag")
+        version["settings"]["parallel"] = "off"
     candidate_version = dict(version, source_head=candidate_source["head"], module_load_ns=20)
     expected = dict(
         groups=["v"],
@@ -209,9 +275,10 @@ def make_evidence(
         cases=cases,
         methods=["letter_minimum"],
         languages=[language],
-        presolve={language: "on"},
+        presolve={language: version["settings"]["presolve"]},
         memory_limit_mb=8192,
-        memory_growth_tolerance_mb=32,
+        memory_growth_tolerance_mb=memory_growth_tolerance_mb,
+        candidate="essential-cover-certificate",
         processes=8,
         warmup_batches=3,
         batches=9,
@@ -289,24 +356,16 @@ def make_evidence(
                     },
                 )
             elif case["tier"] == "preprocess":
-                vertices = len(case["input"]["adjacency"])
-                parts = vertices // 3
-                response = dict(
-                    ok=True,
-                    action="preprocess",
-                    phases_ns={"total": 100},
-                    metrics=dict(
-                        solve_count=0,
-                        vertices_before=vertices,
-                        vertices_after=vertices,
-                        maximal_cliques=3**parts,
-                        decision_variables=3**parts,
-                        auxiliary_variables=0,
-                        constraints=vertices + vertices * (vertices - 3) // 2,
-                        nonzeros=3**parts * (parts + parts * (parts - 1) // 2),
-                        essential_decisions=0,
-                    ),
-                )
+                response = preprocess_response(case, language, version["settings"])
+                if preprocess_failure and case["id"].endswith("multipartite-8x3"):
+                    response = dict(
+                        ok=False,
+                        action="preprocess",
+                        error={
+                            "kind": "ExternalLimit",
+                            "message": "Driver " + preprocess_failure + " limit exceeded",
+                        },
+                    )
             elif "response" in capture_map[key]:
                 response = dict(failure, action="profile")
             else:
@@ -314,10 +373,26 @@ def make_evidence(
                     ok=True,
                     action="profile",
                     phases_ns={"total": 100},
-                    metrics={"essential_cover": True, "solver_total_ns": 40},
+                    metrics={
+                        "essential_cover": True,
+                        "solver_total_ns": 40,
+                        "solve_count": 1,
+                        "solver_settings": solver_observations(language, version["settings"], 1),
+                        "decision_variables": 1,
+                        "essential_decisions": 1,
+                        "canonical_feasible_trials": 0,
+                        "canonical_infeasible_trials": 0,
+                        "selected": [1],
+                        "objective": 1,
+                    },
                     **{name: capture_map[key][name] for name in ("result", "canonical")},
                 )
-            profile_rows.append(dict(key=key, case=case, response=response, peak_rss=1024))
+            peak = (
+                (manifest["memory_limit_mb"] + 1) * 1024**2
+                if (response.get("error", {}).get("message") == "Driver memory limit exceeded")
+                else 1024
+            )
+            profile_rows.append(dict(key=key, case=case, response=response, peak_rss=peak))
         profiles[variant] = profile_rows
         meta = dict(
             source=source,
@@ -355,6 +430,9 @@ def make_evidence(
                 manifest[field] = digest(records)
     manifest["baseline_capture_sha256"] = digest(captures["baseline"])
     manifest["profile_sha256"] = digest(profiles["baseline"])
+    manifest["baseline_preprocess_failures"] = freeze_preprocess_failures(
+        manifest, profiles["baseline"]
+    )
     manifest["gain_targets"] = select_gain_targets(manifest, profiles["baseline"])
     calibration_manifest = copy.deepcopy(manifest)
     for name in (
@@ -362,6 +440,8 @@ def make_evidence(
         "calibration_harness",
         "baseline_capture_sha256",
         "profile_sha256",
+        "baseline_preprocess_failures",
+        "candidate",
     ):
         calibration_manifest.pop(name)
     calibration_manifest.update(frozen=False, gain_targets={})
@@ -901,6 +981,164 @@ def test_resource_faults_fail_closed(tmp_path, fault):
     elif fault == "input":
         change_json(path / "metadata.json", lambda x: x.update(input_sha256="wrong"))
     assert not run_audit(manifest, directories)["pass"], fault
+
+
+@pytest.mark.parametrize("failure", ["external wall", "memory"])
+def test_frozen_preprocessing_failures_remain_visible_and_unscored(tmp_path, failure):
+    manifest, directories = make_evidence(tmp_path, preprocess_failure=failure)
+    report = run_audit(manifest, directories)
+    assert report["pass"], report["reasons"]
+    outcomes = report["evidence"]["profiles"]["candidate"]["preprocessing"]
+    key = next(iter(manifest["baseline_preprocess_failures"]))
+    assert outcomes[key] == {
+        "baseline": manifest["baseline_preprocess_failures"][key],
+        "outcome": manifest["baseline_preprocess_failures"][key],
+        "scored": False,
+    }
+
+
+def test_new_preprocessing_completion_is_unscored(tmp_path):
+    manifest, directories = make_evidence(tmp_path, preprocess_failure="external wall")
+    key = next(iter(manifest["baseline_preprocess_failures"]))
+
+    def complete(rows):
+        row = next(row for row in rows if row["key"] == key)
+        row["response"] = preprocess_response(
+            row["case"], "python", manifest["baseline_versions"]["python"]["settings"]
+        )
+
+    change_rows(directories["candidate-profiles"] / "profiles.jsonl", complete)
+    report = run_audit(manifest, directories)
+    assert report["pass"], report["reasons"]
+    assert report["evidence"]["profiles"]["candidate"]["preprocessing"][key] == {
+        "baseline": "external_wall_timeout",
+        "outcome": "completed_preprocessing",
+        "scored": False,
+    }
+
+
+@pytest.mark.parametrize("known_failure", [False, True])
+def test_new_or_changed_preprocessing_failure_rejects_candidate(tmp_path, known_failure):
+    manifest, directories = make_evidence(
+        tmp_path, preprocess_failure="external wall" if known_failure else None
+    )
+
+    def fail(rows):
+        row = rows[-2]
+        row["response"] = dict(
+            ok=False,
+            action="preprocess",
+            error={
+                "kind": "ExternalLimit",
+                "message": "Driver memory limit exceeded",
+            },
+        )
+        row["peak_rss"] = (manifest["memory_limit_mb"] + 1) * 1024**2
+
+    change_rows(directories["candidate-profiles"] / "profiles.jsonl", fail)
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert any("outcome differs from frozen baseline" in reason for reason in report["reasons"])
+
+
+@pytest.mark.parametrize("fault", ["missing", "gap", "threads", "extra"])
+def test_audit_checks_native_options_and_compares_extra_stable_values(tmp_path, fault):
+    manifest, directories = make_evidence(tmp_path)
+
+    def alter(rows):
+        metrics = rows[0]["response"]["metrics"]
+        if fault == "missing":
+            metrics.pop("solver_settings")
+        else:
+            values = metrics["solver_settings"]["records"][0]["values"]
+            key, value = {
+                "gap": ("mip_rel_gap", 0.1),
+                "threads": ("threads", 2),
+                "extra": ("random_seed", 1),
+            }[fault]
+            values[key] = value
+
+    change_rows(directories["candidate-profiles"] / "profiles.jsonl", alter)
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert any("solver settings" in reason.lower() for reason in report["reasons"])
+
+
+@pytest.mark.parametrize("fault", [None, "cover", "selected", "essential_count", "time", "trial"])
+def test_zero_solve_candidate_requires_the_complete_essential_certificate(tmp_path, fault):
+    manifest, directories = make_evidence(tmp_path)
+
+    def certificate(rows):
+        metrics = rows[0]["response"]["metrics"]
+        metrics.update(
+            solve_count=0,
+            solver_total_ns=0,
+            solver_settings={
+                "available": False,
+                "records": [],
+                "reason": "Essential certificate used",
+            },
+        )
+        if fault:
+            key, value = {
+                "cover": ("essential_cover", False),
+                "selected": ("selected", [0]),
+                "essential_count": ("essential_decisions", True),
+                "time": ("solver_total_ns", 1),
+                "trial": ("canonical_feasible_trials", 1),
+            }[fault]
+            metrics[key] = value
+
+    change_rows(directories["candidate-profiles"] / "profiles.jsonl", certificate)
+    report = run_audit(manifest, directories)
+    if fault:
+        assert not report["pass"]
+        assert any(
+            "zero solves lack an essential certificate" in reason for reason in report["reasons"]
+        )
+    else:
+        assert report["pass"], report["reasons"]
+
+
+@pytest.mark.parametrize("growth", [False, True])
+def test_zero_memory_growth_allowance_enforces_exact_growth_bound(tmp_path, growth):
+    manifest, directories = make_evidence(tmp_path, memory_growth_tolerance_mb=0)
+    if growth:
+        change_rows(
+            directories["run-2"] / "samples.jsonl",
+            lambda rows: rows[-1].update(rss=[1024, 2048], peak_rss=[1024, 2048]),
+        )
+    report = run_audit(manifest, directories)
+    assert report["pass"] is not growth, report["reasons"]
+    if growth:
+        assert any("RSS growth exceeds baseline" in reason for reason in report["reasons"])
+
+
+def test_baseline_zero_solve_profile_is_not_a_candidate_certificate(tmp_path):
+    manifest, directories = make_evidence(tmp_path)
+    path = directories["baseline-profiles"] / "profiles.jsonl"
+
+    def certificate(rows):
+        rows[0]["response"]["metrics"].update(
+            solve_count=0,
+            solver_total_ns=0,
+            solver_settings={
+                "available": False,
+                "records": [],
+                "reason": "Essential certificate used",
+            },
+        )
+
+    change_rows(path, certificate)
+    manifest["profile_sha256"] = digest(
+        [json.loads(line) for line in path.read_text().splitlines()]
+    )
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert any(
+        "baseline profiles: zero solves lack an essential certificate" in reason
+        for reason in report["reasons"]
+    )
 
 
 @pytest.mark.parametrize(

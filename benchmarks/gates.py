@@ -23,6 +23,8 @@ from analysis import (
 )
 from cases import job_key, jobs
 from common import digest
+from profile_outcomes import validate_preprocess_outcomes
+from profile_settings import validate_solver_settings
 from resource_evidence import validate_resources
 
 FIXTURES = ("reduce", "reduce_letter_minimum", "reduce_weighted")
@@ -114,6 +116,31 @@ def _valid_version(version):
 
 def _value(row):
     return {"result": row["result"], "canonical": row["canonical"]}
+
+
+def _essential_certificate(response):
+    metrics = response.get("metrics", {})
+    selected = response.get("canonical", {}).get("selected")
+    return (
+        _valid_value(response)
+        and metrics.get("essential_cover") is True
+        and all(
+            type(metrics.get(name)) is int and metrics[name] == 0
+            for name in (
+                "solver_total_ns",
+                "canonical_feasible_trials",
+                "canonical_infeasible_trials",
+            )
+        )
+        and type(metrics.get("decision_variables")) is int
+        and metrics["decision_variables"] == len(selected)
+        and type(metrics.get("essential_decisions")) is int
+        and metrics["essential_decisions"] == sum(selected) > 0
+        and metrics.get("selected") == selected
+        and all(type(bit) is int for bit in metrics["selected"])
+        and type(metrics.get("objective")) is int
+        and metrics.get("objective") == response["canonical"]["objective"]
+    )
 
 
 def _valid_value(row):
@@ -675,7 +702,7 @@ def audit(
         context(capture_meta["baseline"], "baseline capture")
         context(capture_meta["candidate"], "candidate capture")
         context(calibration_metadata, "calibration")
-        profiles = {}
+        profiles, solver_settings = {}, {}
         for label, path in (
             ("baseline", baseline_profiles_dir),
             ("candidate", candidate_profiles_dir),
@@ -695,6 +722,10 @@ def audit(
             profile_resources = validate_resources(
                 path, manifest, metadata, profile_rows, "profiles"
             )
+            preprocess_outcomes = validate_preprocess_outcomes(
+                manifest, profile_rows, candidate=label == "candidate"
+            )
+            solver_settings[label] = {}
             if label == "baseline":
                 require(
                     profile_resources["sha256"] == manifest.get("profile_resource_sha256"),
@@ -714,6 +745,21 @@ def audit(
                 require(
                     row.get("case") == case, f"{label} profiles: case specification differs {key}"
                 )
+                if response.get("ok") is True:
+                    language = key.split("|", 1)[0]
+                    observed = validate_solver_settings(
+                        language, response, metadata["versions"][language]["settings"]
+                    )
+                    solver_settings[label][key] = observed
+                    if observed is None and case["tier"] != "preprocess":
+                        require(
+                            label == "candidate"
+                            and manifest.get("candidate") == "essential-cover-certificate"
+                            and _essential_certificate(response),
+                            f"{label} profiles: zero solves lack an essential certificate {key}",
+                        )
+                if case["tier"] == "preprocess":
+                    continue  # The shared gate checks exact outcomes and their memory evidence.
                 require(
                     _positive(row.get("peak_rss"))
                     and row["peak_rss"] <= manifest["memory_limit_mb"] * 1024**2,
@@ -745,43 +791,7 @@ def audit(
                         _positive(total) and total <= case["wall_seconds"] * 1e9,
                         f"{label} profiles: missing or exceeded wall bound {key}",
                     )
-                    if case["tier"] == "preprocess":
-                        metrics = response.get("metrics", {})
-                        require(
-                            metrics.get("solve_count") == 0
-                            and all(
-                                type(metrics.get(name)) is int and metrics[name] >= 0
-                                for name in (
-                                    "vertices_before",
-                                    "vertices_after",
-                                    "maximal_cliques",
-                                    "decision_variables",
-                                    "auxiliary_variables",
-                                    "constraints",
-                                    "nonzeros",
-                                    "essential_decisions",
-                                )
-                            )
-                            and all(
-                                metrics[name] > 0
-                                for name in (
-                                    "vertices_before",
-                                    "vertices_after",
-                                    "maximal_cliques",
-                                    "decision_variables",
-                                    "constraints",
-                                    "nonzeros",
-                                )
-                            )
-                            and metrics["vertices_before"] == len(case["input"]["adjacency"])
-                            and metrics["vertices_after"] <= metrics["vertices_before"]
-                            and metrics.get("selected") is None
-                            and metrics.get("objective") is None
-                            and "result" not in response
-                            and "canonical" not in response,
-                            f"{label} profiles: incomplete preprocessing {key}",
-                        )
-                    elif case["tier"] == "solve":
+                    if case["tier"] == "solve":
                         require(
                             _valid_value(response),
                             f"{label} profiles: invalid successful response {key}",
@@ -802,7 +812,12 @@ def audit(
                 f"{label} profiles: missing required solve, preprocess or cap rows",
             )
             profiles[label] = indexed
-            evidence["profiles"][label] = {"directory": str(path), "rows": len(indexed)}
+            evidence["profiles"][label] = {
+                "directory": str(path),
+                "rows": len(indexed),
+                "preprocessing": preprocess_outcomes,
+                "solver_settings": solver_settings[label],
+            }
         targets = select_gain_targets(manifest, list(profiles["baseline"].values()))
         require(
             manifest.get("gain_targets") == targets,
@@ -816,6 +831,13 @@ def audit(
             base, candidate = (
                 profiles[label][key]["response"] for label in ("baseline", "candidate")
             )
+            base_settings = solver_settings["baseline"].get(key)
+            candidate_settings = solver_settings["candidate"].get(key)
+            if base_settings is not None and candidate_settings is not None:
+                require(
+                    digest(base_settings) == digest(candidate_settings),
+                    f"Native solver settings differ between baseline and candidate: {key}",
+                )
             if _failure(base) and _failure(candidate):
                 require(
                     base["error"]["kind"] == candidate["error"]["kind"],
@@ -829,7 +851,13 @@ def audit(
 
         intervals, run_ids, pids = [], set(), set()
         tolerance = manifest.get("memory_growth_tolerance_mb")
-        require(_positive(tolerance), "Manifest lacks a positive frozen memory growth allowance")
+        valid_tolerance = (
+            type(tolerance) in (int, float) and math.isfinite(tolerance) and tolerance >= 0
+        )
+        require(
+            valid_tolerance,
+            "Manifest lacks a nonnegative finite memory growth allowance",
+        )
         for path in run_dirs:
             metadata, samples = _read(path, "metadata.json"), _rows(path, "samples.jsonl")
             label = f"run {path}"
@@ -950,7 +978,7 @@ def audit(
                 delta = [values[-1][i] - values[0][i] for i in (0, 1)]
                 excess = delta[1] - delta[0]
                 require(
-                    _positive(tolerance) and excess <= tolerance * 1024**2,
+                    valid_tolerance and excess <= tolerance * 1024**2,
                     f"{label}: candidate RSS growth exceeds baseline and allowance "
                     f"for {language}/{process}",
                 )
