@@ -86,6 +86,19 @@ def main():
         dict(action=action, case=simple, iterations=2)
         for action in ("profile", "preprocess", "measure")
     ]
+    # K(2,2,2) has no essential decisions, so both methods must reach HiGHS.
+    solver_cases = [
+        dict(
+            id=f"multipartite222/{method}",
+            call="adjacency",
+            input={
+                "adjacency": [[int(i == j or i // 2 != j // 2) for j in range(6)] for i in range(6)]
+            },
+            options={"method": method},
+        )
+        for method in ("letter_minimum", "assignment_minimum")
+    ]
+    requests += [dict(action="profile", case=case) for case in solver_cases]
     text = "\n".join(map(json.dumps, requests)) + '\n{bad json\nnull\n{"action":"version"}\n'
     # A foreign cwd proves that runtime and fixture resolution use --repo.
     with tempfile.TemporaryDirectory() as foreign:
@@ -145,21 +158,35 @@ def main():
     assert profile["result"] == measure["result"] == responses[1]["result"]
     assert profile["canonical"] == responses[1]["canonical"]
     assert "result" not in preprocess and preprocess["metrics"]["solve_count"] == 0
-    settings = profile["metrics"]["solver_settings"]
-    assert settings["available"] is True
-    assert settings["excluded_from_stable_comparison"] == ["time_limit"]
-    assert [record["solve"] for record in settings["records"]] == list(
-        range(1, profile["metrics"]["solve_count"] + 1)
-    )
-    for record in settings["records"]:
-        values = record["values"]
-        assert values["presolve"] == "off" and values["parallel"] == "off"
-        assert values["mip_rel_gap"] == values["mip_abs_gap"] == 0
-        assert values["primal_feasibility_tolerance"] == 1e-9
-        assert values["mip_feasibility_tolerance"] == 1e-9
-        assert type(values["threads"]) is int and type(values["r_global_threads"]) is int
-        assert "time_limit" not in values and "time_limit" in record["excluded_values"]
-        assert record["excluded_values"]["time_limit"] is None
+    assert type(profile["metrics"]["solve_count"]) is int and profile["metrics"]["solve_count"] == 0
+    assert profile["metrics"]["solver_total_ns"] == 0
+    assert profile["metrics"]["solver_settings"]["available"] is False
+    assert profile["metrics"]["solver_settings"]["records"] == []
+    assert profile["metrics"]["solver_counters"]["available"] is False
+    solver_start = start + len(errors) + 3
+    for case, native in zip(solver_cases, responses[solver_start : solver_start + 2], strict=True):
+        assert native["ok"], (case["id"], native)
+        assert native["result"]["method"] == case["options"]["method"]
+        assert (
+            type(native["metrics"]["solve_count"]) is int and native["metrics"]["solve_count"] > 0
+        )
+        assert native["metrics"]["essential_cover"] is False
+        assert native["metrics"]["solver_counters"]["available"] is True
+        settings = native["metrics"]["solver_settings"]
+        assert settings["available"] is True
+        assert settings["excluded_from_stable_comparison"] == ["time_limit"]
+        assert [record["solve"] for record in settings["records"]] == list(
+            range(1, native["metrics"]["solve_count"] + 1)
+        )
+        for record in settings["records"]:
+            values = record["values"]
+            assert values["presolve"] == "off" and values["parallel"] == "off"
+            assert values["mip_rel_gap"] == values["mip_abs_gap"] == 0
+            assert values["primal_feasibility_tolerance"] == 1e-9
+            assert values["mip_feasibility_tolerance"] == 1e-9
+            assert type(values["threads"]) is int and type(values["r_global_threads"]) is int
+            assert "time_limit" not in values and "time_limit" in record["excluded_values"]
+            assert record["excluded_values"]["time_limit"] is None
     overhead = profile["profile_notes"]["full_call_overhead"]
     assert type(overhead["reference_ns"]) is int and overhead["reference_ns"] >= 0
     assert overhead["instrumented_ns"] == profile["phases_ns"]["total"]
