@@ -14,7 +14,7 @@ import subprocess
 from pathlib import Path
 
 import common
-from analysis import analyze, valid_source
+from analysis import analyze, same_javascript_tools, valid_source
 from cases import job_key, jobs
 from common import digest
 
@@ -261,6 +261,30 @@ def _driver_hashes(binding, languages):
     return hashes
 
 
+def _measurement_hashes(binding, languages):
+    """Bind measured code to calibration; an absent process guard is explicit."""
+    hashes = _driver_hashes(binding, languages)
+    required = ("benchmarks/run.py", "benchmarks/common.py", "benchmarks/analysis.py")
+    guard = "benchmarks/process_guard.py"
+    try:
+        guard_present = subprocess.check_output(
+            ["git", "-C", binding["path"], "ls-tree", "--name-only", binding["head"], "--", guard],
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        hashes[guard] = None
+        for filename in required + ((guard,) if guard_present else ()):
+            raw = subprocess.check_output(
+                ["git", "-C", binding["path"], "show", f"{binding['head']}:{filename}"],
+                stderr=subprocess.DEVNULL,
+            )
+            hashes[filename] = hashlib.sha256(raw).hexdigest()
+    except subprocess.CalledProcessError as error:
+        raise ValueError(
+            f"Recorded measurement source is unavailable: {binding['head']}"
+        ) from error
+    return hashes
+
+
 def audit(
     manifest,
     run_dirs,
@@ -285,11 +309,8 @@ def audit(
         )
         source = metadata.get("source")
         require(
-            isinstance(source, dict)
-            and source.get("head")
-            and source.get("tree")
-            and source.get("status") == "",
-            f"{label}: missing or dirty source binding",
+            valid_source(source, require_js="js" in manifest["languages"]),
+            f"{label}: invalid source binding or missing JavaScript build proof",
         )
         require(
             source == metadata.get("source_after"), f"{label}: source changed during collection"
@@ -364,10 +385,15 @@ def audit(
         failures = set(manifest.get("baseline_failures", []))
         require(failures <= set(solve_specs), "Unknown baseline failure cases")
         require(
-            isinstance(manifest.get("baseline_source"), dict),
-            "Manifest lacks the frozen baseline source",
+            valid_source(manifest.get("baseline_source"), require_js="js" in languages),
+            "Manifest lacks a valid frozen baseline source or JavaScript build proof",
         )
         frozen_source = common.source_identity(manifest.get("baseline_source"))
+        require(
+            valid_source(manifest.get("pilot_source"), require_js="js" in languages)
+            and common.source_identity(manifest["pilot_source"]) == frozen_source,
+            "Pilot source differs from the frozen baseline or lacks build proof",
+        )
         capture_dirs = {"baseline": baseline_capture_dir, "candidate": candidate_capture_dir}
         capture_meta = {label: _read(path, "metadata.json") for label, path in capture_dirs.items()}
         fixture_specs, fixture_hashes = _fixture_inventory(capture_meta["baseline"])
@@ -475,6 +501,13 @@ def audit(
             dependency_versions["baseline"] == dependency_versions["candidate"],
             "Baseline and candidate dependencies or solver settings differ",
         )
+        if "js" in languages:
+            require(
+                same_javascript_tools(
+                    capture_meta["baseline"].get("source"), capture_meta["candidate"].get("source")
+                ),
+                "Baseline and candidate JavaScript solver or compiler bytes differ",
+            )
         oracles = [
             row
             for row in captures["baseline"].values()
@@ -508,6 +541,13 @@ def audit(
 
         machine = capture_meta["baseline"].get("machine")
         driver_hashes = _driver_hashes(capture_meta["baseline"].get("harness"), languages)
+        calibration_harness = manifest.get("calibration_harness")
+        require(valid_source(calibration_harness), "Missing or invalid calibration harness binding")
+        measurement_hashes = _measurement_hashes(calibration_harness, languages)
+        require(
+            all(measurement_hashes.get(name) == value for name, value in driver_hashes.items()),
+            "Language driver bytes differ from calibration",
+        )
         require(isinstance(machine, dict) and bool(machine), "Missing machine identity")
 
         def context(metadata, label):
@@ -666,7 +706,7 @@ def audit(
                     f"Optional stress result or canonical vector differs: {key}",
                 )
 
-        intervals, run_ids, pids, run_harnesses = [], set(), set(), []
+        intervals, run_ids, pids = [], set(), set()
         tolerance = manifest.get("memory_growth_tolerance_mb")
         require(_positive(tolerance), "Manifest lacks a positive frozen memory growth allowance")
         for path in run_dirs:
@@ -696,7 +736,10 @@ def audit(
                     f"{label}: {variant} source differs",
                 )
             context(metadata, label)
-            run_harnesses.append(common.source_identity(metadata["harness"]))
+            require(
+                _measurement_hashes(metadata["harness"], languages) == measurement_hashes,
+                f"{label}: measurement code differs from calibration",
+            )
             run_id = metadata.get("run_id")
             require(
                 isinstance(run_id, str) and bool(run_id) and run_id not in run_ids,
@@ -880,18 +923,16 @@ def audit(
         if len(intervals) == 2:
             first, second = sorted(intervals)
             require(first[1] <= second[0], "The two candidate runs overlap in real time")
-        require(
-            len(run_harnesses) == 2 and run_harnesses[0] == run_harnesses[1],
-            "The two timed runs use different harness identities",
-        )
         evidence["manifest_sha256"] = digest(manifest)
         evidence["input_sha256"] = common.input_digest(manifest)
         evidence["baseline_failures_unscored"] = sorted(failures)
         evidence["driver_sha256"] = driver_hashes
+        evidence["measurement_sha256"] = measurement_hashes
         evidence["harness_rule"] = (
             "Capture and profile stages may use different recorded harness commits. "
             "Language driver bytes must match across all stages. "
-            "The two timed runs must use the same harness identity."
+            "Measurement code bytes must match calibration and both timed runs. "
+            "An absent process guard is recorded as null."
         )
     except (
         OSError,

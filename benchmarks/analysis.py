@@ -57,7 +57,7 @@ def estimate(base, candidate, draws, seed):
     return point, interval, log_ratios
 
 
-def valid_source(binding):
+def valid_source(binding, *, require_js=False):
     """Reject absent, dirty, truncated or unhashed source records."""
     if not isinstance(binding, dict):
         return False
@@ -70,7 +70,13 @@ def valid_source(binding):
             r"(?:[0-9a-f]{40}|[0-9a-f]{64})", binding[name]
         ):
             return False
-    for name in ("build_files", "lock_files"):
+    for name in ("build_files", "lock_files", "dependency_files", "compiler_files"):
+        if (
+            name in ("dependency_files", "compiler_files")
+            and name not in binding
+            and not require_js
+        ):
+            continue
         files = binding.get(name)
         if not isinstance(files, dict):
             return False
@@ -81,7 +87,35 @@ def valid_source(binding):
                 return False
             if not isinstance(checksum, str) or not re.fullmatch(r"[0-9a-f]{64}", checksum):
                 return False
+    if "build_verified" in binding and type(binding["build_verified"]) is not bool:
+        return False
+    if require_js:
+        dependencies, compiler = binding["dependency_files"], binding["compiler_files"]
+        if (
+            binding.get("build_verified") is not True
+            or "js/dist/index.js" not in binding["build_files"]
+            or "highs/package.json" not in dependencies
+            or not any(
+                path.startswith("highs/") and path.endswith(".wasm") for path in dependencies
+            )
+            or not any(
+                path.startswith("highs/") and Path(path).suffix in (".js", ".mjs", ".cjs")
+                for path in dependencies
+            )
+            or "typescript/bin/tsc" not in compiler
+            or not any(path.startswith("typescript/") and path.endswith(".js") for path in compiler)
+        ):
+            return False
     return True
+
+
+def same_javascript_tools(left, right):
+    """Match verified solver and compiler bytes across different source trees."""
+    return (
+        valid_source(left, require_js=True)
+        and valid_source(right, require_js=True)
+        and all(left[name] == right[name] for name in ("dependency_files", "compiler_files"))
+    )
 
 
 def valid_version(version, language, presolve):
@@ -116,6 +150,7 @@ def valid_version(version, language, presolve):
 
 def check_bindings(manifest, metadata, reasons):
     before, after = metadata.get("source_before"), metadata.get("source_after")
+    require_js = "js" in manifest["languages"]
     complete = True
     for label, value in (("before", before), ("after", after)):
         if not isinstance(value, dict) or set(value) != {"baseline", "candidate"}:
@@ -123,19 +158,30 @@ def check_bindings(manifest, metadata, reasons):
             complete = False
             continue
         for role in ("baseline", "candidate"):
-            if not valid_source(value[role]):
+            if not valid_source(value[role], require_js=require_js):
                 reasons.append(f"Invalid source binding: {label}/{role}")
                 complete = False
     if complete and before != after:
         reasons.append("Source binding changed during the run")
+    if (
+        complete
+        and require_js
+        and not same_javascript_tools(before["baseline"], before["candidate"])
+    ):
+        reasons.append("Paired JavaScript solver or compiler bytes differ")
     if not valid_source(metadata.get("harness")):
         reasons.append("Invalid harness source binding")
     if metadata.get("kind") == "calibration":
         if complete and source_identity(before["baseline"]) != source_identity(before["candidate"]):
             reasons.append("A/A source identities differ")
+        pilot = manifest.get("pilot_source")
+        if not valid_source(pilot, require_js=require_js):
+            reasons.append("Pilot source binding is missing or invalid")
+        elif complete and source_identity(before["baseline"]) != source_identity(pilot):
+            reasons.append("Baseline source differs from the pilot baseline")
     else:
         frozen = manifest.get("baseline_source")
-        if not valid_source(frozen):
+        if not valid_source(frozen, require_js=require_js):
             reasons.append("Frozen baseline source binding is missing or invalid")
         elif complete and source_identity(before["baseline"]) != source_identity(frozen):
             reasons.append("Baseline source differs from the frozen baseline")

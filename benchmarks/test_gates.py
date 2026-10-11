@@ -13,6 +13,7 @@ from common import digest, input_digest
 from gates import audit
 
 recorded_driver_hashes = gates._driver_hashes
+recorded_measurement_hashes = gates._measurement_hashes
 
 
 @pytest.fixture(autouse=True)
@@ -23,6 +24,18 @@ def synthetic_driver_source(monkeypatch):
         "_driver_hashes",
         lambda binding, languages: {
             gates.DRIVERS[language]: digest(language) for language in languages
+        },
+    )
+    monkeypatch.setattr(
+        gates,
+        "_measurement_hashes",
+        lambda binding, languages: {
+            **gates._driver_hashes(binding, languages),
+            **{
+                name: digest(name)
+                for name in ("benchmarks/run.py", "benchmarks/common.py", "benchmarks/analysis.py")
+            },
+            "benchmarks/process_guard.py": None,
         },
     )
 
@@ -60,7 +73,9 @@ def result(group="v", method="letter_minimum"):
     )
 
 
-def make_evidence(tmp_path, *, baseline_failure=False, new_success=False, oracle_match=False):
+def make_evidence(
+    tmp_path, *, baseline_failure=False, new_success=False, oracle_match=False, language="python"
+):
     base_source = dict(
         path=str(tmp_path / "source"),
         head="a" * 40,
@@ -69,12 +84,24 @@ def make_evidence(tmp_path, *, baseline_failure=False, new_success=False, oracle
         build_files={},
         lock_files={},
     )
+    if language == "js":
+        # Synthetic proof is explicit. These tests do not compile a runtime.
+        base_source.update(
+            build_files={"js/dist/index.js": "0" * 64},
+            build_verified=True,
+            dependency_files={
+                "highs/package.json": "1" * 64,
+                "highs/build/highs.mjs": "2" * 64,
+                "highs/build/highs.wasm": "3" * 64,
+            },
+            compiler_files={"typescript/bin/tsc": "4" * 64, "typescript/lib/tsc.js": "5" * 64},
+        )
     candidate_source = dict(base_source, head="d" * 40, tree="e" * 40)
     harness = dict(base_source, head="c" * 40, tree="f" * 40)
     version = dict(
         ok=True,
         action="version",
-        language="python",
+        language=language,
         runtime="3.12",
         dependencies={"highspy": "1.14"},
         solver={"name": "HiGHS", "version": "1.14"},
@@ -173,8 +200,8 @@ def make_evidence(tmp_path, *, baseline_failure=False, new_success=False, oracle
         case_generator="cases.py:1",
         cases=cases,
         methods=["letter_minimum"],
-        languages=["python"],
-        presolve={"python": "on"},
+        languages=[language],
+        presolve={language: "on"},
         memory_limit_mb=8192,
         memory_growth_tolerance_mb=32,
         processes=8,
@@ -184,15 +211,17 @@ def make_evidence(tmp_path, *, baseline_failure=False, new_success=False, oracle
         bootstrap_seed=31,
         frozen=True,
         baseline_source=base_source,
-        baseline_versions={"python": version},
+        pilot_source=copy.deepcopy(base_source),
+        calibration_harness=harness,
+        baseline_versions={language: version},
         baseline_failures=[],
         iterations={},
         gain_targets={},
     )
     solve_cases = list(jobs(manifest))
-    keys = [job_key("python", case) for case in solve_cases]
+    keys = [job_key(language, case) for case in solve_cases]
     manifest["iterations"] = dict.fromkeys(keys, 1)
-    manifest["gain_targets"] = {"python|letter_minimum": keys[:10]}
+    manifest["gain_targets"] = {language + "|letter_minimum": keys[:10]}
     if baseline_failure:
         manifest["baseline_failures"] = [keys[-1]]
     failure = dict(
@@ -218,14 +247,14 @@ def make_evidence(tmp_path, *, baseline_failure=False, new_success=False, oracle
         for case in fixture_cases + solve_cases:
             method = case["options"]["method"]
             row = dict(
-                language="python",
+                language=language,
                 id=case["id"],
                 method=method,
                 case=case,
                 oracle_fixture=case["id"].startswith("fixture/"),
                 mismatch=[],
             )
-            if job_key("python", case) in manifest["baseline_failures"] and not (
+            if job_key(language, case) in manifest["baseline_failures"] and not (
                 variant == "candidate" and new_success
             ):
                 row["response"] = failure
@@ -239,7 +268,7 @@ def make_evidence(tmp_path, *, baseline_failure=False, new_success=False, oracle
         capture_map = {job_key(row["language"], row["case"]): row for row in rows}
         profile_rows = []
         for case in jobs(manifest, tiers=("solve", "preprocess", "expected-error")):
-            key = job_key("python", case)
+            key = job_key(language, case)
             if case["tier"] == "expected-error":
                 response = dict(
                     ok=False,
@@ -286,7 +315,7 @@ def make_evidence(tmp_path, *, baseline_failure=False, new_success=False, oracle
             machine={"platform": "test", "cpu_count": 8, "memory_bytes": 16384 * 1024**2},
             complete=True,
             input_sha256=input_digest(manifest),
-            versions={"python": runtime_version},
+            versions={language: runtime_version},
             manifest_sha256="earlier sampling design",
             fixture_sha256=hashes,
             checked=len(rows),
@@ -309,14 +338,14 @@ def make_evidence(tmp_path, *, baseline_failure=False, new_success=False, oracle
         for process in range(manifest["processes"]):
             process_versions.append(
                 dict(
-                    language="python",
+                    language=language,
                     process=process,
                     versions=[version, candidate_version],
                     pids=[run * 1000 + 2 * process, run * 1000 + 2 * process + 1],
                 )
             )
             for case in solve_cases:
-                key = job_key("python", case)
+                key = job_key(language, case)
                 pair = []
                 for variant in ("baseline", "candidate"):
                     captured = next(row for row in captures[variant] if row["id"] == case["id"])
@@ -347,7 +376,7 @@ def make_evidence(tmp_path, *, baseline_failure=False, new_success=False, oracle
                     samples.append(
                         dict(
                             key=key,
-                            language="python",
+                            language=language,
                             process=process,
                             batch=batch,
                             iterations=1,
@@ -690,12 +719,13 @@ def test_separate_stage_harness_commits_with_equal_driver_bytes_are_allowed(tmp_
     assert report["pass"], report["reasons"]
 
 
-def test_two_timed_runs_require_the_same_harness(tmp_path):
+def test_two_timed_runs_allow_other_commits_with_equal_measurement_code(tmp_path):
     manifest, directories = make_evidence(tmp_path)
     change_json(
         directories["run-2"] / "metadata.json", lambda x: x["harness"].update(head="9" * 40)
     )
-    assert not run_audit(manifest, directories)["pass"]
+    report = run_audit(manifest, directories)
+    assert report["pass"], report["reasons"]
 
 
 def test_changed_driver_bytes_cannot_hide_in_a_different_stage(tmp_path, monkeypatch):
@@ -713,3 +743,136 @@ def test_changed_driver_bytes_cannot_hide_in_a_different_stage(tmp_path, monkeyp
         },
     )
     assert not run_audit(manifest, directories)["pass"]
+
+
+def test_verified_javascript_records_pass_final_gate(tmp_path):
+    manifest, directories = make_evidence(tmp_path, language="js")
+    report = run_audit(manifest, directories)
+    assert report["pass"], report["reasons"]
+
+
+@pytest.mark.parametrize("fault", ["missing_proof", "solver_bytes", "compiler_bytes"])
+def test_javascript_gate_rejects_consistent_candidate_binding_with_changed_bytes(tmp_path, fault):
+    manifest, directories = make_evidence(tmp_path, language="js")
+
+    def alter(binding):
+        if fault == "missing_proof":
+            binding.pop("build_verified")
+        elif fault == "solver_bytes":
+            binding["dependency_files"]["highs/build/highs.wasm"] = "9" * 64
+        else:
+            binding["compiler_files"]["typescript/lib/tsc.js"] = "9" * 64
+
+    for name in ("candidate-capture", "candidate-profiles"):
+
+        def change_stage(meta):
+            alter(meta["source"])
+            alter(meta["source_after"])
+
+        change_json(directories[name] / "metadata.json", change_stage)
+    for name in ("run-1", "run-2"):
+
+        def change_run(meta):
+            alter(meta["source_before"]["candidate"])
+            alter(meta["source_after"]["candidate"])
+
+        change_json(directories[name] / "metadata.json", change_run)
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert "Baseline and candidate JavaScript solver or compiler bytes differ" in report["reasons"]
+
+
+@pytest.mark.parametrize("field", ["pilot_source", "baseline_source"])
+def test_javascript_gate_requires_frozen_build_proof(tmp_path, field):
+    manifest, directories = make_evidence(tmp_path, language="js")
+    manifest[field].pop("build_verified")
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert any("proof" in reason for reason in report["reasons"])
+
+
+@pytest.mark.parametrize("fault", ["missing", "dirty"])
+def test_gate_requires_calibration_harness(tmp_path, fault):
+    manifest, directories = make_evidence(tmp_path)
+    if fault == "missing":
+        manifest.pop("calibration_harness")
+    else:
+        manifest["calibration_harness"]["status"] = " M benchmarks/run.py"
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert "Missing or invalid calibration harness binding" in report["reasons"]
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        "benchmarks/run.py",
+        "benchmarks/common.py",
+        "benchmarks/analysis.py",
+        "benchmarks/process_guard.py",
+    ],
+)
+def test_measurement_code_change_fails_with_unchanged_drivers(tmp_path, monkeypatch, changed):
+    manifest, directories = make_evidence(tmp_path)
+    for name in ("run-1", "run-2"):
+        change_json(
+            directories[name] / "metadata.json", lambda meta: meta["harness"].update(head="9" * 40)
+        )
+    original = gates._measurement_hashes
+
+    def changed_hashes(binding, languages):
+        hashes = original(binding, languages)
+        if binding["head"] == "9" * 40:
+            hashes[changed] = "9" * 64
+        return hashes
+
+    monkeypatch.setattr(gates, "_measurement_hashes", changed_hashes)
+    report = run_audit(manifest, directories)
+    assert not report["pass"]
+    assert (
+        sum(
+            reason.endswith("measurement code differs from calibration")
+            for reason in report["reasons"]
+        )
+        == 2
+    )
+
+
+def test_recorded_measurement_hashes_bind_optional_guard_presence(tmp_path, monkeypatch):
+    def git(*args):
+        return subprocess.check_output(
+            ["git", "-C", str(tmp_path), *args], stderr=subprocess.DEVNULL, text=True
+        ).strip()
+
+    git("init", "-q")
+    git("config", "user.name", "Test")
+    git("config", "user.email", "test@example.invalid")
+    required = ("run.py", "common.py", "analysis.py", "python_driver.py")
+    for name in required:
+        file = tmp_path / "benchmarks" / name
+        file.parent.mkdir(exist_ok=True)
+        file.write_text(name + "\n")
+    git("add", ".")
+    git("commit", "-qm", "Initial measurement files")
+    binding = dict(
+        path=str(tmp_path),
+        head=git("rev-parse", "HEAD"),
+        tree=git("rev-parse", "HEAD^{tree}"),
+        status="",
+        build_files={},
+        lock_files={},
+    )
+    monkeypatch.setattr(gates, "_driver_hashes", recorded_driver_hashes)
+    absent = recorded_measurement_hashes(binding, ["python"])
+    assert absent["benchmarks/process_guard.py"] is None
+    (tmp_path / "benchmarks/process_guard.py").write_text("guard\n")
+    git("add", ".")
+    git("commit", "-qm", "Add process guard")
+    binding.update(head=git("rev-parse", "HEAD"), tree=git("rev-parse", "HEAD^{tree}"))
+    present = recorded_measurement_hashes(binding, ["python"])
+    assert present["benchmarks/process_guard.py"] == hashlib.sha256(b"guard\n").hexdigest()
+    assert all(
+        absent[name] == present[name] for name in absent if not name.endswith("process_guard.py")
+    )
+    (tmp_path / "benchmarks/run.py").write_text("different uncommitted loop\n")
+    assert recorded_measurement_hashes(binding, ["python"]) == present

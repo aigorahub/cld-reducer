@@ -12,7 +12,7 @@ import time
 from contextlib import ExitStack
 from pathlib import Path
 
-from analysis import analyze
+from analysis import analyze, same_javascript_tools, valid_source
 from cases import frozen_manifest, job_key, jobs
 from common import (
     ROOT,
@@ -391,12 +391,19 @@ def compare(args):
         label: source_binding(repo, languages=m["languages"])
         for label, repo in (("baseline", args.baseline), ("candidate", args.candidate))
     }
+    require_js = "js" in m["languages"]
+    if any(not valid_source(binding, require_js=require_js) for binding in before.values()):
+        raise ValueError("Invalid source binding or missing JavaScript build proof")
+    if require_js and not same_javascript_tools(before["baseline"], before["candidate"]):
+        raise ValueError("Baseline and candidate JavaScript solver or compiler bytes differ")
     if args.kind == "calibration" and source_identity(before["baseline"]) != source_identity(
         before["candidate"]
     ):
         raise ValueError("A/A calibration requires identical source and executable files")
     bound = m.get("baseline_source") if args.kind == "candidate" else m.get("pilot_source")
-    if not bound or source_identity(bound) != source_identity(before["baseline"]):
+    if not valid_source(bound, require_js=require_js) or source_identity(bound) != source_identity(
+        before["baseline"]
+    ):
         raise ValueError("Baseline differs from the calibrated reference")
     if set(m["iterations"]) != {job_key(lang, c) for lang in m["languages"] for c in jobs(m)} - set(
         m["baseline_failures"]
@@ -555,6 +562,12 @@ def freeze(args):
         or metadata["kind"] != "calibration"
     ):
         raise ValueError("A/A calibration must pass for this exact manifest")
+    if not valid_source(
+        m.get("pilot_source"), require_js="js" in m["languages"]
+    ) or source_identity(m["pilot_source"]) != source_identity(
+        metadata["source_before"]["baseline"]
+    ):
+        raise ValueError("Pilot source differs from the calibrated baseline")
     profile_meta = read(Path(args.profiles) / "metadata.json")
     if (
         not profile_meta["complete"]
@@ -645,6 +658,7 @@ def freeze(args):
     m["profile_sha256"] = digest(rows)
     m["calibration_sha256"] = digest(calibration)
     m["calibration_metadata_sha256"] = digest(metadata)
+    m["calibration_harness"] = metadata["harness"]
     m["baseline_capture_sha256"] = digest(captures_data)
     m["baseline_source"] = metadata["source_before"]["baseline"]
     m["frozen"] = True

@@ -16,8 +16,8 @@ from common import Driver, DriverError, digest, input_digest
 from run import fixture_mismatch, load_manifest
 
 
-def source(path="/baseline", head="a" * 40):
-    return {
+def source(path="/baseline", head="a" * 40, *, js=False):
+    binding = {
         "path": path,
         "head": head,
         "tree": "b" * 40,
@@ -25,6 +25,17 @@ def source(path="/baseline", head="a" * 40):
         "build_files": {"js/dist/index.js": "c" * 64},
         "lock_files": {"js/package-lock.json": "d" * 64},
     }
+    if js:
+        binding.update(
+            build_verified=True,
+            dependency_files={
+                "highs/package.json": "1" * 64,
+                "highs/build/highs.mjs": "2" * 64,
+                "highs/build/highs.wasm": "3" * 64,
+            },
+            compiler_files={"typescript/bin/tsc": "4" * 64, "typescript/lib/tsc.js": "5" * 64},
+        )
+    return binding
 
 
 def version(head="a" * 40):
@@ -75,6 +86,7 @@ def evidence(ratio=0.8, targets=True):
         "baseline_failures": [],
         "gain_targets": {},
         "baseline_source": source(),
+        "pilot_source": source(),
         "baseline_versions": {"python": version()},
     }
     keys = [job_key("python", c) for c in jobs(m)]
@@ -116,7 +128,7 @@ def evidence(ratio=0.8, targets=True):
 def calibration(meta):
     meta["kind"] = "calibration"
     for key in ("source_before", "source_after"):
-        meta[key]["candidate"] = source("/candidate")
+        meta[key]["candidate"] = dict(copy.deepcopy(meta[key]["baseline"]), path="/candidate")
     for row in meta["versions"]:
         row["versions"][1]["source_head"] = "a" * 40
 
@@ -551,21 +563,24 @@ def test_input_digest_is_required_and_must_match(missing):
     assert "Input binding differs" in analyze(m, meta, rows)["reasons"]
 
 
-@pytest.mark.parametrize("language", ["r", "js"])
-def test_actual_language_version_shapes_are_supported(language):
-    m, meta, rows = evidence()
+def language_evidence(language, ratio=0.8, targets=True):
+    m, meta, rows = evidence(ratio, targets)
     m["languages"] = [language]
     presolve = "off" if language == "r" else "on"
     m["presolve"] = {language: presolve}
     m["iterations"] = {
         key.replace("python|", language + "|"): value for key, value in m["iterations"].items()
     }
-    m["gain_targets"] = {
-        language + "|letter_minimum": [
-            key.replace("python|", language + "|")
-            for key in m["gain_targets"]["python|letter_minimum"]
-        ]
-    }
+    m["gain_targets"] = (
+        {
+            language + "|letter_minimum": [
+                key.replace("python|", language + "|")
+                for key in m["gain_targets"]["python|letter_minimum"]
+            ]
+        }
+        if targets
+        else {}
+    )
     m["baseline_versions"] = {language: m["baseline_versions"]["python"]}
     for row in meta["versions"]:
         row["language"] = language
@@ -577,7 +592,66 @@ def test_actual_language_version_shapes_are_supported(language):
         v["settings"]["presolve"] = presolve
     for row in rows:
         row["key"] = row["key"].replace("python|", language + "|")
+    if language == "js":
+        m["baseline_source"] = source(js=True)
+        m["pilot_source"] = source(js=True)
+        for phase in ("source_before", "source_after"):
+            meta[phase] = {
+                "baseline": source(js=True),
+                "candidate": source("/candidate", "e" * 40, js=True),
+            }
     meta["manifest_sha256"] = digest(m)
     meta["input_sha256"] = input_digest(m)
+    return m, meta, rows
+
+
+@pytest.mark.parametrize("language", ["r", "js"])
+def test_actual_language_version_shapes_are_supported(language):
+    m, meta, rows = language_evidence(language)
     result = analyze(m, meta, rows)
     assert result["pass"], result["reasons"]
+
+
+@pytest.mark.parametrize(
+    "fault",
+    ["missing_proof", "false_proof", "solver_bytes", "compiler_bytes", "missing_wasm", "bad_hash"],
+)
+def test_javascript_analysis_requires_build_proof_and_equal_installed_bytes(fault):
+    m, meta, rows = language_evidence("js")
+    for phase in ("source_before", "source_after"):
+        binding = meta[phase]["candidate"]
+        if fault == "missing_proof":
+            binding.pop("build_verified")
+        elif fault == "false_proof":
+            binding["build_verified"] = False
+        elif fault == "solver_bytes":
+            binding["dependency_files"]["highs/build/highs.wasm"] = "9" * 64
+        elif fault == "compiler_bytes":
+            binding["compiler_files"]["typescript/lib/tsc.js"] = "9" * 64
+        elif fault == "missing_wasm":
+            binding["dependency_files"].pop("highs/build/highs.wasm")
+        else:
+            binding["compiler_files"]["typescript/lib/tsc.js"] = "invalid"
+    report = analyze(m, meta, rows)
+    assert not report["pass"]
+    assert any(
+        "source binding" in reason or "bytes differ" in reason for reason in report["reasons"]
+    )
+
+
+@pytest.mark.parametrize("fault", ["missing", "missing_proof", "solver_bytes", "source"])
+def test_calibration_requires_the_verified_pilot_source(fault):
+    m, meta, rows = language_evidence("js", 1.0, targets=False)
+    calibration(meta)
+    if fault == "missing":
+        m.pop("pilot_source")
+    elif fault == "missing_proof":
+        m["pilot_source"].pop("build_verified")
+    elif fault == "solver_bytes":
+        m["pilot_source"]["dependency_files"]["highs/build/highs.wasm"] = "9" * 64
+    else:
+        m["pilot_source"]["head"] = "9" * 40
+    meta["manifest_sha256"] = digest(m)
+    report = analyze(m, meta, rows)
+    assert not report["pass"]
+    assert any("ilot" in reason for reason in report["reasons"])
