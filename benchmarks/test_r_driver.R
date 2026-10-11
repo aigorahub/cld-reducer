@@ -3,13 +3,58 @@ args <- commandArgs(trailingOnly = TRUE)
 stopifnot(length(args) == 2L, identical(args[[1L]], "--repo"))
 repo <- normalizePath(args[[2L]], mustWork = TRUE)
 source(file.path(repo, "benchmarks", "r_driver.R"))
+
+check_clock_contract <- function() {
+  missing <- bench_clock
+  environment(missing) <- list2env(list(requireNamespace = function(...) FALSE),
+                                  parent = environment(bench_clock))
+  error <- tryCatch(missing(), error = identity)
+  stopifnot(inherits(error, "benchmark_invalid_request"),
+            grepl("requires the microbenchmark package", conditionMessage(error)))
+
+  ns <- asNamespace("microbenchmark")
+  original <- get("get_nanotime", ns)
+  locked <- bindingIsLocked("get_nanotime", ns)
+  if (locked) unlockBinding("get_nanotime", ns)
+  on.exit({
+    if (bindingIsLocked("get_nanotime", ns)) unlockBinding("get_nanotime", ns)
+    assign("get_nanotime", original, ns)
+    if (locked) lockBinding("get_nanotime", ns)
+  }, add = TRUE)
+  calls <- 0L
+  assign("get_nanotime", function() {
+    calls <<- calls + 1L
+    if (calls == 1L) warning("first-call clock accuracy limit")
+    if (calls == 2L) warning("resolution sample warning")
+    calls * 10
+  }, ns)
+  if (locked) lockBinding("get_nanotime", ns)
+  escaped <- list()
+  clock <- withCallingHandlers(bench_clock(), warning = function(condition) {
+    escaped[[length(escaped) + 1L]] <<- conditionMessage(condition)
+    invokeRestart("muffleWarning")
+  })
+  stopifnot(!length(escaped), calls == 10001L,
+            identical(clock$description$warnings,
+                      list("first-call clock accuracy limit", "resolution sample warning")),
+            identical(clock$description$fallback, FALSE),
+            identical(clock$description$absolute_accuracy_calibrated, FALSE),
+            clock$description$resolution_ns == 10,
+            clock$now() == 100020)
+  quiet_clock <- bench_clock()
+  stopifnot(identical(quiet_clock$description$warnings, list()))
+}
+check_clock_contract()
+
 driver <- bench_driver(repo)
 handle <- driver$handle
 version <- handle(list(action = "version"))
 stopifnot(version$ok, identical(version$settings$presolve, "off"),
           identical(version$settings_kind, "declared_contract"),
           version$module_load_ns >= 0, version$solver_load_ns >= 0,
-          isTRUE(version$timer$monotonic), version$timer$resolution_ns > 0)
+          isTRUE(version$timer$monotonic), version$timer$resolution_ns > 0,
+          identical(version$timer$fallback, FALSE), is.list(version$timer$warnings),
+          identical(version$timer$absolute_accuracy_calibrated, FALSE))
 runtime <- driver$state$runtime
 highs <- asNamespace("highs")
 
@@ -65,7 +110,8 @@ stopifnot(settings$available, length(settings$records) == profile$metrics$solve_
           settings$records[[1L]]$values$r_global_threads == get("get_number_of_threads", highs)(),
           is.numeric(settings$records[[1L]]$values$threads),
           !"time_limit" %in% names(settings$records[[1L]]$values),
-          identical(settings$records[[1L]]$excluded_values$time_limit, "Inf"),
+          "time_limit" %in% names(settings$records[[1L]]$excluded_values),
+          is.null(settings$records[[1L]]$excluded_values$time_limit),
           !preprocess$metrics$solver_settings$available,
           !length(preprocess$metrics$solver_settings$records))
 overhead <- profile$profile_notes$full_call_overhead
@@ -73,7 +119,9 @@ stopifnot(overhead$reference_ns >= 0,
           overhead$instrumented_ns == profile$phases_ns$total,
           overhead$instrumented_minus_reference_ns == profile$phases_ns$total - overhead$reference_ns,
           overhead$ratio == profile$phases_ns$total / overhead$reference_ns,
-          overhead$uninstrumented_calls == 1L)
+          overhead$uninstrumented_calls == 1L,
+          "full_call_overhead" %in% names(preprocess$profile_notes),
+          is.null(preprocess$profile_notes$full_call_overhead))
 unchanged(runtime, original_runtime)
 unchanged(highs, original_highs)
 

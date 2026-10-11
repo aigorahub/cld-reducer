@@ -191,10 +191,11 @@ def select_gain_targets(manifest, profiles):
         if response.get("ok") is not True:
             continue
         metrics, phases = response.get("metrics", {}), response.get("phases_ns", {})
-        cover, solver, total = (
+        cover, solver, total, probe = (
             metrics.get("essential_cover"),
             metrics.get("solver_total_ns"),
             phases.get("total"),
+            metrics.get("probe_ns"),
         )
         if (
             type(cover) is not bool
@@ -204,9 +205,13 @@ def select_gain_targets(manifest, profiles):
             or type(total) not in (int, float)
             or not math.isfinite(total)
             or total <= 0
+            or type(probe) not in (int, float)
+            or not math.isfinite(probe)
+            or probe < 0
+            or total - probe <= 0
         ):
             raise ValueError(f"Missing or invalid target eligibility metrics: {key}")
-        if cover and solver / total >= 0.25:
+        if cover and solver / (total - probe) >= 0.25:
             if key in manifest["baseline_failures"]:
                 raise ValueError(f"Target profile conflicts with baseline failure: {key}")
             eligible["|".join(key.split("|", 2)[:2])].append(key)

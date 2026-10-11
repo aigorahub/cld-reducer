@@ -291,7 +291,7 @@ function profileNotes(state, patch, preprocessing = false) {
   return {
     ...patch,
     clock: 'process.hrtime.bigint, integer nanoseconds',
-    timings: 'Instrumented diagnostic timings. solver_total_ns and canonical trial times exclude measured native diagnostic probes (metrics.probe_ns). Trial times include adapter_setup, model_load and native optimization. Do not sum overlapping phases. total includes all probe overhead but excludes hook installation, result normalization and metric reporting.',
+    timings: 'Instrumented diagnostic timings. solver_total_ns and canonical trial times exclude measured native diagnostic probes (metrics.probe_ns). Trial times include adapter_setup, model_load and native optimization. Do not sum overlapping phases. total includes all probe overhead and per-model hook installation. It excludes initial profile hook setup, result normalization and metric reporting.',
     probe_scope: 'Only added native option/counter reads and their record assembly are subtracted. Production reads and wrapper overhead remain in adapter/trial times.',
     phase_scope: {
       input: 'Public graph normalization, method and control validation; JSON conversion is outside timing',

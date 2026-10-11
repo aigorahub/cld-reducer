@@ -114,6 +114,11 @@ def main():
     responses = [json.loads(line) for line in lines]
     assert responses[0]["ok"] and responses[0]["settings"]["presolve"] == "off"
     assert responses[0]["settings_kind"] == "declared_contract"
+    timer = responses[0]["timer"]
+    assert timer["fallback"] is False and timer["absolute_accuracy_calibrated"] is False
+    assert isinstance(timer["warnings"], list)
+    assert all(isinstance(warning, str) for warning in timer["warnings"])
+    assert all(warning not in result.stderr for warning in timer["warnings"])
     for case, response in zip(reductions, responses[1 : 1 + len(reductions)], strict=True):
         assert response["ok"], (case["id"], response)
         check_result(response["result"], case["expected"])
@@ -154,6 +159,7 @@ def main():
         assert values["mip_feasibility_tolerance"] == 1e-9
         assert type(values["threads"]) is int and type(values["r_global_threads"]) is int
         assert "time_limit" not in values and "time_limit" in record["excluded_values"]
+        assert record["excluded_values"]["time_limit"] is None
     overhead = profile["profile_notes"]["full_call_overhead"]
     assert type(overhead["reference_ns"]) is int and overhead["reference_ns"] >= 0
     assert overhead["instrumented_ns"] == profile["phases_ns"]["total"]
@@ -164,7 +170,7 @@ def main():
     assert overhead["ratio"] == overhead["instrumented_ns"] / overhead["reference_ns"]
     assert preprocess["metrics"]["solver_settings"]["available"] is False
     assert preprocess["metrics"]["solver_settings"]["records"] == []
-    assert "full_call_overhead" not in preprocess["profile_notes"]
+    assert preprocess["profile_notes"]["full_call_overhead"] is None
     assert "metrics" not in measure
     assert (
         measure["iterations"] == 2

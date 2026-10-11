@@ -348,7 +348,7 @@ def target_profiles(manifest):
             "case": case,
             "response": {
                 "ok": True,
-                "metrics": {"essential_cover": True, "solver_total_ns": 25},
+                "metrics": {"essential_cover": True, "solver_total_ns": 25, "probe_ns": 0},
                 "phases_ns": {"total": 100},
             },
         }
@@ -369,6 +369,32 @@ def test_target_selection_keeps_small_combinations_regression_only():
     targets = select_gain_targets(manifest, profiles)
     assert set(targets) == {"python|letter_minimum"}
     assert len(targets["python|letter_minimum"]) == 10
+
+
+def test_target_selection_subtracts_probes_from_full_api_time():
+    manifest, _, _ = evidence()
+    profiles = target_profiles(manifest)
+    for row in profiles:
+        # Adapter time already excludes probes: 24 / (100 - 4) meets 25%,
+        # whereas dividing by the raw total would exclude every target.
+        row["response"]["metrics"].update(solver_total_ns=24, probe_ns=4)
+    assert select_gain_targets(manifest, profiles) == manifest["gain_targets"]
+    for row in profiles:
+        row["response"]["metrics"]["probe_ns"] = 3
+    with pytest.raises(ValueError, match="five distinct inputs"):
+        select_gain_targets(manifest, profiles)
+
+
+@pytest.mark.parametrize("probe", [None, True, -1, float("nan"), float("inf"), 100, 101])
+def test_target_selection_rejects_invalid_probe_correction(probe):
+    manifest, _, _ = evidence()
+    profiles = target_profiles(manifest)
+    if probe is None:
+        profiles[0]["response"]["metrics"].pop("probe_ns")
+    else:
+        profiles[0]["response"]["metrics"]["probe_ns"] = probe
+    with pytest.raises(ValueError, match="eligibility metrics"):
+        select_gain_targets(manifest, profiles)
 
 
 def test_target_selection_counts_input_digests_not_case_ids():

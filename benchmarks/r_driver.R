@@ -7,22 +7,34 @@ bench_error <- function(message) {
 }
 
 bench_clock <- function() {
-  precise <- requireNamespace("microbenchmark", quietly = TRUE)
-  now <- if (precise) microbenchmark::get_nanotime else function() proc.time()[["elapsed"]] * 1e9
-  # The first call can report platform precision limits. It is outside all timings.
-  now()
-  stamps <- vapply(seq_len(10000L), function(i) now(), numeric(1))
+  if (!requireNamespace("microbenchmark", quietly = TRUE)) {
+    bench_error("The benchmark driver requires the microbenchmark package for its clock")
+  }
+  now <- microbenchmark::get_nanotime
+  warnings <- list()
+  # Keep first-call precision warnings in the version record. All initialization
+  # and resolution reads occur before module loading or measured API calls.
+  stamps <- withCallingHandlers({
+    now()
+    vapply(seq_len(10000L), function(i) now(), numeric(1))
+  }, warning = function(condition) {
+    warnings[[length(warnings) + 1L]] <<- conditionMessage(condition)
+    invokeRestart("muffleWarning")
+  })
   deltas <- diff(stamps)
   positive <- deltas[deltas > 0]
   list(now = now, description = list(
-    name = if (precise) "microbenchmark::get_nanotime" else "proc.time elapsed",
+    name = "microbenchmark::get_nanotime",
     monotonic = TRUE,
     resolution_ns = if (length(positive)) min(positive) else NULL,
     resolution_method = paste("Minimum positive delta of 10000 consecutive reads.",
                               "This includes clock call overhead and is an upper bound on resolution."),
-    fallback = !precise,
-    note = if (precise) "Platform monotonic timer; nanosecond units." else
-      "proc.time elapsed has platform dependent resolution, commonly one millisecond."
+    fallback = FALSE,
+    warnings = warnings,
+    absolute_accuracy_calibrated = FALSE,
+    note = paste("Elapsed differences use the microbenchmark clock's nanosecond scale.",
+                 "Absolute timing accuracy is not calibrated. Read warnings for platform limits.",
+                 "Warnings cover clock initialization and resolution reads outside measured regions.")
   ))
 }
 
@@ -69,8 +81,7 @@ bench_driver <- function(repo, presolve = "off") {
       dependencies = list(Matrix = as.character(utils::packageVersion("Matrix")),
                           highs = as.character(utils::packageVersion("highs")),
                           jsonlite = as.character(utils::packageVersion("jsonlite")),
-                          microbenchmark = if (clock$description$fallback) NULL else
-                            as.character(utils::packageVersion("microbenchmark"))),
+                          microbenchmark = as.character(utils::packageVersion("microbenchmark"))),
       solver = list(name = "HiGHS", version = solver_version),
       module_load_ns = module_load_ns, solver_load_ns = solver_load_ns,
       load_notes = paste("Module load includes Matrix and source evaluation in a private environment.",
@@ -393,7 +404,7 @@ bench_driver <- function(repo, presolve = "off") {
             time_limit <- highs::hi_solver_get_dbl_option(solver, "time_limit")
             observation$solver_settings[[length(observation$solver_settings) + 1L]] <- list(
               solve = observation$solve_count, values = values,
-              excluded_values = list(time_limit = if (is.infinite(time_limit)) "Inf" else time_limit))
+              excluded_values = list(time_limit = if (is.infinite(time_limit)) NULL else time_limit))
           }, error = function(error) {
             observation$settings_errors[[length(observation$settings_errors) + 1L]] <- list(
               solve = observation$solve_count, message = conditionMessage(error))
@@ -435,7 +446,7 @@ bench_driver <- function(repo, presolve = "off") {
       notes = paste("values.threads is the native model option; 0 means native automatic selection.",
                     "values.r_global_threads is the R package global thread setting used by its scheduler wrapper.",
                     "It is not a native worker count. Neither value substitutes for the other.",
-                    "excluded_values.time_limit is the changing per-solve budget in seconds; Inf denotes no limit.")
+                    "excluded_values.time_limit is the changing per-solve budget in seconds; null denotes no limit.")
     )
     if (!settings$available) {
       settings$reason <- if (!observation$solve_count) "No native solver run was observed." else
@@ -486,6 +497,7 @@ bench_driver <- function(repo, presolve = "off") {
     notes$render_result_total_ns <- observation$render_total
     notes$solver_counters <- paste("Native info values are returned without reinterpretation.",
                                     "Negative counters are native unavailable markers; nonfinite values serialize as null.")
+    notes["full_call_overhead"] <- list(NULL)
     answer <- list(metrics = metrics, phases_ns = observation$phases, profile_notes = notes)
     if (!is.null(result)) answer <- c(list(result = normalize(result), canonical = canonical), answer)
     answer
