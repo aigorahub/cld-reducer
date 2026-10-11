@@ -13,6 +13,7 @@ One set of fixtures binds the R, Python, and JavaScript implementations of cld-r
 | `test_generate.py` | Hand-checked tests of the generator and the cross check against plain enumeration. |
 | `fixtures/reduce.json` | Valid CLD-sigma calls and their expected results. |
 | `fixtures/reduce_letter_minimum.json` | Valid CLD-C calls and their expected results. |
+| `fixtures/reduce_weighted.json` | Weighted vertex reduction cases for both methods, including the C default. |
 | `fixtures/errors.json` | Invalid calls and the expected error kind and message prefix. |
 | `fixtures/labels.json` | Label counts and the expected labels. |
 | `fixtures/checker.json` | Wrong wheat and CLD-C results that every runner's checker must reject. |
@@ -36,6 +37,7 @@ On the development host (WSL, Python 3.14), `--check` takes about 22 seconds and
 |---|---|
 | `reduce.json` | 1422: 1099 exhaustive, 264 random, 24 structured, 35 hand-built |
 | `reduce_letter_minimum.json` | 1442: the sigma input families, 16 further random graphs, 3 witnesses, 1 C alias |
+| `reduce_weighted.json` | 30: 15 explicit sigma calls and 15 calls with the C default |
 | `errors.json` | 65 |
 | `labels.json` | 18 |
 | `checker.json` | 5 wrong results: 2 wheat and 3 C results. The sixth result, the noncanonical wheat optimum, is in `reduce.json`. |
@@ -44,6 +46,7 @@ On the development host (WSL, Python 3.14), `--check` takes about 22 seconds and
 - **Random.** Seeded graphs with 6 to 12 groups (splitmix64; the seed and the edge probability are in each input). Forty candidates per size with edge probabilities from 0.25 to 0.85; 264 are kept (40, 40, 40, 40, 39, 36, and 29 for 6 to 12 groups). Labels are `T01`, `T02`, and so on. Even-numbered graphs use the pairs route (every fourth one with shuffled and flipped rows, so the group order comes from first appearance), odd-numbered ones the adjacency route (every fourth one with the means listed in another order than the groups). Two thirds have means.
 - **Structured.** The usual shape of a real display: means 10 down in steps of 0.5, a pair is not significant when the means differ by at most 1 or 2, for 6, 8, 10, 12, 15, and 20 groups, with the groups in mean order and in a shuffled mean order. Pairs route.
 - **Hand-built (`hand/`).** The simple ABC example (pairs with means, pairs without means, adjacency), the wheat example (190 pairs; 56 assignments before, 44 after, 4 letters after), the canonical clique order example (`hand/canonical-order-rename`, the D4 case: groups 0 to 4, non-significant pairs 01 02 03 04 14 24, where group 3 gets `C` and not `A`), a 28 group star (labels past `Z`), the complete and the empty graph, one group, one group from a table with zero rows, two groups, paths and cycles, `max_cliques` at the clique count, `null`, the default, and 3,000,000,000, labels with carriage returns, the empty-string label, the labels `"NaN"`, `"NA"`, `"null"`, and `"None"` (text, not missing values), the hyphenated method name, significance given in every accepted form, custom column names, extra columns, numeric labels, first-appearance group order, and means that fix the group order, tie, are negative or are large.
+- **Weighted reduction.** Repeated vertices, interleaved classes, complete graphs, separate isolated classes, paths, cycles, and a witness where unit costs would give 23 expanded assignments instead of 19. The expected results come from exact search on the original graph.
 - **Errors.** At least one case for every input rule of section 1, 2, and 6 of the specification, and for the order in which the checks run.
 
 ## Input and fixture format
@@ -52,7 +55,7 @@ Every fixture file has `schema_version` (1), `kind`, and `cases`, with one case 
 
 **Graph inputs** (`inputs/*.json`) are `{"schema_version", "name", "source", "graphs"}`. A graph is `{"id", "n", "edges", "labels", "means", "route", ...}`: `edges` are the non-significant pairs as 0-based index pairs `[i, j]` with `i < j`; `labels` is a list or `null` (default labels); `means` is a list of `{"group", "mean"}` or `null`; `route` is `pairs` or `adjacency`. Random graphs also carry `seed` and `p`.
 
-**Reduction cases** (`reduce.json` and `reduce_letter_minimum.json`): `{"id", "call", "input", "options", "expected"}`.
+**Reduction cases** (`reduce.json`, `reduce_letter_minimum.json`, and `reduce_weighted.json`): `{"id", "call", "input", "options", "expected"}`.
 
 - `call` is `pairs` or `adjacency`.
 - `input` for `pairs` is `{"pairs": [row, ...], "means": ...}`. A row is an object with the keys `group1`, `group2`, `significant` (or the column names given in `options`); extra keys are ignored. The table has one column for every key that occurs in the rows. Group labels may be JSON strings or integers.
@@ -99,8 +102,10 @@ An `errors` case passes when the call fails with an error of the expected kind (
 ## CLD-C fixtures
 
 `generate.py build()` emits `fixtures/reduce_letter_minimum.json` alongside the
-byte-identical sigma `reduce.json`. All three runners load both files, using each
-record's method. C covers all valid existing input families, including dense random
+byte-identical sigma `reduce.json`. All three runners also load `reduce_weighted.json`.
+For frozen sigma records, they pass `assignment_minimum` when the method is absent.
+In weighted records, an absent method tests the C default. C covers all valid
+existing input families, including dense random
 graphs excluded from the sigma reference, plus repository-contained witness graphs
 and its alias. Every C expected result stores `letter_minimum`.
 

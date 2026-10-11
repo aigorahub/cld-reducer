@@ -166,15 +166,17 @@ R keeps presolve off because the CRAN `highs` package bundles HiGHS 1.14, where 
 - `time_limit` is absent or a finite number greater than 0 (seconds; a boolean or a string is not a number): otherwise `time_limit must be positive when provided`.
 - `max_cliques` is absent or a finite whole number of 1 or more, of any size (a boolean is not a number; infinity is not finite; R keeps the value as a double, so a cap of 2^31 or more works): otherwise the message starts with `max_cliques must be a positive integer or ` and ends with `None` (Python), `NULL` (R), or `null` (JavaScript).
 
-**One budget.** `time_limit` is one budget for all solves in a call, measured from just before the first solve with a monotonic clock (R `proc.time()[["elapsed"]]`, Python `time.monotonic()`, JavaScript `performance.now() / 1000`). Each solve gets the time left as its HiGHS time limit. When no time is left before a solve starts, or HiGHS stops on the time limit, the call raises a solver error with the prefix `assignment-minimum MILP failed: ` and the text `Time limit reached`. The clique enumeration is not part of the budget.
+**Failure prefix.** Solver status errors use `letter-minimum MILP failed: ` for CLD-C and `assignment-minimum MILP failed: ` for CLD-sigma.
+
+**One budget.** `time_limit` is one budget for all solves in a call, measured from just before the first solve with a monotonic clock (R `proc.time()[["elapsed"]]`, Python `time.monotonic()`, JavaScript `performance.now() / 1000`). Each solve gets the time left as its HiGHS time limit. When no time is left before a solve starts, or HiGHS stops on the time limit, the call raises a solver error with the selected method's failure prefix and the text `Time limit reached`. The clique enumeration is not part of the budget.
 
 **Checks after each solve.**
 
-1. The model status must be optimal. For the re-solves of section 5, infeasible is also allowed and means "cannot set this variable to 1". With presolve on, HiGHS can report "unbounded or infeasible" for an infeasible model; no model here is unbounded, so that status is always mapped to infeasible by the adapter, preserving its text; only the engine accepts infeasible trials. Any other status is a solver error with the prefix `assignment-minimum MILP failed: ` followed by the HiGHS status text. In the first solve, infeasible is also an error with that prefix.
+1. The model status must be optimal. For the re-solves of section 5, infeasible is also allowed and means "cannot set this variable to 1". With presolve on, HiGHS can report "unbounded or infeasible" for an infeasible model; no model here is unbounded, so that status is always mapped to infeasible by the adapter, preserving its text; only the engine accepts infeasible trials. Any other status is a solver error with the selected method's failure prefix followed by the HiGHS status text. In the first solve, infeasible is also an error with that prefix.
 2. Every `x` must be finite and within 1e-6 of 0 or within 1e-6 of 1. Being integral is not enough: a value such as 2 or -1 is invalid. Then `x` is read as 1 when it is above 0.5.
 3. The rounded `x` must agree with the fixings made so far (fixed to 1 are 1, fixed to 0 are 0).
 4. The rounded `x` must give every group a membership and cover every edge (some clique has both ends set to 1).
-5. The reported initial objective must be finite before rounding. The counted decisions must equal that rounded objective on the first solve, and the stored integer optimum on every later feasible solve. There is no absolute objective tolerance band.
+5. The reported initial objective must be finite before rounding. The weighted decision cost must equal that rounded objective on the first solve, and the stored integer optimum on every later feasible solve. There is no absolute objective tolerance band.
 
 When check 2 to 5 fails, raise a solver error with the prefix `HiGHS returned an invalid solution`. The status text in check 1 is the text HiGHS uses for its model status (for example `Time limit reached`, `Infeasible`).
 
