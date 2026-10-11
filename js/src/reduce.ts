@@ -10,6 +10,7 @@ import { assignLetters, formatTokens } from "./display.js";
 import { solveCanonical } from "./canonical.js";
 import { graphContext } from "./model.js";
 import { getSolver } from "./solver.js";
+import { reduceGraphVertices, expandGraphColumns } from "./reduction-graph.js";
 
 export interface CldStats {
   assignmentsBefore: number;
@@ -56,12 +57,15 @@ async function reduceGraph(graph: Graph, options: ReduceOptions): Promise<CldRed
   const strategy = checkMethod(options.method);
   const { timeLimit, maxCliques } = checkControls(options);
   const { groups, adjacency, means } = graph;
-  const cliques = maximalCliques(adjacency, maxCliques);
-  const model = strategy.builder(graphContext(graph, cliques));
+  const reduced = reduceGraphVertices(adjacency);
+  const smallGraph = { adjacency: reduced.adjacency,
+    groups: reduced.classes.map(group => groups[group[0]]), means: null };
+  const cliques = maximalCliques(reduced.adjacency, maxCliques);
+  const model = strategy.builder(graphContext(smallGraph, cliques, reduced.weights));
   await getSolver();
   const { selected, minimum } = solveCanonical(model, timeLimit, strategy);
 
-  const columns = strategy.decoder(cliques, model, selected);
+  const columns = expandGraphColumns(strategy.decoder(cliques, model, selected), reduced.classes);
   const tokens = assignLetters(columns, groups.length, means);
   const assignments = Object.fromEntries(groups.map((g, i) => [g, tokens[i]]));
   const display = tokens.map(formatTokens);
@@ -76,7 +80,7 @@ async function reduceGraph(graph: Graph, options: ReduceOptions): Promise<CldRed
     }
   }
 
-  const before = cliques.reduce((sum, q) => sum + q.length, 0);
+  const before = cliques.reduce((sum, q) => sum + q.reduce((cost, g) => cost + reduced.weights[g], 0), 0);
   const after = tokens.reduce((s, t) => s + t.length, 0);
   if (minimum !== (strategy.countsAssignments ? after : columns.length)) throw new SolverError("HiGHS returned an invalid solution");
   return {
@@ -91,7 +95,7 @@ async function reduceGraph(graph: Graph, options: ReduceOptions): Promise<CldRed
       numLettersBefore: cliques.length,
       numLettersAfter: columns.length,
       numGroups: groups.length,
-      numEdges: model.edges.length,
+      numEdges: adjacency.reduce((sum, row, i) => sum + row.filter((edge, j) => j > i && edge).length, 0),
       solverStatus: "Optimal",
       objective: minimum,
     },

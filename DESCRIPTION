@@ -10,11 +10,11 @@ Description: Reduces compact letter displays (CLDs) of all pairwise
     comparisons. A CLD gives two groups a common letter exactly when they are
     not significantly different. The package finds a display with the fewest
     letter assignments or distinct letters that keeps every relationship.
-    The default CLD-sigma objective is the assignment-minimum clique covering
+    The optional CLD-sigma objective is the assignment-minimum clique covering
     problem of Ennis, Fayle, and Ennis
     (2012) <doi:10.1145/2133803.2275596>, solved as a mixed-integer linear
-    program with 'HiGHS'. CLD-C selects full maximal cliques with the fewest
-    letters. Among displays with the selected minimum objective, it returns
+    program with 'HiGHS'. The default CLD-C method selects full maximal
+    cliques with the fewest letters. Among displays with the selected minimum objective, it returns
     one fixed canonical display, so the result does not depend on the
     solver. The package includes the wheat yield example of Piepho (2004)
     <doi:10.1198/1061860043515>.

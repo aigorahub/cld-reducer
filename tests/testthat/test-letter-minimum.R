@@ -122,7 +122,7 @@ test_that("the adapter maps ambiguous status and retains its text", {
 })
 
 test_that("sigma keeps its public objective type after sharing the integer optimum", {
-  out <- reduce_letters(simple_abc_pairs, simple_abc_means)
+  out <- reduce_letters(simple_abc_pairs, simple_abc_means, method = "assignment_minimum")
   expect_type(out$stats$objective,"double")
   expect_equal(out$stats$objective,8)
 })

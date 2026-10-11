@@ -100,7 +100,7 @@ def _check_solution(
         raise SolverError(_INVALID_SOLUTION)
     if not strategy.coverage(model, rounded):
         raise SolverError(_INVALID_SOLUTION)
-    total = int(rounded.sum())
+    total = int(np.dot(model.problem.cost[decisions], rounded))
     if expected_sum is None and (
         not isinstance(outcome.objective, Real) or not isfinite(float(outcome.objective))
     ):

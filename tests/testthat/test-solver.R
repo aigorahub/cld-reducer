@@ -1,6 +1,6 @@
 # Failure paths of docs/algorithm.md section 6, through the replaceable solver call.
 
-simple <- function(...) reduce_from_adjacency(simple_adjacency(), ...)
+simple <- function(...) reduce_from_adjacency(simple_adjacency(), ..., method = "assignment_minimum")
 
 test_that("a first solve that is not optimal is a solver error", {
   for (status in c("failed", "time_limit", "infeasible")) {
@@ -66,7 +66,7 @@ first_solve_off_canonical <- function(real) {
   function(problem, col_lower, col_upper, sum_limit = NULL, time_limit = Inf) {
     if (is.null(sum_limit)) {
       k <- seq_len(length(problem$decision_columns))
-      problem$cost[problem$decision_columns] <- 1 + 1e-3 * (length(problem$decision_columns) - k) / length(problem$decision_columns)
+      problem$cost[problem$decision_columns] <- problem$cost[problem$decision_columns] + 1e-3 * (length(problem$decision_columns) - k) / length(problem$decision_columns)
     }
     real(problem, col_lower, col_upper, sum_limit, time_limit)
   }
@@ -83,7 +83,7 @@ test_that("the canonical procedure reaches the canonical display from another op
     }
     out
   })
-  result <- reduce_letters(piepho2004_wheat)
+  result <- reduce_letters(piepho2004_wheat, method = "assignment_minimum")
   expect_gt(feasible_resolves, 0L)
   expect_equal(result$stats$assignments_after, 44)
   expect_equal(unname(result$letters)[1:4], c("ABC", "BD", "AD", "BD"))
@@ -100,7 +100,7 @@ test_that("later solutions are checked too", {
     }
     out
   })
-  expect_error(reduce_letters(piepho2004_wheat), "HiGHS returned an invalid solution",
+  expect_error(reduce_letters(piepho2004_wheat, method = "assignment_minimum"), "HiGHS returned an invalid solution",
                class = "cldreducer_solver_error")
   expect_equal(later, 1L)
 })
@@ -114,7 +114,7 @@ test_that("a solution that violates a fixing is rejected", {
     }
     out
   })
-  expect_error(reduce_letters(piepho2004_wheat), "HiGHS returned an invalid solution",
+  expect_error(reduce_letters(piepho2004_wheat, method = "assignment_minimum"), "HiGHS returned an invalid solution",
                class = "cldreducer_solver_error")
 })
 

@@ -42,7 +42,7 @@ render_result <- function(graph, cliques, model, solution, columns, strategy) {
         num_letters_before = length(cliques),
         num_letters_after = length(columns),
         num_groups = size,
-        num_edges = nrow(model$edges),
+        num_edges = sum(adjacency & upper.tri(adjacency)),
         solver_status = "Optimal",
         objective = as.numeric(solution$minimum)
       ),

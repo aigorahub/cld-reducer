@@ -59,7 +59,7 @@ export function buildModel(context: Context): Model {
   }
   const numCols = numX + yPairs.length;
   const cost = new Float64Array(numCols);
-  cost.fill(1, 0, numX);
+  members.forEach(([, g], k) => { cost[k] = context.weights[g]; });
   const edgeEnds: [number, number][][] = edges.map(() => []);
   for (const [e, c] of yPairs) {
     edgeEnds[e].push([xIndex.get(`${c},${edges[e][0]}`)!, xIndex.get(`${c},${edges[e][1]}`)!]);
@@ -96,15 +96,15 @@ export interface Strategy {
 }
 
 export interface Context extends Graph {
-  cliques: number[][]; edges: [number, number][]; cliquesOf: number[][];
+  cliques: number[][]; edges: [number, number][]; cliquesOf: number[][]; weights: number[];
 }
-export function graphContext(graph: Graph, cliques: number[][]): Context {
+export function graphContext(graph: Graph, cliques: number[][], weights = graph.groups.map(() => 1)): Context {
   const edges: [number, number][] = [];
   for (let i=0; i<graph.groups.length; i++) for (let j=i+1; j<graph.groups.length; j++) {
     if (graph.adjacency[i][j]) edges.push([i,j]);
   }
   const cliquesOf = graph.groups.map((_,g) => cliques.flatMap((q,c) => q.includes(g) ? [c] : []));
-  return { ...graph, cliques, edges, cliquesOf };
+  return { ...graph, cliques, edges, cliquesOf, weights };
 }
 function buildLetterModel(context: Context): Model {
   const { cliques, edges, cliquesOf } = context;

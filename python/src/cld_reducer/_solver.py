@@ -75,7 +75,7 @@ def run(
 ) -> Outcome:
     """Solve the model with the given column bounds.
 
-    `sum_limit` adds the row `sum(decisions) <= sum_limit`. `time_limit` is the HiGHS time limit in
+    `sum_limit` caps the weighted decision cost. `time_limit` is the HiGHS time limit in
     seconds for this solve.
     """
     start, index, value = problem.start, problem.index, problem.value
@@ -86,7 +86,7 @@ def run(
             np.int32
         )
         index = np.concatenate([index, extra])
-        value = np.concatenate([value, np.ones(len(problem.decision_columns))])
+        value = np.concatenate([value, problem.cost[extra]])
         row_lower = np.concatenate([row_lower, [-highspy.kHighsInf]])
         row_upper = np.concatenate([row_upper, [float(sum_limit)]])
 

@@ -10,7 +10,7 @@ export type Means = ReadonlyMap<string, number> | ReadonlyArray<{ group: string;
 export interface ReduceOptions {
   /** Group means. A plain object is rejected: integer-like keys would reorder the groups. */
   means?: Means | null;
-  /** CLD-sigma "assignment_minimum" (default) or CLD-C "letter_minimum"; hyphenated aliases accepted. */
+  /** CLD-C "letter_minimum" (default) or CLD-sigma "assignment_minimum"; hyphenated aliases accepted. */
   method?: string;
   /** One time budget in seconds for all solves of the call. */
   timeLimit?: number | null;
@@ -225,7 +225,7 @@ export function adjacencyToGraph(adjacency: unknown, options: ReduceOptions): Gr
 }
 
 export function checkMethod(method: unknown): Strategy {
-  const value = method ?? "assignment_minimum";
+  const value = method ?? "letter_minimum";
   const strategy = methods.find(s => s.aliases.some(alias => alias === value));
   if (!strategy) throw new InvalidInputError(`unsupported CLD reduction method: '${String(value)}'`);
   return strategy;

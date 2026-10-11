@@ -134,7 +134,7 @@ const STATUS_TEXT: Record<string, string> = {
 
 /**
  * Solve the model with the given column bounds. `sumLimit` adds the row
- * `sum(decisions) <= sumLimit`; `timeLimit` is the HiGHS time limit in seconds.
+ * weighted decision cost <= sumLimit; `timeLimit` is the HiGHS time limit in seconds.
  */
 export function run(
   problem: Problem, colLower: Float64Array, colUpper: Float64Array,
@@ -146,7 +146,7 @@ export function run(
     const start = starts[starts.length - 1];
     starts = Int32Array.from([...starts, start + problem.decisionColumns.length]);
     indices = Int32Array.from([...indices, ...problem.decisionColumns]);
-    values = Float64Array.from([...values, ...new Array<number>(problem.decisionColumns.length).fill(1)]);
+    values = Float64Array.from([...values, ...problem.decisionColumns.map(k => problem.cost[k])]);
     rowLower = Float64Array.from([...rowLower, -h.infinity]);
     rowUpper = Float64Array.from([...rowUpper, sumLimit]);
   }

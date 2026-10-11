@@ -26,6 +26,6 @@ test_that("each pair of groups occurs once in the wheat data", {
 })
 
 test_that("the pairs and means of the simple example agree with each other", {
-  result <- reduce_letters(simple_abc_pairs, simple_abc_means)
+  result <- reduce_letters(simple_abc_pairs, simple_abc_means, method = "assignment_minimum")
   expect_equal(result$stats$assignments_after, 8)
 })

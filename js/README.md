@@ -1,6 +1,6 @@
 # cld-reducer for JavaScript
 
-Reduce compact letter displays (CLDs) while preserving the pairwise statistical relationships they encode. This is the JavaScript and TypeScript package of the [cld-reducer repository](https://github.com/aigorahub/cld-reducer), which also holds an R package and a Python package. All three provide CLD-C and default to the CLD-sigma assignment-minimum clique covering of Ennis, Fayle, and Ennis (2012), <https://doi.org/10.1145/2133803.2275596>, as a mixed-integer program with [HiGHS](https://highs.dev), and they return the same display for the same input. The rules they follow are in `docs/algorithm.md` in the repository.
+Reduce compact letter displays (CLDs) while preserving the pairwise statistical relationships they encode. This is the JavaScript and TypeScript package of the [cld-reducer repository](https://github.com/aigorahub/cld-reducer), which also holds an R package and a Python package. All three default to CLD-C, which minimizes distinct letters. The optional CLD-sigma method minimizes assignments, as defined by Ennis, Fayle, and Ennis (2012), <https://doi.org/10.1145/2133803.2275596>. Both methods use [HiGHS](https://highs.dev) and return the same display across languages. The rules they follow are in `docs/algorithm.md` in the repository.
 
 The solver is HiGHS compiled to WebAssembly (the npm package [`highs`](https://www.npmjs.com/package/highs)). The only runtime dependency is `highs`. ESM only, Node.js 22 or later, TypeScript declarations included.
 
@@ -38,22 +38,22 @@ const means = new Map([["1", 3.73], ["2", 3.57], ["3", 3.46], ["4", 3.33], ["5",
 
 const result = await reduceLetters(pairs, { means });
 console.log(result.letters);
-// { '1': 'A', '2': 'AB', '3': 'AC', '4': 'BC', '5': 'C' }
+// { '1': 'A', '2': 'AB', '3': 'ABC', '4': 'BC', '5': 'C' }
 console.log(result.stats);
 // {
 //   assignmentsBefore: 9,
-//   assignmentsAfter: 8,
-//   reductionPct: 11.11111111111111,
+//   assignmentsAfter: 9,
+//   reductionPct: 0,
 //   numLettersBefore: 3,
 //   numLettersAfter: 3,
 //   numGroups: 5,
 //   numEdges: 7,
 //   solverStatus: 'Optimal',
-//   objective: 8
+//   objective: 3
 // }
 ```
 
-Group 3 would be `ABC` in the standard maximal display; the reduced display drops the `B` and still preserves every relationship.
+The default returns three distinct letters. Use `{ means, method: "assignment_minimum" }` to reduce group 3 from `ABC` to `AC`. Both results preserve every relationship.
 
 If you already have the non-significance matrix, use `reduceFromAdjacency`. `adjacency[i][j]` true (or 1) means groups `i` and `j` are not significantly different and must share a letter:
 
@@ -85,7 +85,7 @@ loadSolver(options?): Promise<void>
 | `means` | A `Map` from group label to mean, or an array of `{ group, mean }`. The means set the letter order (higher means first). For `reduceLetters`, the order of the means is also the group order; without means it is the order of first appearance. A plain object is rejected, because JavaScript puts integer-like keys first and the group order decides ties. Every mean must be a finite number. |
 | `groups` | Labels for the rows of an adjacency matrix (default `"1"` to `"n"`). |
 | `group1`, `group2`, `significant` | Key names in the pairwise rows. |
-| `method` | `"assignment_minimum"` (default CLD-sigma) or `"letter_minimum"` (CLD-C); both accept hyphenated aliases. |
+| `method` | `"letter_minimum"` (default CLD-C) or `"assignment_minimum"` (CLD-sigma); both accept hyphenated aliases. |
 | `timeLimit` | One time budget in seconds for all solves of the call. |
 | `maxCliques` | Cap on maximal cliques, 10000 by default; `null` removes the cap. |
 
@@ -145,10 +145,15 @@ its installed declarations. The release workflow retains that exact tarball.
 See `docs/releasing.md` in the repository for release steps. `NOTICE` records the
 example data sources and the maintainer approval recorded on 2026-10-10.
 
-## CLD-C option
+## Choice of objective
 
-The default CLD-sigma (`assignment_minimum`, alias `assignment-minimum`) minimizes
-letter-to-group assignments. CLD-C (`letter_minimum`, alias `letter-minimum`)
+Both methods merge vertices with identical closed neighborhoods before solving.
+The sigma model weights each merged vertex by its original group count.
+The result restores the original groups, labels, means, and assignment counts.
+This is the vertex reduction from Lemma 2.5 of the 2012 paper.
+
+CLD-sigma (`assignment_minimum`, alias `assignment-minimum`) minimizes
+letter-to-group assignments. The default CLD-C (`letter_minimum`, alias `letter-minimum`)
 minimizes distinct letters by selecting full maximal cliques. It does not minimize
 assignments as a second objective. Equal optima use the lexicographically greatest
 binary selection vector in canonical clique order. Public `method` metadata uses

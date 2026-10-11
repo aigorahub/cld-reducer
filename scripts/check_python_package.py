@@ -25,7 +25,7 @@ for name, count in [("simple_abc_to_ac", 5), ("piepho2004_wheat", 20)]:
     pairs = pd.read_csv(f"examples/{name}_pairs.csv", dtype={"group1": str, "group2": str})
     means_file = Path(f"examples/{name}_means.csv")
     means = pd.read_csv(means_file, dtype={"group": str}) if means_file.exists() else None
-    result = reduce_letters(pairs, means)
+    result = reduce_letters(pairs, means, method="assignment_minimum")
     assert len(result.groups) == count
     assert result.relationship_preserved
     assert result.stats["assignments_after"] == (8 if count == 5 else 44)
@@ -33,6 +33,7 @@ for name, count in [("simple_abc_to_ac", 5), ("piepho2004_wheat", 20)]:
     assert c.method == "letter_minimum"
     assert c.stats["objective"] == c.stats["num_letters_after"]
     assert c.stats["assignments_after"] == (9 if count == 5 else 56)
+    assert reduce_letters(pairs, means) == c
 from cld_reducer.algorithms.assignment_minimum import reduce_assignment_minimum
 sigma = reduce_assignment_minimum([[1]], ["001"], method="metadata-only")
 assert sigma.method == "metadata-only" and sigma.stats["objective"] == 1

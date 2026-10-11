@@ -21,6 +21,8 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function call(c) {
   const o = c.options;
   const options = {};
+  // Historical sigma fixtures predate the C default. Keep their inputs frozen.
+  if (!("method" in o) && c.expected?.method === "assignment_minimum") options.method = "assignment_minimum";
   if (c.input.means != null) options.means = c.input.means;
   for (const key of ["group1", "group2", "significant", "method"]) {
     if (key in o) options[key] = o[key];
@@ -75,7 +77,7 @@ function ordered(e) {
   };
 }
 
-const reduceCases = [...cases("reduce"), ...cases("reduce_letter_minimum")];
+const reduceCases = [...cases("reduce"), ...cases("reduce_letter_minimum"), ...cases("reduce_weighted")];
 
 // The checker must reject the three wrong wheat results and accept the right one.
 {

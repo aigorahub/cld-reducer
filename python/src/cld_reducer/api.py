@@ -22,7 +22,7 @@ def reduce_letters(
     post_hoc_results: pd.DataFrame | Sequence[Mapping[str, Any]],
     means: Mapping[Any, float] | pd.Series | pd.DataFrame | None = None,
     *,
-    method: str = "assignment_minimum",
+    method: str = "letter_minimum",
     group1: str = "group1",
     group2: str = "group2",
     significant: str = "significant",
@@ -39,8 +39,8 @@ def reduce_letters(
     means:
         Optional group means used for stable display ordering.
     method:
-        CLD-sigma `"assignment_minimum"` (default) minimizes assignments.
-        CLD-C `"letter_minimum"` minimizes full maximal-clique columns.
+        CLD-C `"letter_minimum"` (default) minimizes distinct letters.
+        CLD-sigma `"assignment_minimum"` minimizes assignments.
         Hyphenated aliases are accepted.
     group1, group2, significant:
         Column names in `post_hoc_results`.
@@ -74,7 +74,7 @@ def reduce_from_adjacency(
     groups: Sequence[Any] | None = None,
     means: Mapping[Any, float] | pd.Series | pd.DataFrame | None = None,
     *,
-    method: str = "assignment_minimum",
+    method: str = "letter_minimum",
     time_limit: float | None = None,
     max_cliques: int | None = 10_000,
 ) -> CLDReductionResult:

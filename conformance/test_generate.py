@@ -237,7 +237,7 @@ class CliqueTest(unittest.TestCase):
 class HandCheckedTest(unittest.TestCase):
     def solve(self, call, inputs, options=None):
         case = {"id": "t", "call": call, "input": inputs, "options": options or {}}
-        return g.solve_case(case)
+        return g.solve_case(case, default_method="assignment_minimum")
 
     def test_simple_abc_display(self):
         means = g.data_means("simple_abc_to_ac_means.csv")
@@ -308,7 +308,7 @@ class WheatTest(unittest.TestCase):
         self.assertEqual(len(pairs), 190)
         case = {"id": "t", "call": "pairs", "input": {"pairs": pairs, "means": None},
                 "options": {}}
-        expected, model, groups, means, selected, z = g.solve_case(case, True)
+        expected, model, groups, means, selected, z = g.solve_case(case, True, default_method="assignment_minimum")
         self.assertEqual(len(model.cliques), 4)
         self.assertEqual(len(model.xs), 56)
         self.assertEqual(z, 44)

@@ -2,7 +2,7 @@
 
 This document is the normative specification for every cld-reducer implementation: the R package at the repository root, the Python package in `python/`, and the JavaScript package in `js/`. The conformance generator in `conformance/` follows it too, and its fixtures are the observable form of this document. Where an implementation and this document disagree, this document wins until it is changed through the fix protocol of the plan.
 
-The default CLD-sigma problem is the assignment-minimum clique covering of Ennis, Fayle, and Ennis (2012), <https://doi.org/10.1145/2133803.2275596>. The input is the non-significance graph of a set of groups. The output is a compact letter display (CLD) with the fewest letter-to-group assignments in which two groups share a letter exactly when they are not significantly different.
+The optional CLD-sigma problem is the assignment-minimum clique covering of Ennis, Fayle, and Ennis (2012), <https://doi.org/10.1145/2133803.2275596>. The input is the non-significance graph of a set of groups. The default CLD-C objective minimizes distinct letters. The sigma output is a compact letter display (CLD) with the fewest letter-to-group assignments in which two groups share a letter exactly when they are not significantly different.
 
 ## Conventions
 
@@ -78,7 +78,7 @@ Used by `reduce_from_adjacency` and `reduceFromAdjacency`. The input is a square
 
 **Means** follow section 1 and are matched to the groups by label. For adjacency input, the group order is the `groups` argument (or the default), not the means order. Missing means for a group are an invalid input error as in section 1.
 
-**Method.** `method` is `assignment_minimum` (CLD-sigma, default) or `letter_minimum` (CLD-C). The hyphenated aliases `assignment-minimum` and `letter-minimum` are accepted; public results store the underscore spelling. Any other value is an invalid input error with the prefix `unsupported CLD reduction method: ` followed by the quoted value. This check comes after the checks above and before the `time_limit` and `max_cliques` checks of section 6. For pairwise input the call reaches this point after section 1 completes.
+**Method.** `method` is `letter_minimum` (CLD-C, default) or `assignment_minimum` (CLD-sigma). The hyphenated aliases `assignment-minimum` and `letter-minimum` are accepted; public results store the underscore spelling. Any other value is an invalid input error with the prefix `unsupported CLD reduction method: ` followed by the quoted value. This check comes after the checks above and before the `time_limit` and `max_cliques` checks of section 6. For pairwise input the call reaches this point after section 1 completes.
 
 ## 3. Maximal cliques
 
@@ -92,16 +92,26 @@ The cover starts from the set of all maximal cliques of the non-significance gra
 
 **Counts.** `assignments_before` is the sum of the clique sizes. `num_letters_before` is `k`.
 
+### Weighted vertex reduction
+
+Before enumeration, merge vertices with identical adjacency rows, including the unit diagonal. These are adjacent vertices with the same closed neighborhood. Separate isolated vertices stay separate. Classes use increasing first original index. Retain the original indices and a positive integer weight equal to each class size.
+
+Every maximal clique either contains a whole class or excludes it. Maximal cliques of the reduced graph therefore correspond one to one with maximal cliques of the original graph. Their count and the clique cap do not change. Expand their indices to recover the original canonical order and public counts. The sorted reduced order is the same: the first class on which two maximal cliques differ has the lowest original index on which their expansions differ.
+
+Lemma 2.5 of Ennis, Fayle, and Ennis (2012) preserves the sigma optimum when each reduced membership has its class weight. Expansion also preserves the C optimum and its full columns. Final rendering uses the original groups and means. `num_edges`, `num_groups`, and all assignment statistics count the original graph.
+
+Reduction also preserves the original canonical sigma result. At an optimum, all members of a class have equally many assignments. Otherwise copying the least assigned member to the others would strictly reduce the cost. Choose the lexicographically greatest membership row in a class, in clique order. Copying it to the other members preserves cost and coverage. It strictly raises the full decision vector unless all members already use that row. Thus the canonical optimum has one common row per class. Visiting each class by its first original index preserves the first differing position of the expanded decision vector. The reduced canonical solve therefore selects the same expanded optimum.
+
 ## 4. CLD-sigma model
 
-The alternative pure CLD-C model is specified in section 14.
+The default pure CLD-C model is specified in section 14.
 
 Let `E` be the edges. Variables, all binary:
 
-- `x[c, g]` for each clique `c` and each member `g` of it. This is the membership "group `g` has the letter of clique `c`". The number of `x` variables is `assignments_before`.
+- `x[c, g]` for each clique `c` and each member `g` of it. This is the membership "group `g` has the letter of clique `c`". Each reduced vertex has weight `w[g]`, its original class size. The number of `x` variables counts memberships after vertex reduction. Public `assignments_before` counts the expanded memberships.
 - `y[e, c]` for each edge `e = {i, j}` and each clique `c` that holds both `i` and `j`. This means "clique `c` covers edge `e`".
 
-Objective: minimize the sum of all `x`.
+Objective: minimize `weighted_cost(x) = sum(w[g] * x[c,g])`. With no repeated vertices all weights are 1.
 
 Constraints:
 
@@ -115,11 +125,11 @@ Variable order for the tie-break of section 5 is the `x` variables sorted by `(c
 
 ## 5. Common canonical solve
 
-The following describes sigma memberships; for C use z variables in canonical clique order. The common engine visits only the ordered `decision_columns`, caps only their sum, and uses the selected method coverage check. Sigma y variables are excluded.
+The following describes sigma memberships; for C use z variables in canonical clique order. The common engine visits only the ordered `decision_columns`, caps only their weighted cost, and uses the selected method coverage check. Sigma y variables are excluded.
 
 Many graphs have several optimal coverings (the Piepho 2004 wheat example has 64). To make every implementation return the same one, the result is pinned:
 
-> Among all optimal solutions (those with the minimum sum of `x`), return the one whose membership vector, read over the `x` variables in `(c, g)` order, is lexicographically greatest, with 1 greater than 0.
+> Among all optimal solutions (those with the minimum weighted cost of `x`), return the one whose membership vector, read over the `x` variables in `(c, g)` order, is lexicographically greatest, with 1 greater than 0.
 
 Equivalently: visiting the `x` variables in order, each is 1 whenever some optimal covering that agrees with all earlier choices has it at 1. The result does not depend on which optimum a solver returns.
 
@@ -128,13 +138,13 @@ Equivalently: visiting the `x` variables in order, each is 1 whenever some optim
 1. Solve the model once. Let `z` be the rounded objective value and `S` the rounded `x` of the solution. This is the minimum.
 2. Visit the `x` variables in `(c, g)` order. For variable `v`:
    1. If `S[v]` is 1, fix `v` to 1 (lower bound 1) and continue.
-   2. If `S[v]` is 0, solve again with every earlier fixing, `v` fixed to 1, and the added limit `sum(x) <= z`. If the model is feasible, replace `S` with the new solution and fix `v` to 1. If it is infeasible, fix `v` to 0 (upper bound 0).
+   2. If `S[v]` is 0, solve again with every earlier fixing, `v` fixed to 1, and the added limit `weighted_cost(x) <= z`. If the model is feasible, replace `S` with the new solution and fix `v` to 1. If it is infeasible, fix `v` to 0 (upper bound 0).
    3. Any other status in the re-solve is a solver error (section 6).
-3. After the last variable, `S` is the answer. Every `x` is fixed, and `sum(x)` equals `z`.
+3. After the last variable, `S` is the answer. Every `x` is fixed, and `weighted_cost(x)` equals `z`.
 
-The bound `sum(x) <= z` can be a column cost bound, an objective cutoff, or a row; the model for the re-solve may stay an optimization (minimize the sum of `x`) as long as the result is a feasible solution with `sum(x) = z`. All solves share the time budget and the checks of section 6.
+The bound `weighted_cost(x) <= z` can be a column cost bound, an objective cutoff, or a row; the model for the re-solve may stay an optimization (minimize the weighted cost of `x`) as long as the result is a feasible solution with `weighted_cost(x) = z`. All solves share the time budget and the checks of section 6.
 
-The cost is one solve plus at most one extra solve per variable that is 0 in the current solution when visited. For the wheat example that is between 12 and 56 small solves.
+The cost is one solve plus at most one extra solve per variable that is 0 in the current solution when visited. Vertex reduction reduces the wheat model from 56 membership decisions to 15. The solve count depends on the initial optimum and subsequent fixings.
 
 ## 6. Solver settings and checks
 
@@ -270,12 +280,12 @@ from cld_reducer import (
     CLDReductionResult, CLDReducerError, InvalidInputError, SolverError,
 )
 
-def reduce_letters(post_hoc_results, means=None, *, method="assignment_minimum",
+def reduce_letters(post_hoc_results, means=None, *, method="letter_minimum",
                    group1="group1", group2="group2", significant="significant",
                    time_limit=None, max_cliques=10_000) -> CLDReductionResult: ...
 
 def reduce_from_adjacency(adjacency, groups=None, means=None, *,
-                          method="assignment_minimum", time_limit=None,
+                          method="letter_minimum", time_limit=None,
                           max_cliques=10_000) -> CLDReductionResult: ...
 
 @dataclass(frozen=True)
@@ -298,10 +308,10 @@ class CLDReductionResult:
 
 ```r
 reduce_letters(pairs, means = NULL, group1 = "group1", group2 = "group2",
-               significant = "significant", method = "assignment_minimum",
+               significant = "significant", method = "letter_minimum",
                time_limit = NULL, max_cliques = 10000L)
 reduce_from_adjacency(adjacency, groups = NULL, means = NULL,
-                      method = "assignment_minimum", time_limit = NULL,
+                      method = "letter_minimum", time_limit = NULL,
                       max_cliques = 10000L)
 ```
 
@@ -366,21 +376,21 @@ function loadSolver(options?: { locateFile?: (file: string) => string;
 
 ## 12. Worked examples
 
-**Simple ABC.** Five groups `"1"` to `"5"` with means 3.73, 3.57, 3.46, 3.33, 3.30. The non-significant pairs, by label, are `12 13 23 24 34 35 45`. By index (label minus 1), the maximal cliques in canonical order are `{0,1,2}`, `{1,2,3}`, `{2,3,4}`, so `assignments_before` is 9. Only the membership of group `"3"` (index 2) in the middle clique is optional, because the pair `24` needs only groups `"2"` and `"4"` there. The optimum is unique, `assignments_after` is 8, and the display is `{"1": "A", "2": "AB", "3": "AC", "4": "BC", "5": "C"}`. Group `"3"` drops the letter `B`.
+**CLD-sigma simple ABC.** Five groups `"1"` to `"5"` with means 3.73, 3.57, 3.46, 3.33, 3.30. The non-significant pairs, by label, are `12 13 23 24 34 35 45`. By index (label minus 1), the maximal cliques in canonical order are `{0,1,2}`, `{1,2,3}`, `{2,3,4}`, so `assignments_before` is 9. Only the membership of group `"3"` (index 2) in the middle clique is optional, because the pair `24` needs only groups `"2"` and `"4"` there. The optimum is unique, `assignments_after` is 8, and the display is `{"1": "A", "2": "AB", "3": "AC", "4": "BC", "5": "C"}`. Group `"3"` drops the letter `B`.
 
 **Canonical clique order renames letters.** Groups 0 to 4, no means, non-significant pairs `01 02 03 04 14 24`. The maximal cliques are `{0,1,4}`, `{0,2,4}`, `{0,3}`. Every membership is forced, so the optimum is unique with `assignments_before = assignments_after = 8`. Without means, the three columns all have the lowest member 0, so the stable sort keeps the canonical order and the letters are `A`, `B`, `C` for these cliques: group 0 gets `ABC`, group 1 `A`, group 2 `B`, group 3 `C`, group 4 `AB`. NetworkX 3.7 enumerates the cliques as `{0,3}`, `{0,1,4}`, `{0,2,4}`, and the 0.1.0 Python package gave group 3 the letter `A`. The canonical order changes that name. This is accepted as part of the canonical tie-break and listed in `NEWS.md`.
 
-**Wheat.** The Piepho (2004) wheat example (20 treatments, 190 pairs) has 4 maximal cliques, 56 assignments in the maximal covering, a minimum of 44, and 64 optimal coverings. The canonical procedure picks one of the 64; its display is a conformance fixture.
+**CLD-sigma wheat.** The Piepho (2004) wheat example (20 treatments, 190 pairs) has 4 maximal cliques, 56 assignments in the maximal covering, a minimum of 44, and 64 optimal coverings. The canonical procedure picks one of the 64; its display is a conformance fixture.
 
 ## 13. Conformance
 
-`conformance/` holds the inputs, a standard library Python generator that finds the expected results by exact search (never by a solver), and the fixtures. A result passes when the group order, assignments, letters, integer statistics, `solver_status`, and `objective` are equal to the fixture, `reduction_pct` equals `(before - after) / before * 100` computed from the fixture integers, and each error case matches kind and message prefix. Each runner (`python/tests/test_conformance.py`, `js/scripts/conformance.mjs`, `conformance/run_r.R`) runs the cases and first proves that its checker rejects a display that loses a relationship, a valid but non canonical optimum, and a non minimal display.
+`conformance/` includes 30 weighted reduction cases. They cover interleaved classes, distinct isolated vertices, the default C method, and a graph where ignoring class weights raises the expanded sigma cost from 19 to 23. The frozen sigma fixtures use explicit sigma dispatch in the runners. `conformance/` holds the inputs, a standard library Python generator that finds the expected results by exact search (never by a solver), and the fixtures. A result passes when the group order, assignments, letters, integer statistics, `solver_status`, and `objective` are equal to the fixture, `reduction_pct` equals `(before - after) / before * 100` computed from the fixture integers, and each error case matches kind and message prefix. Each runner (`python/tests/test_conformance.py`, `js/scripts/conformance.mjs`, `conformance/run_r.R`) runs the cases and first proves that its checker rejects a display that loses a relationship, a valid but non canonical optimum, and a non minimal display.
 
 ## 14. CLD-C and the common framework
 
 `letter_minimum` (alias `letter-minimum`) selects full maximal cliques and minimizes
-their count C. `assignment_minimum` (alias `assignment-minimum`) remains the default
-CLD-sigma. Public results normalize aliases to the underscore names.
+their count C. It is the default. `assignment_minimum` (alias `assignment-minimum`)
+selects CLD-sigma. Public results normalize aliases to the underscore names.
 
 For C, one binary z[c] selects each canonical maximal clique. Minimize sum(z).
 Every group and every non-significant edge must occur in at least one selected clique.
@@ -400,12 +410,12 @@ runtime or generator is needed.
 
 `decision_columns` explicitly specifies both objective support and canonical order:
 unique valid native indices (one-based in R, zero-based in Python/JavaScript).
-These columns have unit costs; auxiliary columns have zero costs. Sigma's y columns
+C decisions have unit costs. Sigma decisions have positive integer class weights; auxiliary columns have zero costs. Sigma's y columns
 never enter the cap row or fixing loop. The engine validates vector length, finite
 binary decisions, fixed bounds, strategy coverage and counted objective. Before
 rounding the initial reported objective it must be finite; round(objective) must
-equal the decision count. Store that integer optimum and compare subsequent
-feasible decision counts with it, without an absolute objective tolerance band.
+equal the weighted decision cost. Store that integer optimum and compare subsequent
+feasible weighted costs with it, without an absolute objective tolerance band.
 All canonical solves use one deadline. Adapters always map unbounded-or-infeasible
 to infeasible and retain status text. Only an infeasible trial skips numeric vector
 checks and fixes its decision to zero; initial infeasibility fails. C status errors

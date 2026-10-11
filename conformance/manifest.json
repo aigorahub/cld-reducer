@@ -100,7 +100,8 @@
   "errors": 65,
   "labels": 18,
   "checker_bad_results": 6,
-  "reduce_letter_minimum": 1442
+  "reduce_letter_minimum": 1442,
+  "reduce_weighted": 30
  },
  "method_exclusions": {
   "assignment_minimum": [

@@ -59,7 +59,7 @@ build_model <- function(context) {
       add_row(c(num_x + k, x_index[y_clique[k], g]), c(1, -1), -Inf, 0)
     }
   }
-  cost <- c(rep(1, num_x), rep(0, num_y))
+  cost <- c(context$weights[members[, "group"]], rep(0, num_y))
   problem <- list(
     num_cols = num_cols, decision_columns = seq_len(num_x), cost = cost,
     matrix = Matrix::sparseMatrix(i = rows, j = cols, x = vals,
@@ -91,10 +91,10 @@ assignment_columns <- function(cliques, model, selected) {
   columns[lengths(columns) > 0L]
 }
 
-graph_context <- function(graph, cliques) {
+graph_context <- function(graph, cliques, weights = rep(1L, length(graph$groups))) {
   edges <- which(graph$adjacency & upper.tri(graph$adjacency), arr.ind = TRUE)
   edges <- edges[order(edges[, 1L], edges[, 2L]), , drop = FALSE]
-  c(graph, list(cliques = cliques, edges = edges,
+  c(graph, list(cliques = cliques, edges = edges, weights = weights,
     cliques_of = lapply(seq_along(graph$groups), function(g) {
       which(vapply(cliques, function(q) g %in% q, logical(1)))
     })))

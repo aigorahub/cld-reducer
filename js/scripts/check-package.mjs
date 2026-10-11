@@ -50,7 +50,7 @@ console.log(JSON.stringify(result.letters));
 `);
 const run = spawnSync(process.execPath, ["example.mjs"], { cwd: project, encoding: "utf8" });
 if (run.status !== 0) throw new Error(`the installed package failed:\n${run.stderr}`);
-const expected = '{"1":"A","2":"AB","3":"AC","4":"BC","5":"C"}';
+const expected = '{"1":"A","2":"AB","3":"ABC","4":"BC","5":"C"}';
 if (run.stdout.trim() !== expected) throw new Error(`unexpected display: ${run.stdout}`);
 console.log(`clean install prints ${run.stdout.trim()}`);
 

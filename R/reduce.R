@@ -1,9 +1,9 @@
 #' Reduce a compact letter display
 #'
 #' `reduce_letters()` and `reduce_from_adjacency()` find a compact letter
-#' display (CLD) minimizing assignments (CLD-sigma, the default) or distinct
-#' letters (CLD-C), in which two groups share a
-#' letter exactly when they are not significantly different. The default
+#' display (CLD) minimizing distinct letters (CLD-C, the default) or
+#' assignments (CLD-sigma), in which two groups share a
+#' letter exactly when they are not significantly different. The optional
 #' CLD-sigma method solves the assignment-minimum clique covering problem of
 #' Ennis, Fayle, and Ennis (2012). Both methods use 'HiGHS'.
 #' When several displays have the same minimum objective, the function returns
@@ -25,8 +25,8 @@
 #'   order of the groups; without means, the groups are in order of first
 #'   appearance in `group1`, then `group2`. Every mean must be finite.
 #' @param group1,group2,significant Names of the columns of `pairs`.
-#' @param method `"assignment_minimum"` (CLD-sigma, default) minimizes assignments;
-#'   `"letter_minimum"` (CLD-C) minimizes full maximal-clique columns, with no
+#' @param method `"assignment_minimum"` (CLD-sigma) minimizes assignments;
+#'   `"letter_minimum"` (CLD-C, default) minimizes full maximal-clique columns, with no
 #'   assignment secondary objective. Hyphenated aliases are also accepted.
 #'   Public result metadata uses the underscore spelling.
 #' @param time_limit One time budget in seconds for all solves of the call, or
@@ -84,7 +84,7 @@
 #' reduce_from_adjacency(adjacency, means = simple_abc_means)
 #' @export
 reduce_letters <- function(pairs, means = NULL, group1 = "group1", group2 = "group2",
-                           significant = "significant", method = "assignment_minimum",
+                           significant = "significant", method = "letter_minimum",
                            time_limit = NULL, max_cliques = 10000L) {
   graph <- pairs_to_graph(pairs, means, group1, group2, significant)
   reduce_graph(graph, method, time_limit, max_cliques)
@@ -93,7 +93,7 @@ reduce_letters <- function(pairs, means = NULL, group1 = "group1", group2 = "gro
 #' @rdname reduce_letters
 #' @export
 reduce_from_adjacency <- function(adjacency, groups = NULL, means = NULL,
-                                  method = "assignment_minimum", time_limit = NULL,
+                                  method = "letter_minimum", time_limit = NULL,
                                   max_cliques = 10000L) {
   graph <- adjacency_to_graph(adjacency, groups, means)
   reduce_graph(graph, method, time_limit, max_cliques)
@@ -106,12 +106,18 @@ reduce_graph <- function(graph, method, time_limit, max_cliques) {
   adjacency <- graph$adjacency
   size <- length(groups)
 
-  cliques <- maximal_cliques(adjacency, controls$max_cliques)
-  model <- strategy$builder(graph_context(graph, cliques))
+  reduced <- reduce_graph_vertices(adjacency)
+  small_graph <- list(adjacency = reduced$adjacency,
+                      groups = groups[vapply(reduced$classes, function(g) g[1L], integer(1))],
+                      means = NULL)
+  cliques <- maximal_cliques(reduced$adjacency, controls$max_cliques)
+  model <- strategy$builder(graph_context(small_graph, cliques, reduced$weights))
   solution <- solve_canonical(model, controls$time_limit, strategy)
 
-  columns <- strategy$decoder(cliques, model, solution$selected)
-  render_result(graph, cliques, model, solution, columns, strategy)
+  columns <- expand_graph_columns(strategy$decoder(cliques, model, solution$selected),
+                                  reduced$classes)
+  render_result(graph, expand_graph_columns(cliques, reduced$classes), model,
+                solution, columns, strategy)
 }
 
 reduction_methods <- function() list(

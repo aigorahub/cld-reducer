@@ -1,6 +1,6 @@
 # cld-reducer for Python
 
-Reduce compact letter displays (CLDs) while preserving the pairwise statistical relationships they encode. This is the Python package of the [cld-reducer repository](https://github.com/aigorahub/cld-reducer), which also holds an R package and a JavaScript package. All three provide CLD-C and default to the CLD-sigma assignment-minimum clique covering of Ennis, Fayle, and Ennis (2012), <https://doi.org/10.1145/2133803.2275596>, as a mixed-integer program with [HiGHS](https://highs.dev), and they return the same display for the same input. The rules they follow are in `docs/algorithm.md` in the repository.
+Reduce compact letter displays (CLDs) while preserving the pairwise statistical relationships they encode. This is the Python package of the [cld-reducer repository](https://github.com/aigorahub/cld-reducer), which also holds an R package and a JavaScript package. All three default to CLD-C, which minimizes distinct letters. The optional CLD-sigma method minimizes assignments, as defined by Ennis, Fayle, and Ennis (2012), <https://doi.org/10.1145/2133803.2275596>. Both methods use [HiGHS](https://highs.dev) and return the same display across languages. The rules they follow are in `docs/algorithm.md` in the repository.
 
 The solver is HiGHS through `highspy`. The dependencies are `highspy`, NumPy, and pandas.
 
@@ -57,16 +57,16 @@ means = pd.DataFrame({"group": ["1", "2", "3", "4", "5"], "mean": [3.73, 3.57, 3
 
 result = reduce_letters(pairs, means)
 print(result.letters)
-# {'1': 'A', '2': 'AB', '3': 'AC', '4': 'BC', '5': 'C'}
+# {'1': 'A', '2': 'AB', '3': 'ABC', '4': 'BC', '5': 'C'}
 print(result.to_frame())
 #   group letters assignments
 # 0     1       A           A
 # 1     2      AB         A B
-# 2     3      AC         A C
+# 2     3     ABC       A B C
 # 3     4      BC         B C
 # 4     5       C           C
 print(result.stats)
-# {'assignments_before': 9, 'assignments_after': 8, 'reduction_pct': 11.11111111111111, 'num_letters_before': 3, 'num_letters_after': 3, 'num_groups': 5, 'num_edges': 7, 'solver_status': 'Optimal', 'objective': 8}
+# {'assignments_before': 9, 'assignments_after': 9, 'reduction_pct': 0.0, 'num_letters_before': 3, 'num_letters_after': 3, 'num_groups': 5, 'num_edges': 7, 'solver_status': 'Optimal', 'objective': 3}
 ```
 
 This example works after package installation and needs no external files. `reduce_letters` takes complete pairwise results: one row for each pair of groups, with a boolean column that tells whether the pair differs significantly. Missing pairs are rejected. `means` is optional and orders the groups and the letters. If you already have the non-significance matrix, use `reduce_from_adjacency`; there, `True` means two groups are not significantly different and must share a letter.
@@ -81,7 +81,7 @@ The result, a `CLDReductionResult`, has:
 
 The public names are `reduce_letters`, `reduce_from_adjacency`, `CLDReductionResult`, `CLDReducerError`, `InvalidInputError`, and `SolverError`.
 
-When several displays have the same, smallest number of assignments, the package returns the canonical one defined in `docs/algorithm.md`, so R, Python, and JavaScript agree. `time_limit` is one time budget in seconds for all solves of a call, and `max_cliques` (10,000 by default; `None` removes it) bounds the number of maximal cliques.
+When several displays have the same minimum objective, the package returns the canonical one defined in `docs/algorithm.md`, so R, Python, and JavaScript agree. `time_limit` is one time budget in seconds for all solves of a call, and `max_cliques` (10,000 by default; `None` removes it) bounds the number of maximal cliques.
 
 ## Command line
 
@@ -129,10 +129,15 @@ those cases when the fixtures are absent. CI tests both installed distributions
 outside the checkout. See `docs/releasing.md` in the repository for release steps.
 Example data reuse remains subject to the conditions in `NOTICE`.
 
-## CLD-C option
+## Choice of objective
 
-The default CLD-sigma (`assignment_minimum`, alias `assignment-minimum`) minimizes
-letter-to-group assignments. CLD-C (`letter_minimum`, alias `letter-minimum`)
+Both methods merge vertices with identical closed neighborhoods before solving.
+The sigma model weights each merged vertex by its original group count.
+The result restores the original groups, labels, means, and assignment counts.
+This is the vertex reduction from Lemma 2.5 of the 2012 paper.
+
+CLD-sigma (`assignment_minimum`, alias `assignment-minimum`) minimizes
+letter-to-group assignments. The default CLD-C (`letter_minimum`, alias `letter-minimum`)
 minimizes distinct letters by selecting full maximal cliques. It does not minimize
 assignments as a second objective. Equal optima use the lexicographically greatest
 binary selection vector in canonical clique order. Public `method` metadata uses

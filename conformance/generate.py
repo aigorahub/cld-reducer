@@ -393,8 +393,8 @@ def match_means(means, groups):
     return values
 
 
-def check_method(options):
-    method = options.get("method", "assignment_minimum")
+def check_method(options, default="letter_minimum"):
+    method = options.get("method", default)
     if method not in ("assignment_minimum", "assignment-minimum", "letter_minimum", "letter-minimum"):
         raise invalid("unsupported CLD reduction method: %r" % (method,))
     return method.replace("-", "_")
@@ -565,10 +565,10 @@ def result_dict(model, groups, means, selected, z):
     }
 
 
-def solve_case(case, with_alternatives=False):
+def solve_case(case, with_alternatives=False, default_method="letter_minimum"):
     """Expected result of a valid case (raises SpecError for an invalid one)."""
     groups, edges, means, cap = graph_of(case)
-    model_class = LetterModel if check_method(case["options"]) == "letter_minimum" else Model
+    model_class = LetterModel if check_method(case["options"], default_method) == "letter_minimum" else Model
     model = model_class(len(groups), edges)
     if cap is not None and len(model.cliques) > cap:
         raise solver_error("maximal clique enumeration exceeded max_cliques=%d; "
@@ -1069,6 +1069,32 @@ def letter_cases(cases, files):
     return out
 
 
+def weighted_cases():
+    """Unreduced exact reference results for repeated and interleaved vertices."""
+    bases = [
+        ([[1,1,1,1,0,1], [1,1,1,0,0,1], [1,1,1,1,1,0],
+          [1,0,1,1,1,0], [0,0,1,1,1,0], [1,1,0,0,0,1]], [5,1,1,1,1,1]),
+        ([[1,1,0], [1,1,1], [0,1,1]], [2,3,2]),
+        ([[1,1,0,1], [1,1,1,0], [0,1,1,1], [1,0,1,1]], [1,3,2,2]),
+        ([[1,1,1], [1,1,1], [1,1,1]], [2,1,3]),
+        ([[1,0,0], [0,1,0], [0,0,1]], [2,1,3]),
+    ]
+    cases = []
+    for index, (base, weights) in enumerate(bases):
+        vertices = [v for v, weight in enumerate(weights) for _ in range(weight)]
+        for order, perm in enumerate((vertices, list(reversed(vertices)), vertices[::2] + vertices[1::2])):
+            adjacency = [[base[a][b] for b in perm] for a in perm]
+            for method in ("assignment_minimum", "letter_minimum"):
+                # Missing method must exercise the new public C default.
+                options = {"method": method} if method == "assignment_minimum" else {}
+                case = {"id": "weighted/%d/%d/%s" % (index, order, method),
+                        "call": "adjacency", "options": options,
+                        "input": {"adjacency": adjacency, "groups": None, "means": None}}
+                case["expected"] = solve_case(case)
+                cases.append(case)
+    return cases
+
+
 def letter_checker(cases):
     """C negatives carry the identity of their matching C expected record."""
     import copy
@@ -1166,16 +1192,17 @@ def build(files, excluded):
     wheat = None
     for case in cases:
         if case["id"] == "hand/wheat":
-            expected, model, groups, means, selected, z = solve_case(case, True)
+            expected, model, groups, means, selected, z = solve_case(case, True, default_method="assignment_minimum")
             expected_wheat = expected
             alt = non_canonical_wheat(model, groups, means, selected, z, expected)
             wheat = (expected, model, groups, means, selected, z)
             case["expected"] = expected
             case["non_canonical"] = alt
         else:
-            case["expected"] = solve_case(case)
+            case["expected"] = solve_case(case, default_method="assignment_minimum")
         reduce_cases.append(case)
     c_cases = letter_cases(cases, files)
+    repeated_cases = weighted_cases()
     checker = checker_fixture(*wheat)
     checker["letter_bad"] = letter_checker(c_cases)
     errors = error_cases()
@@ -1195,6 +1222,7 @@ def build(files, excluded):
         "reduce.json": dump_records({"schema_version": SCHEMA_VERSION, "kind": "reduce"},
                                     "cases", reduce_cases),
         "reduce_letter_minimum.json": dump_records({"schema_version": SCHEMA_VERSION, "kind": "reduce"}, "cases", c_cases),
+        "reduce_weighted.json": dump_records({"schema_version": SCHEMA_VERSION, "kind": "reduce"}, "cases", repeated_cases),
         "errors.json": dump_records({"schema_version": SCHEMA_VERSION, "kind": "errors"},
                                     "cases", errors),
         "labels.json": dump_records({"schema_version": SCHEMA_VERSION, "kind": "labels"},
@@ -1215,6 +1243,7 @@ def build(files, excluded):
         "labels": len(labels),
         "checker_bad_results": len(checker["bad"]) + len(checker["letter_bad"]) + 1,
         "reduce_letter_minimum": len(c_cases),
+        "reduce_weighted": len(repeated_cases),
     }
     manifest = {
         "schema_version": SCHEMA_VERSION,

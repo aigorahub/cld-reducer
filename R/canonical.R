@@ -39,7 +39,7 @@ check_solution <- function(model, outcome, col_lower, col_upper, expected_sum, s
   if (is.null(expected_sum) && (length(outcome$objective) != 1L ||
       !is.finite(outcome$objective))) invalid()
   wanted <- if (is.null(expected_sum)) round(outcome$objective) else expected_sum
-  if (sum(selected) != wanted) invalid()
+  if (sum(problem$cost[problem$decision_columns] * selected) != wanted) invalid()
   selected
 }
 

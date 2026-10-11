@@ -20,7 +20,11 @@ from cld_reducer.labels import make_letter_labels
 
 pytestmark = needs_conformance
 
-REDUCE_CASES = fixture_cases("reduce") + fixture_cases("reduce_letter_minimum")
+REDUCE_CASES = (
+    fixture_cases("reduce")
+    + fixture_cases("reduce_letter_minimum")
+    + fixture_cases("reduce_weighted")
+)
 ERROR_CASES = fixture_cases("errors")
 LABEL_CASES = fixture_cases("labels")
 EXPECTED_KINDS = {"invalid_input": InvalidInputError, "solver": SolverError}
@@ -28,6 +32,9 @@ EXPECTED_KINDS = {"invalid_input": InvalidInputError, "solver": SolverError}
 
 def run_case(case: dict[str, Any]):
     options = dict(case["options"])
+    # Historical sigma fixtures predate the C default. Keep their inputs frozen.
+    if "method" not in options and case.get("expected", {}).get("method") == "assignment_minimum":
+        options["method"] = "assignment_minimum"
     means = case["input"].get("means")
     means_frame = pd.DataFrame(means) if means is not None else None
     if case["call"] == "pairs":

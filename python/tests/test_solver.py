@@ -53,7 +53,7 @@ def test_every_solve_uses_the_documented_settings(
 ) -> None:
     seen = record_runs(monkeypatch)
 
-    reduce_from_adjacency(SIMPLE)
+    reduce_from_adjacency(SIMPLE, method="assignment_minimum")
 
     assert len(seen) >= 2
     for options in seen:
@@ -100,7 +100,7 @@ def test_time_budget_is_shared_across_solves(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(_solver, "run", wrapper)
 
     with pytest.raises(SolverError, match="assignment-minimum MILP failed: Time limit reached"):
-        reduce_from_adjacency(SIMPLE, time_limit=5)
+        reduce_from_adjacency(SIMPLE, time_limit=5, method="assignment_minimum")
 
     # The first solve got the whole budget; the second would get -5 seconds, so it never ran.
     assert limits == [5.0]
@@ -116,7 +116,7 @@ def test_no_time_limit_means_no_deadline(monkeypatch: pytest.MonkeyPatch) -> Non
 
     monkeypatch.setattr(_solver, "run", wrapper)
 
-    reduce_from_adjacency(SIMPLE)
+    reduce_from_adjacency(SIMPLE, method="assignment_minimum")
 
     assert limits and all(limit is None for limit in limits)
 
@@ -135,7 +135,7 @@ def test_non_optimal_first_solve_raises_solver_error(
     monkeypatch.setattr(_solver, "run", lambda *a, **k: _solver.Outcome(status, text))
 
     with pytest.raises(SolverError, match=f"assignment-minimum MILP failed: {text}"):
-        reduce_from_adjacency(SIMPLE)
+        reduce_from_adjacency(SIMPLE, method="assignment_minimum")
 
 
 def test_non_optimal_later_solve_raises_solver_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -151,7 +151,7 @@ def test_non_optimal_later_solve_raises_solver_error(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(_solver, "run", wrapper)
 
     with pytest.raises(SolverError, match="assignment-minimum MILP failed: Memory limit"):
-        reduce_from_adjacency(SIMPLE)
+        reduce_from_adjacency(SIMPLE, method="assignment_minimum")
 
 
 def corrupt(outcome: _solver.Outcome, change) -> _solver.Outcome:
@@ -175,7 +175,7 @@ def test_scripted_invalid_first_solution_raises(monkeypatch: pytest.MonkeyPatch,
     monkeypatch.setattr(_solver, "run", lambda *a, **k: corrupt(real(*a, **k), change))
 
     with pytest.raises(SolverError, match="HiGHS returned an invalid solution"):
-        reduce_from_adjacency(SIMPLE)
+        reduce_from_adjacency(SIMPLE, method="assignment_minimum")
 
 
 def wheat_pairs() -> pd.DataFrame:
@@ -188,12 +188,12 @@ def test_wheat_needs_several_solves_and_matches_the_paper(
 ) -> None:
     seen = record_runs(monkeypatch)
 
-    result = reduce_letters(wheat_pairs())
+    result = reduce_letters(wheat_pairs(), method="assignment_minimum")
 
     assert result.stats["assignments_before"] == 56
     assert result.stats["assignments_after"] == 44
     assert result.stats["num_letters_after"] == 4
-    assert len(seen) > 12
+    assert 1 < len(seen) < 12
 
 
 def first_solve_off_canonical(monkeypatch: pytest.MonkeyPatch):
@@ -210,8 +210,8 @@ def first_solve_off_canonical(monkeypatch: pytest.MonkeyPatch):
         if sum_limit is None:
             k = np.arange(len(problem.decision_columns))
             cost = problem.cost.copy()
-            cost[problem.decision_columns] = 1 + 1e-3 * (len(problem.decision_columns) - k) / len(
-                problem.decision_columns
+            cost[problem.decision_columns] += (
+                1e-3 * (len(problem.decision_columns) - k) / len(problem.decision_columns)
             )
             problem = dataclasses.replace(problem, cost=cost)
         return real(problem, col_lower, col_upper, sum_limit=sum_limit, time_limit=time_limit)
@@ -234,7 +234,7 @@ def test_scripted_invalid_later_solution_raises(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(_solver, "run", wrapper)
 
     with pytest.raises(SolverError, match="HiGHS returned an invalid solution"):
-        reduce_letters(wheat_pairs())
+        reduce_letters(wheat_pairs(), method="assignment_minimum")
 
     assert calls["optimal_after_first"] == 1
 
@@ -256,7 +256,7 @@ def test_solution_violating_a_fixing_is_invalid(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(_solver, "run", wrapper)
 
     with pytest.raises(SolverError, match="HiGHS returned an invalid solution"):
-        reduce_letters(wheat_pairs())
+        reduce_letters(wheat_pairs(), method="assignment_minimum")
 
 
 def test_solution_that_leaves_an_edge_uncovered_is_invalid(
@@ -278,7 +278,7 @@ def test_solution_that_leaves_an_edge_uncovered_is_invalid(
     monkeypatch.setattr(_solver, "run", wrapper)
 
     with pytest.raises(SolverError, match="HiGHS returned an invalid solution"):
-        reduce_from_adjacency(SIMPLE)
+        reduce_from_adjacency(SIMPLE, method="assignment_minimum")
 
 
 def test_stats_use_the_documented_status_and_unrounded_percentage() -> None:
@@ -290,11 +290,11 @@ def test_stats_use_the_documented_status_and_unrounded_percentage() -> None:
         ]
     )
 
-    result = reduce_letters(pairs)
+    result = reduce_letters(pairs, method="assignment_minimum")
 
     assert result.stats["solver_status"] == "Optimal"
     assert result.stats["objective"] == result.stats["assignments_after"] == 4
     assert result.stats["reduction_pct"] == (4 - 4) / 4 * 100
-    wide = reduce_from_adjacency(SIMPLE)
+    wide = reduce_from_adjacency(SIMPLE, method="assignment_minimum")
     assert wide.stats["reduction_pct"] == (9 - 8) / 9 * 100
     assert wide.stats["reduction_pct"] != round(wide.stats["reduction_pct"], 1)

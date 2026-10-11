@@ -18,7 +18,7 @@ def test_asymmetric_adjacency_is_rejected() -> None:
     )
 
     with pytest.raises(InvalidInputError, match="symmetric"):
-        reduce_from_adjacency(adjacency, groups=["A", "B"])
+        reduce_from_adjacency(adjacency, groups=["A", "B"], method="assignment_minimum")
 
 
 def test_missing_adjacency_values_are_rejected() -> None:
@@ -30,7 +30,7 @@ def test_missing_adjacency_values_are_rejected() -> None:
     )
 
     with pytest.raises(InvalidInputError, match="must not contain missing values"):
-        reduce_from_adjacency(adjacency, groups=["A", "B"])
+        reduce_from_adjacency(adjacency, groups=["A", "B"], method="assignment_minimum")
 
 
 def test_string_adjacency_values_are_rejected() -> None:
@@ -42,7 +42,7 @@ def test_string_adjacency_values_are_rejected() -> None:
     )
 
     with pytest.raises(InvalidInputError, match="only booleans or explicit 0/1 values"):
-        reduce_from_adjacency(adjacency, groups=["A", "B"])
+        reduce_from_adjacency(adjacency, groups=["A", "B"], method="assignment_minimum")
 
 
 def test_non_binary_adjacency_values_are_rejected() -> None:
@@ -54,14 +54,14 @@ def test_non_binary_adjacency_values_are_rejected() -> None:
     )
 
     with pytest.raises(InvalidInputError, match="only booleans or explicit 0/1 values"):
-        reduce_from_adjacency(adjacency, groups=["A", "B"])
+        reduce_from_adjacency(adjacency, groups=["A", "B"], method="assignment_minimum")
 
 
 def test_missing_pairwise_columns_are_rejected() -> None:
     pairs = pd.DataFrame({"group1": ["A"], "group2": ["B"]})
 
     with pytest.raises(InvalidInputError, match="missing required columns"):
-        reduce_letters(pairs)
+        reduce_letters(pairs, method="assignment_minimum")
 
 
 def test_duplicate_pairwise_rows_are_rejected() -> None:
@@ -73,7 +73,7 @@ def test_duplicate_pairwise_rows_are_rejected() -> None:
     )
 
     with pytest.raises(InvalidInputError, match="duplicate unordered pairs"):
-        reduce_letters(pairs)
+        reduce_letters(pairs, method="assignment_minimum")
 
 
 def test_missing_pairwise_rows_are_rejected() -> None:
@@ -85,7 +85,7 @@ def test_missing_pairwise_rows_are_rejected() -> None:
     )
 
     with pytest.raises(InvalidInputError, match="missing unordered pairwise comparisons"):
-        reduce_letters(pairs, means={"A": 3.0, "B": 2.0, "C": 1.0})
+        reduce_letters(pairs, means={"A": 3.0, "B": 2.0, "C": 1.0}, method="assignment_minimum")
 
 
 def test_complete_pairwise_rows_accept_mean_order() -> None:
@@ -97,7 +97,9 @@ def test_complete_pairwise_rows_accept_mean_order() -> None:
         ]
     )
 
-    result = reduce_letters(pairs, means={"B": 2.0, "A": 3.0, "C": 1.0})
+    result = reduce_letters(
+        pairs, means={"B": 2.0, "A": 3.0, "C": 1.0}, method="assignment_minimum"
+    )
 
     assert result.relationship_preserved is True
 
@@ -106,7 +108,9 @@ def test_max_cliques_cap_fails_with_solver_error() -> None:
     adjacency = np.eye(3, dtype=bool)
 
     with pytest.raises(SolverError, match="max_cliques"):
-        reduce_from_adjacency(adjacency, groups=["A", "B", "C"], max_cliques=2)
+        reduce_from_adjacency(
+            adjacency, groups=["A", "B", "C"], max_cliques=2, method="assignment_minimum"
+        )
 
 
 @pytest.mark.parametrize("time_limit", [0, -1, float("nan"), "30"])
@@ -114,7 +118,9 @@ def test_invalid_time_limit_is_rejected(time_limit: object) -> None:
     adjacency = np.eye(2, dtype=bool)
 
     with pytest.raises(SolverError, match="time_limit"):
-        reduce_from_adjacency(adjacency, groups=["A", "B"], time_limit=time_limit)
+        reduce_from_adjacency(
+            adjacency, groups=["A", "B"], time_limit=time_limit, method="assignment_minimum"
+        )
 
 
 @pytest.mark.parametrize("max_cliques", [0, -1, 1.5, True])
@@ -122,7 +128,9 @@ def test_invalid_max_cliques_is_rejected(max_cliques: object) -> None:
     adjacency = np.eye(2, dtype=bool)
 
     with pytest.raises(SolverError, match="max_cliques"):
-        reduce_from_adjacency(adjacency, groups=["A", "B"], max_cliques=max_cliques)
+        reduce_from_adjacency(
+            adjacency, groups=["A", "B"], max_cliques=max_cliques, method="assignment_minimum"
+        )
 
 
 def test_extended_letter_labels() -> None:

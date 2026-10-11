@@ -54,6 +54,9 @@ matrix_of <- function(rows) {
 
 call_case <- function(case) {
   options <- list()
+  # Historical sigma fixtures predate the C default. Keep their inputs frozen.
+  if (!("method" %in% names(case$options)) &&
+      identical(case$expected$method, "assignment_minimum")) options$method <- "assignment_minimum"
   for (key in c("group1", "group2", "significant", "method")) {
     if (key %in% names(case$options)) options[[key]] <- case$options[[key]]
   }
@@ -133,7 +136,8 @@ as_actual <- function(result) {
   )
 }
 
-reduce_cases <- c(read_fixture("reduce")$cases, read_fixture("reduce_letter_minimum")$cases)
+reduce_cases <- c(read_fixture("reduce")$cases, read_fixture("reduce_letter_minimum")$cases,
+                  read_fixture("reduce_weighted")$cases)
 
 # The checker must accept the expected wheat result and reject the three wrong ones.
 local({

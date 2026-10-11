@@ -127,7 +127,7 @@ def _build_model(context) -> _Model:
         start.append(len(index))
     num_cols = num_x + len(y_pairs)
     cost = np.zeros(num_cols)
-    cost[:num_x] = 1.0
+    cost[:num_x] = [context.weights[g] for _, g in members]
     problem = _solver.Problem(
         num_cols=num_cols,
         decision_columns=list(range(num_x)),

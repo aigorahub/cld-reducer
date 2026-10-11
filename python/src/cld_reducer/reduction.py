@@ -17,6 +17,7 @@ from .cliques import maximal_cliques
 from .context import graph_context
 from .display import _assign_letter_tokens, _format_letter_tokens
 from .exceptions import InvalidInputError, SolverError
+from .reduction_graph import reduce_graph
 from .result import CLDReductionResult
 from .validation import count_assignments, reconstruct_adjacency_from_assignments
 
@@ -63,16 +64,25 @@ def check_method(method):
 
 def reduce_validated(adjacency, groups, means, strategy, time_limit, max_cliques):
     time_limit, max_cliques = _validate_solver_controls(time_limit, max_cliques)
-    cliques = maximal_cliques(adjacency, max_cliques=max_cliques)
-    model = strategy.builder(graph_context(adjacency, groups, means, cliques))
+    reduced = reduce_graph(adjacency)
+    cliques = maximal_cliques(reduced.adjacency, max_cliques=max_cliques)
+    model = strategy.builder(
+        graph_context(
+            reduced.adjacency,
+            [groups[c[0]] for c in reduced.classes],
+            None,
+            cliques,
+            reduced.weights,
+        )
+    )
     selected, minimum = _solve_canonical(model, time_limit, strategy)
-    columns = strategy.decoder(cliques, model, selected)
+    columns = reduced.expand(strategy.decoder(cliques, model, selected))
     tokens = _assign_letter_tokens(columns, len(groups), means, groups)
     assignments = dict(zip(groups, tokens, strict=True))
     letters = {g: _format_letter_tokens(t) for g, t in assignments.items()}
     if not np.array_equal(reconstruct_adjacency_from_assignments(assignments, groups), adjacency):
         raise SolverError("optimized letters did not preserve the input pairwise relationships")
-    before = sum(map(len, cliques))
+    before = sum(sum(reduced.weights[g] for g in clique) for clique in cliques)
     after = count_assignments(assignments)
     if minimum != (after if strategy.counts_assignments else len(columns)):
         raise SolverError("HiGHS returned an invalid solution")
@@ -86,7 +96,7 @@ def reduce_validated(adjacency, groups, means, strategy, time_limit, max_cliques
             "num_letters_before": len(cliques),
             "num_letters_after": len(columns),
             "num_groups": len(groups),
-            "num_edges": len(model.edges),
+            "num_edges": int(np.count_nonzero(np.triu(adjacency, 1))),
             "solver_status": "Optimal",
             "objective": minimum,
         },

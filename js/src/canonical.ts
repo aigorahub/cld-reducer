@@ -68,7 +68,7 @@ function checkSolution(
   }
   if (!strategy.coverage(model, rounded)) throw new SolverError(INVALID_SOLUTION);
   if (expectedSum === null && !Number.isFinite(outcome.objective)) throw new SolverError(INVALID_SOLUTION);
-  const total = rounded.filter(Boolean).length;
+  const total = rounded.reduce((sum, on, k) => sum + (on ? model.problem.cost[decisionColumns[k]] : 0), 0);
   const wanted = expectedSum ?? Math.round(outcome.objective as number);
   if (total !== wanted) throw new SolverError(INVALID_SOLUTION);
   return rounded;
