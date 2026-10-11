@@ -252,7 +252,7 @@ def validate_resources(directory, manifest, metadata, rows, stage, *, samples=No
     limit *= 1024**2
     _require(Path(metadata["harness"]["path"]).is_absolute(), "harness path is not absolute")
     records = [_parse(line) for line in (directory / "resources.jsonl").read_text().splitlines()]
-    observed, process_ids, files = {}, set(), set()
+    observed, files = {}, set()
     for record in records:
         _require(
             isinstance(record, dict)
@@ -313,8 +313,8 @@ def validate_resources(directory, manifest, metadata, rows, stage, *, samples=No
         except ProcessGuardError as error:
             raise ValueError(f"Resource evidence: {error}") from error
         _require(record.get("receipt") == receipt, "raw receipt differs from embedded evidence")
-        _require(not ({pid, receipt["child_pid"]} & process_ids), "native process ID was reused")
-        process_ids.update((pid, receipt["child_pid"]))
+        # Guard IDs join the process inventory. Child IDs belong to individual
+        # receipts and can recur after earlier processes exit, including guards.
         sampled, peak = record.get("sampled_peak_rss"), record.get("peak_rss")
         _require(
             type(sampled) is int

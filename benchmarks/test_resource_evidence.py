@@ -161,6 +161,57 @@ def test_inventory_and_raw_receipts_are_bound(tmp_path, stage):
     assert evidence["coverage"] == COVERAGE
 
 
+def two_profile_receipts(tmp_path):
+    manifest, metadata, rows, _ = fixture(tmp_path)
+    rows.append(dict(copy.deepcopy(rows[0]), key="python|letter_minimum|other", pid=10002))
+    records = write_resource_fixture(tmp_path, metadata, rows, "profiles")
+    return manifest, metadata, rows, records
+
+
+@pytest.mark.parametrize("reuse", ["child", "earlier_guard", "later_guard"])
+def test_completed_receipts_allow_child_and_cross_role_pid_reuse(tmp_path, reuse):
+    manifest, metadata, rows, records = two_profile_receipts(tmp_path)
+    if reuse == "child":
+        records[1]["receipt"]["child_pid"] = records[0]["receipt"]["child_pid"]
+    elif reuse == "earlier_guard":
+        records[1]["receipt"]["child_pid"] = records[0]["guard_pid"]
+    else:
+        records[0]["receipt"]["child_pid"] = records[1]["guard_pid"]
+    for record in records:
+        (tmp_path / record["receipt_file"]).write_text(json.dumps(record["receipt"]))
+    write_records(tmp_path, records)
+    evidence = resources.validate_resources(tmp_path, manifest, metadata, rows, "profiles")
+    assert evidence["processes"] == [10000, 10002]
+    assert evidence["sha256"] == common.digest(records)
+
+
+@pytest.mark.parametrize(
+    "fault,message",
+    [
+        ("reused_guard", "reused guard PID"),
+        ("swapped_receipts", "another guard process"),
+        ("wrong_guard", "another guard process"),
+        ("child_is_own_guard", "invalid process IDs"),
+    ],
+)
+def test_receipts_keep_strict_guard_and_child_binding(tmp_path, fault, message):
+    manifest, metadata, rows, records = two_profile_receipts(tmp_path)
+    if fault == "reused_guard":
+        records[1]["guard_pid"] = records[0]["guard_pid"]
+    elif fault == "swapped_receipts":
+        for field in ("receipt_file", "receipt"):
+            records[0][field], records[1][field] = records[1][field], records[0][field]
+    elif fault == "wrong_guard":
+        records[1]["receipt"]["guard_pid"] += 1
+    else:
+        records[1]["receipt"]["child_pid"] = records[1]["guard_pid"]
+    for record in records:
+        (tmp_path / record["receipt_file"]).write_text(json.dumps(record["receipt"]))
+    write_records(tmp_path, records)
+    with pytest.raises(ValueError, match=message):
+        resources.validate_resources(tmp_path, manifest, metadata, rows, "profiles")
+
+
 @pytest.mark.parametrize(
     "fault",
     [
