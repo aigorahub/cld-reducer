@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 from cases import job_key, jobs
 from common import digest, input_digest, source_identity, version_identity
+from warmup_policy import MAX_ITERATIONS, MIN_BATCH_NS, enabled, warmup_count
 
 LANGUAGES = {"python": {"python"}, "r": {"r"}, "js": {"js", "javascript"}}
 METHODS = {"letter_minimum", "assignment_minimum"}
@@ -46,7 +47,7 @@ def measurement_orders(manifest):
                 key = job_key(language, case)
                 if key in manifest["baseline_failures"]:
                     continue
-                paired_orders(rng, manifest["warmup_batches"], process)
+                paired_orders(rng, warmup_count(manifest, key), process)
                 for batch, order in enumerate(paired_orders(rng, manifest["batches"], process)):
                     orders[key, process, batch] = order
     return orders
@@ -191,7 +192,14 @@ def calibration_design(manifest):
         "order_seed",
         "baseline_failures",
     )
-    return {"input_sha256": input_digest(manifest), **{name: manifest[name] for name in fields}}
+    design = {"input_sha256": input_digest(manifest), **{name: manifest[name] for name in fields}}
+    if enabled(manifest):
+        design.update(
+            warmup_policy=manifest["warmup_policy"],
+            case_warmup_batches=manifest["case_warmup_batches"],
+            batch_target_ns=manifest["batch_target_ns"],
+        )
+    return design
 
 
 def select_gain_targets(manifest, profiles):
@@ -553,9 +561,40 @@ def check_design(manifest):
                 reasons.append(f"Invalid solve case class or split: {case['id']}")
             if not isinstance(case.get("options"), dict) or not isinstance(case.get("input"), dict):
                 reasons.append(f"Invalid case input or options: {case['id']}")
+    try:
+        if enabled(manifest):
+            expected = {
+                job_key(lang, c) for lang in manifest["languages"] for c in jobs(manifest)
+            } - set(manifest.get("baseline_failures", []))
+            if set(manifest.get("case_warmup_batches", {})) != expected:
+                raise ValueError("Frozen warmup map does not cover the measured cases")
+            for key in expected:
+                warmup_count(manifest, key)
+            if manifest.get("batch_target_ns") != 100000000 or manifest.get("warmup_batches") != 3:
+                raise ValueError("Warm pilot constants differ")
+    except (ValueError, TypeError, KeyError) as error:
+        reasons.append(str(error))
     if not isinstance(manifest.get("iterations"), dict):
         reasons.append("Iteration counts are missing")
     return reasons
+
+
+def drift_diagnostics(base, candidate):
+    """Describe time trends without changing the estimator or acceptance rules."""
+    window = max(3, base.shape[1] // 3)
+    result = {"window_batches": window, "non_gating": True}
+    for label, values in (
+        ("baseline", base),
+        ("candidate", candidate),
+        ("paired", candidate / base),
+    ):
+        ratios = np.median(values[:, -window:], axis=1) / np.median(values[:, :window], axis=1)
+        result[label] = {
+            "process_last_first_ratios": [float(value) for value in ratios],
+            "median_last_first_ratio": float(np.median(ratios)),
+        }
+    result["mean_log_candidate_baseline_ratio"] = float(np.mean(np.log(candidate / base)))
+    return result
 
 
 def analyze(manifest, metadata, records, *, calibration_targets=None):
@@ -674,11 +713,41 @@ def analyze(manifest, metadata, records, *, calibration_targets=None):
             "candidate_range_ns": [float(candidate.min()), float(candidate.max())],
             "pass": at_most(interval[1], 1.05) and (not aa or at_most(1 / 1.05, interval[0])),
         }
+        per_case[key]["drift_diagnostics"] = drift_diagnostics(base, candidate)
+        if enabled(manifest):
+            duration = per_case[key]["baseline_median_ns"] * iterations
+            floor_pass = duration >= MIN_BATCH_NS or iterations == MAX_ITERATIONS
+            per_case[key].update(
+                baseline_batch_median_ns=duration,
+                batch_floor_pass=floor_pass,
+                iteration_cap_exception=duration < MIN_BATCH_NS and iterations == MAX_ITERATIONS,
+            )
+            if not floor_pass:
+                per_case[key]["pass"] = False
+                reasons.append(f"Baseline batches are below the 50 ms floor: {key}")
         log_draws[key] = boot
         if not at_most(interval[1], 1.05):
             reasons.append(f"Nonregression margin not established: {key}")
         if aa and not at_most(1 / 1.05, interval[0]):
             reasons.append(f"A/A equivalence margin not established: {key}")
+    language_diagnostics = {}
+    for language in manifest["languages"]:
+        cases = [
+            case["drift_diagnostics"]
+            for key, case in per_case.items()
+            if key.split("|", 1)[0] == language
+        ]
+        if not cases:
+            continue
+        summary = {"case_count": len(cases), "non_gating": True}
+        for side in ("baseline", "candidate", "paired"):
+            ratios = [ratio for case in cases for ratio in case[side]["process_last_first_ratios"]]
+            summary[f"{side}_mean_log_drift"] = float(np.mean(np.log(ratios)))
+        summary["mean_log_candidate_baseline_ratio"] = float(
+            np.mean([case["mean_log_candidate_baseline_ratio"] for case in cases])
+        )
+        language_diagnostics[language] = summary
+    report["drift_diagnostics_by_language"] = language_diagnostics
     if not per_case:
         reasons.append("No successful measured cases")
     targets = manifest.get("gain_targets")

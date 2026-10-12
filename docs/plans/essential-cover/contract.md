@@ -2,13 +2,13 @@
 
 Status: implementation contract. Correctness and speed acceptance remain open.
 
-Benchmark base: `0b6562856b532769b9adfb13308daa718fac5e94`.
+Benchmark base: `3cb93d8d8842fe8ccf4d1ac957e3a1b0706088eb`.
 Reference runtime: `0f5a707d65d3fa019269e79279c09786792a1911`.
 The accepted design is `../clique-performance/design.md`.
 
-## Selection evidence
+## Historical selection evidence
 
-The fresh reference pilot passed 216 solve cases. The full capture passed 8,907 result and canonical vector checks in Python, R, and JavaScript. All 240 profiles completed. They contain 216 successful solves, 16 successful preprocessing cases, two bounded R sigma preprocessing timeouts, and six expected clique cap errors. Raw source, code, version, output, dimension, pilot, and resource checks passed.
+The earlier host reference pilot passed 216 solve cases. The full capture passed 8,907 result and canonical vector checks in Python, R, and JavaScript. All 240 profiles completed. They contain 216 successful solves, 16 successful preprocessing cases, two bounded R sigma preprocessing timeouts, and six expected clique cap errors. Raw source, code, version, output, dimension, pilot, and resource checks passed.
 
 The fixed eligibility rule selects every case whose essential set covers the graph and whose solver calls use at least 25 percent of total API time after probe cost is removed. All six language and method groups have enough distinct inputs in both sets. Median solver shares on eligible cases range from 47.1 to 73.3 percent. These costs support this candidate. They do not prove a speed gain.
 
@@ -23,7 +23,21 @@ The fixed eligibility rule selects every case whose essential set covers the gra
 
 Use the recorded profile rule without retuning on candidate results. All six groups are gain targets. All timed cases remain regression checks. A/A calibration and the frozen manifest must precede candidate timing. Implementation and correctness checks can proceed while calibration waits for an idle host.
 
-The selection table comes from `baseline-v5-preflight.json` in the external evidence directory. Its SHA256 is `7eadab1cdbeed99523e154b47fee08599b6799132d227981d183e5b5f17962ce`. It supersedes the historical table in `../clique-performance/baseline.md`. The preflight record binds the source, harness, pilot, capture and profile resource evidence.
+The historical selection table comes from `baseline-v5-preflight.json` in the external evidence directory. Its SHA256 is `7eadab1cdbeed99523e154b47fee08599b6799132d227981d183e5b5f17962ce`. It supersedes the historical table in `../clique-performance/baseline.md`. The preflight record binds the source, harness, pilot, capture and profile resource evidence.
+
+## Final timing protocol
+
+The historical host evidence selected this candidate. It cannot validate the new measurement code or a cloud machine. Collect a fresh reference pilot, full output capture, profiles and A/A calibration on each machine. Keep the eligibility rule and all six language and method gain targets fixed. The fresh reference profiles determine eligible membership before candidate timing.
+
+Use one dedicated cloud machine for each language. Each machine retains the full case corpus for that language. Verify each official solve key set and the complete union of 216 solve keys. Compare full result values and canonical vectors across all three captures. Keep each language's reference and candidate on the same machine. Do not pool times or transfer calibration evidence between machines.
+
+Start with 16 fresh process pairs and 36 measured batches. Use the reviewed warm pilot to target 100 ms batches. Freeze the per-case replay warmup count from reference measurements. Run the same count on both sides. The baseline measured batch median must meet the 50 ms floor, except at the fixed iteration cap. Record side and paired drift as diagnostics. These values do not add a pass limit, trigger a retry or change the estimator.
+
+Run one reference calibration per language. Do not repeat a pilot or a collection, change the design, or restart an interrupted collection. A failed or interrupted stage stops the lane and prevents candidate observations in every lane. Keep partial evidence for diagnosis. Do not use incomplete rows for acceptance.
+
+Review all reference trajectories and evidence. All three A/A calibrations must pass the existing limits. Freeze all three manifests before any candidate capture, profile or timing. Host receipts bind the three source commits, complete input inventories and the reviewed evidence hashes. The fresh frozen manifests define final target membership. Before releasing any candidate stage, require each machine to have time for twice its measured A/A duration, its measured capture and profile durations, and a fixed three hour margin. Check all three machines before dispatch and check each machine again before its first candidate observation. Run two independent candidate comparisons per language. Require every case, target group, correctness and resource gate to pass in both runs. Missing evidence cannot pass. Compare candidate captures across languages as well.
+
+Retain the final source hashes, raw measurements, host receipts, profiles, captures, diagnostics and audits in the external cloud evidence archive. Verify its hash after download before deleting the temporary machines and disks. Report the result from these records without changing the candidate commit after measurement. Keep the reference if the candidate fails the fixed speed gates.
 
 ## Proof
 

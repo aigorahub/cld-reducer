@@ -60,7 +60,13 @@ def revise(repo, change):
 
 
 @pytest.mark.parametrize(
-    "name", ["benchmarks/cases.py", "benchmarks/analysis.py", *gates.VALIDATION_FILES]
+    "name",
+    [
+        "benchmarks/cases.py",
+        "benchmarks/analysis.py",
+        "benchmarks/warmup_policy.py",
+        *gates.VALIDATION_FILES,
+    ],
 )
 def test_acceptance_inventory_reads_real_git_blobs(code_repo, name):
     repo, before, hashes = code_repo
