@@ -579,6 +579,24 @@ def check_design(manifest):
     return reasons
 
 
+def drift_diagnostics(base, candidate):
+    """Describe time trends without changing the estimator or acceptance rules."""
+    window = max(3, base.shape[1] // 3)
+    result = {"window_batches": window, "non_gating": True}
+    for label, values in (
+        ("baseline", base),
+        ("candidate", candidate),
+        ("paired", candidate / base),
+    ):
+        ratios = np.median(values[:, -window:], axis=1) / np.median(values[:, :window], axis=1)
+        result[label] = {
+            "process_last_first_ratios": [float(value) for value in ratios],
+            "median_last_first_ratio": float(np.median(ratios)),
+        }
+    result["mean_log_candidate_baseline_ratio"] = float(np.mean(np.log(candidate / base)))
+    return result
+
+
 def analyze(manifest, metadata, records, *, calibration_targets=None):
     reasons, per_case, groups = check_design(manifest), {}, {}
     try:
@@ -695,8 +713,9 @@ def analyze(manifest, metadata, records, *, calibration_targets=None):
             "candidate_range_ns": [float(candidate.min()), float(candidate.max())],
             "pass": at_most(interval[1], 1.05) and (not aa or at_most(1 / 1.05, interval[0])),
         }
+        per_case[key]["drift_diagnostics"] = drift_diagnostics(base, candidate)
         if enabled(manifest):
-            duration = float(np.median(base)) * iterations
+            duration = per_case[key]["baseline_median_ns"] * iterations
             floor_pass = duration >= MIN_BATCH_NS or iterations == MAX_ITERATIONS
             per_case[key].update(
                 baseline_batch_median_ns=duration,
@@ -711,6 +730,24 @@ def analyze(manifest, metadata, records, *, calibration_targets=None):
             reasons.append(f"Nonregression margin not established: {key}")
         if aa and not at_most(1 / 1.05, interval[0]):
             reasons.append(f"A/A equivalence margin not established: {key}")
+    language_diagnostics = {}
+    for language in manifest["languages"]:
+        cases = [
+            case["drift_diagnostics"]
+            for key, case in per_case.items()
+            if key.split("|", 1)[0] == language
+        ]
+        if not cases:
+            continue
+        summary = {"case_count": len(cases), "non_gating": True}
+        for side in ("baseline", "candidate", "paired"):
+            ratios = [ratio for case in cases for ratio in case[side]["process_last_first_ratios"]]
+            summary[f"{side}_mean_log_drift"] = float(np.mean(np.log(ratios)))
+        summary["mean_log_candidate_baseline_ratio"] = float(
+            np.mean([case["mean_log_candidate_baseline_ratio"] for case in cases])
+        )
+        language_diagnostics[language] = summary
+    report["drift_diagnostics_by_language"] = language_diagnostics
     if not per_case:
         reasons.append("No successful measured cases")
     targets = manifest.get("gain_targets")

@@ -64,10 +64,10 @@ def settled(history):
 
 
 def replay_count(history, iterations):
-    count = max(3, math.ceil(sum(r["iterations"] for r in history) / iterations) + 3)
-    if count > MAX_WARMUPS:
-        raise ValueError("Warm pilot requires more than 64 replay batches")
-    return count
+    if type(iterations) is not int or not 1 <= iterations <= MAX_ITERATIONS or len(history) < 6:
+        raise ValueError("Replay selection requires six warm trials and valid iterations")
+    batch_ns = iterations * statistics.median(per_call(row) for row in history[-6:])
+    return max(3, min(MAX_WARMUPS, math.ceil(3000000000 / batch_ns)))
 
 
 def validate_history(history, initial_count, result):

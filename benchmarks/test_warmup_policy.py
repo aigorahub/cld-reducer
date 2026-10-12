@@ -42,14 +42,14 @@ def history(per_call=1000000):
 def test_fast_pilot_selects_warmed_batch_and_replay():
     rows = history()
     assert len(rows) == 23
-    assert validate_history(rows, 3, {"value": 1}) == (100, 24)
+    assert validate_history(rows, 3, {"value": 1}) == (100, 30)
     assert not settled(rows[:-1])
 
 
 def test_slow_success_remains_in_pilot_with_single_call_batches():
     rows = history(2000000000)
     assert len(rows) == 6
-    assert validate_history(rows, 3, {"value": 1}) == (1, 9)
+    assert validate_history(rows, 3, {"value": 1}) == (1, 3)
 
 
 @pytest.mark.parametrize(
@@ -75,9 +75,17 @@ def test_bad_pilot_histories_fail_closed(fault):
         validate_history(rows, 3, {"value": 1})
 
 
-def test_replay_never_truncates_large_warm_history():
-    with pytest.raises(ValueError, match="64"):
-        replay_count([response(100000)], 1)
+def test_replay_bounds_preserve_slow_calls_and_cap_very_fast_calls():
+    assert replay_count([response(100000, 1)] * 6, 100000) == 64
+    assert replay_count([response(1, 2000000000)] * 6, 1) == 3
+    with pytest.raises(ValueError, match="six warm trials"):
+        replay_count([response()], 1)
+
+
+def test_replay_uses_recent_reference_time_not_total_calls():
+    recent = [response(100, 1000000)] * 6
+    assert replay_count([response(100000, 9000000)] * 30 + recent, 100) == 30
+    assert replay_count(recent, 100) == 30
 
 
 def new_evidence(ratio=0.8, base=100000000, iterations=1):
@@ -112,6 +120,18 @@ def test_only_baseline_has_duration_floor(base, iterations, passed):
     for case in report["cases"].values():
         assert case["batch_floor_pass"] is passed
         assert case["iteration_cap_exception"] is (iterations == 100000)
+
+
+def test_batch_floor_uses_the_median_of_process_medians():
+    m, meta, samples = new_evidence()
+    for row in samples:
+        duration = 40000000 if row["process"] < 5 and row["batch"] < 5 else 100000000
+        row.update(baseline_ns=duration, candidate_ns=duration * 0.8)
+    report = analyze(m, meta, samples)
+    assert not report["pass"]
+    for case in report["cases"].values():
+        assert case["baseline_batch_median_ns"] == case["baseline_median_ns"] == 40000000
+        assert not case["batch_floor_pass"]
 
 
 def warm_rows(m, meta):
@@ -213,7 +233,7 @@ def test_collection_bounds_and_raw_failure_retention(tmp_path, monkeypatch, mode
     if mode == "stable":
         run.pilot(args)
         selected = run.read(args.output / "manifest.json")
-        assert set(selected["case_warmup_batches"].values()) == {24}
+        assert set(selected["case_warmup_batches"].values()) == {30}
     else:
         with pytest.raises(ValueError):
             run.pilot(args)
@@ -258,14 +278,14 @@ def test_new_pilot_evidence_binding(tmp_path, fault):
     for design in (original, selected, manifest):
         design.update(warmup_policy=POLICY, batch_target_ns=100000000)
     for design in (selected, manifest):
-        design.update(iterations={key: 100}, case_warmup_batches={key: 24})
+        design.update(iterations={key: 100}, case_warmup_batches={key: 30})
     rows[0].update(
         first=response(),
         warmups=raw_history[:3],
         trials=raw_history[3:],
         warm=raw_history[-1],
         iterations=100,
-        warmup_batches=24,
+        warmup_batches=30,
     )
     if fault == "policy":
         manifest.pop("warmup_policy")
@@ -309,3 +329,59 @@ def test_new_pilot_evidence_binding(tmp_path, fault):
             (directory / "warmups.jsonl").write_text("".join(json.dumps(r) + "\n" for r in data))
         with pytest.raises((ValueError, OSError)):
             validate_warmups(directory, m, meta, samples)
+
+
+@pytest.mark.parametrize("trend", ["common", "small_divergence", "large_divergence"])
+def test_measured_drift_is_reported_without_changing_acceptance(trend):
+    import math
+
+    from test_harness import calibration
+
+    m, meta, samples = new_evidence(ratio=1)
+    calibration(meta)
+    for row in samples:
+        batch = row["batch"]
+        baseline_factor = 1 if batch < 3 else (0.8 if batch < 6 else 0.6)
+        if trend == "common":
+            candidate_factor = baseline_factor
+        elif trend == "small_divergence":
+            # All matched ratios stay within the fixed 5% equivalence margin.
+            candidate_factor = baseline_factor * (1 if batch < 3 else 1.01)
+        else:
+            candidate_factor = 1
+        row["baseline_ns"] = 100000000 * baseline_factor
+        row["candidate_ns"] = 100000000 * candidate_factor
+    report = analyze(m, meta, samples)
+    assert report["pass"] is (trend != "large_divergence"), report["reasons"]
+    for case in report["cases"].values():
+        drift = case["drift_diagnostics"]
+        assert drift["non_gating"] is True
+        assert drift["window_batches"] == 3
+        assert drift["baseline"]["process_last_first_ratios"] == pytest.approx([0.6] * 8)
+        assert drift["baseline"]["median_last_first_ratio"] == pytest.approx(0.6)
+        expected = {"common": 1, "small_divergence": 1.01, "large_divergence": 1 / 0.6}[trend]
+        assert drift["paired"]["median_last_first_ratio"] == pytest.approx(expected)
+        if trend == "common":
+            assert case["ratio"] == 1
+            assert case["interval_95"] == [1, 1]
+            assert drift["candidate"]["median_last_first_ratio"] == pytest.approx(0.6)
+    language = report["drift_diagnostics_by_language"]["python"]
+    assert language["case_count"] == 10
+    assert language["baseline_mean_log_drift"] == pytest.approx(math.log(0.6))
+    if trend == "common":
+        assert language["candidate_mean_log_drift"] == pytest.approx(math.log(0.6))
+        assert language["paired_mean_log_drift"] == 0
+        assert language["mean_log_candidate_baseline_ratio"] == 0
+
+
+def test_drift_windows_use_matched_batch_ratios():
+    import numpy as np
+    from analysis import drift_diagnostics
+
+    # Median paired ratios differ from ratios of medians in these windows.
+    baseline = np.array([[1, 2, 100, 10, 10, 10, 1, 100, 2]], dtype=float)
+    candidate = np.array([[100, 2, 1, 10, 10, 10, 2, 1, 100]], dtype=float)
+    result = drift_diagnostics(baseline, candidate)
+    assert result["paired"]["process_last_first_ratios"] == [2]
+    assert result["baseline"]["process_last_first_ratios"] == [1]
+    assert result["candidate"]["process_last_first_ratios"] == [1]
