@@ -12,6 +12,7 @@ from cases import job_key, jobs
 from common import digest, input_digest, source_identity, version_identity
 from resource_evidence import validate_resources
 from solve_outcomes import solve_failure_class
+from warmup_policy import enabled, validate_history
 
 
 def _require(condition, message):
@@ -117,7 +118,12 @@ def validate_pilot(directory, manifest, baseline_rows, baseline_classes):
     )
     specs = {job_key(language, case): case for language in languages for case in jobs(original)}
     captures = {"|".join((row["language"], row["method"], row["id"])): row for row in baseline_rows}
-    seen, iterations, failures = set(), {}, []
+    new_policy = enabled(original)
+    _require(enabled(selected) == enabled(manifest) == new_policy, "warmup policy differs")
+    if new_policy:
+        _require(target == 100000000 and warmups == 3, "warm policy constants differ")
+        _require(original.get("case_warmup_batches", {}) == {}, "input has a selected warmup map")
+    seen, iterations, failures, replay = set(), {}, [], {}
     for row in rows:
         key = row.get("key")
         _require(key in specs and key not in seen, "job inventory is duplicated or unexpected")
@@ -136,7 +142,12 @@ def validate_pilot(directory, manifest, baseline_rows, baseline_classes):
             isinstance(first, dict) and isinstance(warm, dict) and isinstance(calls, list),
             f"missing first or warm responses: {key}",
         )
-        responses = [first] + calls
+        trials = row.get("trials", [])
+        if new_policy:
+            _require(isinstance(trials, list), "missing adaptive trial history")
+        else:
+            _require(not trials, "legacy pilot cannot contain adaptive trials")
+        responses = [first] + calls + trials
         for index, response in enumerate(responses):
             _require(
                 isinstance(response, dict) and response.get("action") == "measure",
@@ -147,7 +158,11 @@ def validate_pilot(directory, manifest, baseline_rows, baseline_classes):
                 _require(
                     "error" not in response
                     and type(response.get("iterations")) is int
-                    and response["iterations"] == 1
+                    and (
+                        response["iterations"] == 1
+                        if index <= len(calls)
+                        else response["iterations"] >= 1
+                    )
                     and type(elapsed) in (int, float)
                     and math.isfinite(elapsed)
                     and elapsed > 0,
@@ -178,7 +193,11 @@ def validate_pilot(directory, manifest, baseline_rows, baseline_classes):
                 len(calls) == warmups and key not in baseline_classes,
                 f"successful warmup inventory differs: {key}",
             )
-            count = max(1, min(100000, math.ceil(target / warm["elapsed_ns"])))
+            if new_policy:
+                count, replay[key] = validate_history(calls + trials, warmups, first["result"])
+                _require(row.get("warmup_batches") == replay[key], "selected warmup count differs")
+            else:
+                count = max(1, min(100000, math.ceil(target / warm["elapsed_ns"])))
             _require(
                 type(row.get("iterations")) is int and row["iterations"] == count,
                 f"selected iterations differ from baseline time: {key}",
@@ -186,7 +205,10 @@ def validate_pilot(directory, manifest, baseline_rows, baseline_classes):
             iterations[key] = count
         else:
             _require(
-                len(calls) <= warmups and "iterations" not in row,
+                len(calls) <= warmups
+                and "iterations" not in row
+                and not trials
+                and (not new_policy or first.get("ok") is not True),
                 f"failed warmup inventory differs: {key}",
             )
             failures.append(key)
@@ -200,6 +222,12 @@ def validate_pilot(directory, manifest, baseline_rows, baseline_classes):
         pilot_harness=harness,
         baseline_versions=versions,
     )
+    if new_policy:
+        expected["case_warmup_batches"] = replay
+        _require(
+            digest(manifest.get("case_warmup_batches")) == digest(replay),
+            "frozen warmup map differs",
+        )
     _require(
         digest(selected) == digest(expected), "selected manifest differs from raw pilot outcomes"
     )

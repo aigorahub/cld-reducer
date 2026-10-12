@@ -44,6 +44,16 @@ from solve_outcomes import (
     validate_solve_captures,
     validate_solve_profiles,
 )
+from warmup_policy import (
+    MAX_TRIALS,
+    POLICY,
+    enabled,
+    next_iterations,
+    replay_count,
+    settled,
+    validate_warmups,
+    warmup_count,
+)
 
 
 def read(path):
@@ -150,6 +160,7 @@ def load_manifest(path):
             raise ValueError("Every case needs a class and a finite wall limit")
         if c["tier"] not in ("solve", "preprocess", "expected-error", "opt-in"):
             raise ValueError("Invalid case tier")
+    enabled(m)
     return m
 
 
@@ -449,6 +460,12 @@ def pilot(args):
     )
     save(out / "metadata.json", metadata)
     save(out / "input-manifest.json", m)
+    if enabled(m):
+        if m["batch_target_ns"] != 100000000 or m["warmup_batches"] != 3:
+            raise ValueError("Warm pilot requires the fixed 100 ms target and three initial calls")
+        if m["iterations"] or m["baseline_failures"] or m.get("case_warmup_batches"):
+            raise ValueError("Warm pilot requires an uncalibrated input manifest")
+        m["case_warmup_batches"] = {}
     with (out / "pilot.jsonl").open("w") as f:
         for language in m["languages"]:
             for index, c in enumerate(jobs(m)):
@@ -469,6 +486,8 @@ def pilot(args):
                     )
                     warm = first
                     warmups = []
+                    trials = []
+                    pilot_deadline = time.monotonic() + MAX_TRIALS * c["wall_seconds"]
                     if first["ok"]:
                         for _ in range(m["warmup_batches"]):
                             warm = bounded_request(
@@ -479,6 +498,22 @@ def pilot(args):
                             warmups.append(warm)
                             if not warm["ok"]:
                                 break
+                        if enabled(m) and warm["ok"]:
+                            history = list(warmups)
+                            while len(history) < MAX_TRIALS and not settled(history):
+                                remaining = pilot_deadline - time.monotonic()
+                                if remaining <= 0:
+                                    break
+                                count = next_iterations(history)
+                                warm = bounded_request(
+                                    d,
+                                    {"action": "measure", "case": c, "iterations": count},
+                                    min(c["wall_seconds"], remaining),
+                                )
+                                trials.append(warm)
+                                history.append(warm)
+                                if not warm["ok"]:
+                                    break
                 warm = closed_response(d, warm, "measure")
                 row = {
                     "key": key,
@@ -489,6 +524,8 @@ def pilot(args):
                     "warmups": warmups,
                     "peak_rss": d.peak_rss,
                 }
+                if enabled(m):
+                    row["trials"] = trials
                 if d.resource_error is not None:
                     row["close_error"] = d.resource_error
                     emit(f, row)
@@ -498,6 +535,9 @@ def pilot(args):
                         flush=True,
                     )
                     raise ValueError(f"Unsupported pilot close failure: {key}: {d.resource_error}")
+                if enabled(m) and first["ok"] and not warm["ok"]:
+                    emit(f, row)
+                    raise ValueError(f"Warm pilot failed: {key}")
                 if not warm["ok"]:
                     emit(f, row)
                     error = warm.get("error", {})
@@ -513,9 +553,25 @@ def pilot(args):
                     m["baseline_failures"].append(key)
                     continue
                 else:
-                    iterations = max(
-                        1, min(100000, math.ceil(m["batch_target_ns"] / warm["elapsed_ns"]))
-                    )
+                    if enabled(m):
+                        history = warmups + trials
+                        if not settled(history):
+                            emit(f, row)
+                            raise ValueError(f"Warm pilot did not settle: {key}")
+                        if any(r.get("result") != first.get("result") for r in history):
+                            emit(f, row)
+                            raise ValueError(f"Warm pilot output mismatch: {key}")
+                        iterations = next_iterations(history)
+                        try:
+                            m["case_warmup_batches"][key] = replay_count(history, iterations)
+                        except ValueError:
+                            emit(f, row)
+                            raise
+                        row["warmup_batches"] = m["case_warmup_batches"][key]
+                    else:
+                        iterations = max(
+                            1, min(100000, math.ceil(m["batch_target_ns"] / warm["elapsed_ns"]))
+                        )
                     m["iterations"][key] = iterations
                     row["iterations"] = iterations
                     print(f"pilot {key}: {iterations} iterations", flush=True)
@@ -558,6 +614,11 @@ def compare(args):
         m["baseline_failures"]
     ):
         raise ValueError("Iteration counts do not cover the timed case set")
+    if enabled(m):
+        if set(m.get("case_warmup_batches", {})) != set(m["iterations"]):
+            raise ValueError("Warmup map does not cover the measured cases")
+        for key in m["iterations"]:
+            warmup_count(m, key)
     harness = source_binding(ROOT)
     if not valid_source(harness):
         raise ValueError("Measurement harness must have a valid clean source binding")
@@ -580,10 +641,12 @@ def compare(args):
     save(out / "metadata.json", meta)
     save(out / "manifest.json", m)
     all_rows = []
+    all_warmups = []
     try:
         with (
             (out / "samples.jsonl").open("w") as samples,
             (out / "results.jsonl").open("w") as results,
+            (out / "warmups.jsonl").open("w") as warmup_file,
         ):
             for language in m["languages"]:
                 for process in range(m["processes"]):
@@ -620,9 +683,26 @@ def compare(args):
                                 continue
                             iterations = m["iterations"][key]
                             request = {"action": "measure", "case": c, "iterations": iterations}
-                            for order in paired_orders(rng, m["warmup_batches"], process):
+                            for batch, order in enumerate(
+                                paired_orders(rng, warmup_count(m, key), process)
+                            ):
+                                responses = [None, None]
                                 for i in order:
-                                    require_success(pair[i].request(request, c["wall_seconds"]))
+                                    responses[i] = pair[i].request(request, c["wall_seconds"])
+                                row = {
+                                    "key": key,
+                                    "process": process,
+                                    "batch": batch,
+                                    "order": order,
+                                    "pids": [d.process.pid for d in pair],
+                                    "responses": responses,
+                                }
+                                emit(warmup_file, row)
+                                all_warmups.append(row)
+                                for response in responses:
+                                    require_success(response)
+                                if responses[0]["result"] != responses[1]["result"]:
+                                    raise ValueError(f"Warmup output mismatch: {key}")
                             for batch, order in enumerate(
                                 paired_orders(rng, m["batches"], process)
                             ):
@@ -702,8 +782,12 @@ def compare(args):
             meta["source_after"] == before and meta["harness_after"] == meta["harness"]
         )
     finally:
+        if enabled(m):
+            meta["warmups_sha256"] = digest(all_warmups)
         meta["finished_unix"] = time.time()
         save(out / "metadata.json", meta)
+        if meta["complete"]:
+            validate_warmups(out, m, meta, all_rows)
         report = analyze(m, meta, all_rows)
         save(out / "analysis.json", report)
     print(json.dumps({"pass": report["pass"], "reasons": report["reasons"]}), flush=True)
@@ -744,6 +828,7 @@ def freeze(args):
         json.loads(line)
         for line in (Path(args.calibration) / "samples.jsonl").read_text().splitlines()
     ]
+    validate_warmups(args.calibration, calibration_manifest, metadata, samples)
     calibration = analyze(calibration_manifest, metadata, samples)
     if (
         not calibration["pass"]
@@ -965,7 +1050,9 @@ def main():
     p.add_argument("--runs", nargs=2, required=True)
     args = parser.parse_args()
     if args.action == "manifest":
-        save_artifact(args.output, frozen_manifest(Path(args.repo)))
+        manifest = frozen_manifest(Path(args.repo))
+        manifest.update(warmup_policy=POLICY, batch_target_ns=100000000)
+        save_artifact(args.output, manifest)
     else:
         {
             "profile": profiles,

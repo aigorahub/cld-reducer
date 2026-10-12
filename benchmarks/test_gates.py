@@ -1557,7 +1557,14 @@ def test_recorded_measurement_hashes_bind_optional_helper_presence(tmp_path, mon
     git("init", "-q")
     git("config", "user.name", "Test")
     git("config", "user.email", "test@example.invalid")
-    required = ("run.py", "common.py", "analysis.py", "cases.py", "python_driver.py")
+    required = (
+        "run.py",
+        "common.py",
+        "analysis.py",
+        "cases.py",
+        "warmup_policy.py",
+        "python_driver.py",
+    )
     for name in required:
         file = tmp_path / "benchmarks" / name
         file.parent.mkdir(exist_ok=True)

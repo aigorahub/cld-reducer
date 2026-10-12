@@ -34,6 +34,7 @@ from solve_outcomes import (
     validate_solve_captures,
     validate_solve_profiles,
 )
+from warmup_policy import validate_warmups
 
 FIXTURES = ("reduce", "reduce_letter_minimum", "reduce_weighted")
 TIERS = ("solve", "preprocess", "expected-error")
@@ -47,6 +48,7 @@ MEASUREMENT_FILES = (
     "benchmarks/common.py",
     "benchmarks/analysis.py",
     "benchmarks/cases.py",
+    "benchmarks/warmup_policy.py",
 )
 LIFECYCLE_FILES = ("benchmarks/process_guard.py", "benchmarks/resource_evidence.py")
 VALIDATION_FILES = (
@@ -506,6 +508,9 @@ def audit(
         calibration_metadata = _read(calibration_dir, "metadata.json")
         calibration_samples = _rows(calibration_dir, "samples.jsonl")
         calibration_results = _rows(calibration_dir, "results.jsonl")
+        validate_warmups(
+            calibration_dir, calibration_manifest, calibration_metadata, calibration_samples
+        )
         calibration_growth = rss_growth(calibration_manifest, calibration_samples)
         calibration_report = analyze(
             calibration_manifest,
@@ -952,6 +957,7 @@ def audit(
         for path in run_dirs:
             pids = set()
             metadata, samples = _read(path, "metadata.json"), _rows(path, "samples.jsonl")
+            validate_warmups(path, manifest, metadata, samples)
             label = f"run {path}"
             require(
                 metadata.get("kind") == "candidate" and metadata.get("complete") is True,
