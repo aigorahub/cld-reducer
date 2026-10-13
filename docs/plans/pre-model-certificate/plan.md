@@ -13,7 +13,7 @@ Return exactly the same minimum, canonical decisions, letters, statistics, and e
 
 Keep CLD-C as the default. Keep sigma as the optional assignment objective. Secondary optimization is deferred. Bitsets, new solver algorithms, incremental solver reuse, dependency changes, and new public options are outside this change.
 
-The user stopped the timing study. Its cloud resources have been deleted. Do not resume it, provision machines, or make a large timing study a requirement for this PR. Keep its saved results and pinned sources unchanged. This plan authorizes no merge or publication.
+The user stopped the timing study. Its cloud resources have been deleted. Do not resume it, provision machines, or make a large timing study a requirement for this PR. Keep its external saved results and pinned source commits unchanged. Update the current repository's driver code and CI tests where this refactor changes their internal interfaces. This plan authorizes no merge or publication.
 
 ## Current code and avoidable work
 
@@ -29,6 +29,8 @@ The user stopped the timing study. Its cloud resources have been deleted. Do not
 The graph-context builder currently searches the clique list separately for each vertex. Sigma also constructs edge witnesses, constraint rows, sparse arrays, and objective arrays before the certificate can return. Certified cases need the combinatorial coverage information but do not need those solver arrays.
 
 Source entry points: Python `context.py`, `reduction.py`, `canonical.py`, and `algorithms/{assignment_minimum,letter_minimum}.py`; JavaScript `model.ts`, `reduce.ts`, and `canonical.ts`; R `model.R`, `reduce.R`, and `canonical.R`.
+
+Compatibility entry points: `benchmarks/{python_driver.py,js_driver.mjs,r_driver.R,PROTOCOL.md}` and their CI driver tests. These drivers currently require `model.problem` even on certified calls. Their tests run in the benchmark, JavaScript, and R conformance workflows.
 
 ## Proposed common framework
 
@@ -51,6 +53,8 @@ Initialize one clique-membership list per reduced vertex. Visit cliques in canon
 
 For an edge, intersect its endpoints' sorted clique lists to obtain the covering alternatives. Implement a simple ordered intersection, with the same ordering in all languages. Retain these alternatives for the fallback compiler instead of recomputing them. Do not introduce bitsets or a size-based representation policy in this PR.
 
+For sigma, assign each membership its next semantic decision position during the same clique traversal. Append the clique index and decision position to parallel per-vertex lists (`cliques_of` and `group_columns`). The ordered intersection can then emit each pair of endpoint decision positions directly into `edge_ends`. Keep canonical `(clique, vertex)` members for decoding. Do not build a separate membership lookup map, R's dense clique-by-vertex index matrix, or an `(edge, clique)` witness list. On fallback, traverse `edge_ends` in edge and clique order to assign consecutive witness columns and emit the existing vertex, edge, and linking rows. Preserve their current order. Use allocation patterns suitable for each language; avoid repeated copying of growing R vectors.
+
 ### Run the exact scan and certificate on the decision plan
 
 Keep the existing rules:
@@ -59,7 +63,7 @@ Keep the existing rules:
 - Sigma: a vertex with one membership forces it; an edge with one covering clique forces both endpoint memberships.
 - Isolates remain covered. Adjacent identical-neighborhood classes retain their weights. Nonadjacent twins do not merge.
 
-Validate that the scan returns sorted, unique, valid decision positions. Preserve the existing invalid-solution error for malformed scan results. Do not treat an invalid plan or malformed scan as permission to return a certificate.
+On the new decision-plan path, validate that the scan returns sorted, unique, valid semantic decision positions. On the legacy direct compiled-model path, retain the existing contract: the scan returns sorted unique native column indices belonging to `problem.decision_columns`. These are distinct input contracts with distinct validation. Preserve the existing invalid-solution error for malformed scan results. Do not treat an invalid plan or malformed scan as permission to return a certificate.
 
 Construct the selection containing exactly the essentials. Check complete vertex and edge coverage using the same strategy predicate used by the fallback result validator. If the coverage test fails, continue to BIP construction.
 
@@ -71,7 +75,7 @@ Proof: every feasible decision vector contains the essentials. If those essentia
 
 If the certificate does not apply, compile the existing C or sigma BIP from the decision plan. Keep the mathematical constraints, costs, solver settings, canonical order, and public output unchanged.
 
-Return an explicit mapping from semantic decision positions to native solver columns. Validate that it is ordered as intended, unique, in range, and consistent with the plan's costs and coverage. Auxiliary columns must remain outside canonical decisions and objective caps. Preserve support for noncontiguous native column indices in the shared engine.
+Return an explicit mapping from semantic decision positions to native solver columns. Its length equals the decision count. Its entries are unique integer native column indices in range. Each position has the same cost and coverage role as its semantic decision. Auxiliary costs remain zero; auxiliary columns remain outside canonical decisions and objective caps. Preserve support for noncontiguous native column indices in the shared engine. This mapping follows canonical decision order, not numeric column order. Never sort it. For example, mapping `[4, 0, 2]` with essential positions `[0, 1]` selects native columns 4 and 0. If a legacy validator needs a sorted native required list, pass `[0, 4]` without changing the mapping or canonical vector. Use the equivalent one-based indices in R.
 
 Map the already computed essentials to native columns and fix them to 1. Do not rescan the graph or run the same certificate again on this public fallback path. Run the existing initial solve and canonical trials once, then decode through the common result path. Keep a private test route that forces the full BIP path for differential checks; add no public option.
 
@@ -87,11 +91,19 @@ On fallback, preserve the remaining budget across lazy BIP construction. Exclude
 
 Both paths use existing expansion, rendering, counts, and exact adjacency reconstruction. Check the reported objective against assignments for sigma and letters for C. Preserve original vertex counts, weights, ordering, clique cap behavior, aliases, and input-error precedence. Keep current dependency loading, including JavaScript WASM loading, unchanged.
 
+### Keep repository drivers compatible
+
+Update capture hooks to read semantic decisions, costs, and selected vectors from the decision plan or canonical result, without requiring `model.problem`. Update profile hooks to observe plan construction and optional BIP compilation separately. Certified public calls must not compile a model merely to populate diagnostic fields.
+
+Report whether compilation occurred. For a skipped compiler, report BIP dimensions and its unobserved phase as unavailable, not fabricated model measurements. Continue to report decision counts, essentials, canonical output, and zero solver calls. Fallback profiles report the actual compiled model. The explicit preprocessing diagnostic may force compilation through a private route when it measures model construction; document that it does not describe the certified public path.
+
+Update `PROTOCOL.md`, strict schema consumers, source-hook anchors, and existing driver tests together. Use a protocol version change if the schema requires one. Preserve readers for saved records where needed; never rewrite archived records or old source pins. Check capture, certified profile, fallback profile, and explicit preprocessing for all three languages. These are local compatibility checks, not a resumed timing study.
+
 ## Implementation sequence
 
 1. Add shared decision-plan data and one-pass membership incidence. Keep the existing runtime output through adapters until the representation is checked.
 2. Move public essential scanning and certificate evaluation ahead of the lazy BIP compiler. Reuse the plan on fallback and pass the remaining time budget correctly.
-3. Apply the same contract in Python, R, and JavaScript. Update the algorithm specification and release notes. Keep existing package versions and frozen submission artifacts unchanged.
+3. Apply the same contract in Python, R, and JavaScript. Update repository drivers and their protocol for the lazy compiler. Update the algorithm specification and release notes. Keep existing package versions and frozen submission artifacts unchanged.
 4. Run correctness and structural checks. Get the existing required independent implementation reviews on the exact proposed merge head. No merge without current user approval.
 
 ## Verification and acceptance
@@ -104,7 +116,9 @@ The acceptance claim is correct output with less work on certified inputs. This 
 - For K(2,2,2) and a graph whose nonempty essential set does not cover it, prove fallback occurs. Check essential lower bounds, native-column mapping, exact objective, canonical decisions, and final adjacency.
 - Compare fallback model dimensions, costs, bounds, ordered decision mapping, and sparse coefficients against the pinned implementation on representative C and sigma inputs. A semantically equivalent representation change needs an explicit explanation; do not accept a different feasible problem.
 - Cover malformed scan output, zero/noninteger/nonfinite costs, language-specific exact-integer limits, nonzero auxiliary cost in the legacy custom-model path, and noncontiguous solver decision columns. Preserve the existing solver fault checks.
+- Test semantic scan validation separately from native-column scan validation. Preserve the existing custom-model `[4, 0, 2]` mapping tests and auxiliary-column rejection. Add the corresponding new-plan mapping check.
 - Use controlled-clock tests for expiry during scan and certificate, remaining-budget handoff, exclusion of model-build time, expiry before a canonical trial, and unlimited time.
+- Run the existing CI driver suites with the updated protocol and hooks. Verify that certified capture/profile paths never force BIP construction and that fallback/preprocessing measurements describe their actual path.
 - Run package checks relevant to touched source and docs. Do not rerun submission services or restart cloud measurements.
 
 A short local allocation/profile diagnostic is optional if correctness checks show that a fallback representation duplicates work. It must not become another timing campaign or a condition for completion. Record any performance claim as unmeasured unless supported by a separate agreed test.
