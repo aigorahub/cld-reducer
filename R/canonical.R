@@ -68,13 +68,12 @@ essential_cover_certificate <- function(model, decisions, required, strategy) {
 # then fix memberships in (clique, group) order (docs/algorithm.md section 5).
 # The private switch retains the reference path for differential checks.
 solve_canonical <- function(model, time_limit, strategy, certificate = TRUE) {
+  if (inherits(model, "cld_decision_plan")) return(solve_plan(model, time_limit, strategy, certificate))
   problem <- model$problem
   decisions <- problem$decision_columns
   if (anyDuplicated(decisions) || any(!is.finite(decisions) | decisions != floor(decisions) |
       decisions < 1L | decisions > problem$num_cols)) solver_error("HiGHS returned an invalid solution")
   deadline <- if (is.null(time_limit)) NULL else elapsed() + time_limit
-  col_lower <- rep(0, problem$num_cols)
-  col_upper <- rep(1, problem$num_cols)
   required <- strategy$essential_decisions(model)
   if (!is.numeric(required) || !is.null(dim(required)) ||
       any(!is.finite(required) | required != floor(required) | !required %in% decisions) ||
@@ -84,7 +83,6 @@ solve_canonical <- function(model, time_limit, strategy, certificate = TRUE) {
   if (!is.null(deadline) && elapsed() >= deadline) {
     solver_error(strategy$failure_prefix, "Time limit reached")
   }
-  col_lower[required] <- 1
   if (certificate) {
     certified <- essential_cover_certificate(model, decisions, required, strategy)
     if (!is.null(deadline) && elapsed() >= deadline) {
@@ -93,6 +91,14 @@ solve_canonical <- function(model, time_limit, strategy, certificate = TRUE) {
     if (!is.null(certified)) return(certified)
   }
 
+  canonical_trials(model, strategy, required, deadline)
+}
+
+canonical_trials <- function(model, strategy, required, deadline) {
+  problem <- model$problem
+  col_lower <- rep(0, problem$num_cols)
+  col_upper <- rep(1, problem$num_cols)
+  col_lower[required] <- 1
   outcome <- solve_step(model, col_lower, col_upper, NULL, deadline, strategy)
   selected <- check_solution(model, outcome, col_lower, col_upper, NULL, strategy)
   minimum <- as.integer(round(outcome$objective))
@@ -114,4 +120,54 @@ solve_canonical <- function(model, time_limit, strategy, certificate = TRUE) {
     col_lower <- trial
   }
   list(selected = selected, minimum = minimum)
+}
+
+
+remaining_time <- function(deadline, strategy) {
+  if (is.null(deadline)) return(NULL)
+  remaining <- deadline - elapsed()
+  if (remaining <= 0) solver_error(strategy$failure_prefix, "Time limit reached")
+  remaining
+}
+
+plan_certificate <- function(plan, required, strategy) {
+  cost <- plan$cost
+  if (!is.numeric(cost) || is.complex(cost) || !is.null(dim(cost)) ||
+      any(!is.finite(cost) | cost <= 0 | cost != floor(cost))) return(NULL)
+  selected <- seq_len(plan$decision_count) %in% required
+  minimum <- sum(cost[selected])
+  if (!is.finite(minimum) || minimum > .Machine$integer.max ||
+      !strategy$coverage(plan, selected)) return(NULL)
+  list(selected = selected, minimum = as.integer(minimum))
+}
+
+solve_plan <- function(plan, time_limit, strategy, certificate = TRUE) {
+  invalid <- function() solver_error("HiGHS returned an invalid solution")
+  count <- plan$decision_count
+  if (length(count) != 1L || !is.finite(count) || count < 0 || count != floor(count) ||
+      length(plan$cost) != count) invalid()
+  deadline <- if (is.null(time_limit)) NULL else elapsed() + time_limit
+  required <- strategy$essential_decisions(plan)
+  if (!is.numeric(required) || is.complex(required) || !is.null(dim(required)) ||
+      any(!is.finite(required) | required != floor(required) | required < 1 | required > count) ||
+      anyDuplicated(required) || is.unsorted(required, strictly = TRUE)) invalid()
+  remaining_time(deadline, strategy)
+  if (certificate) {
+    certified <- plan_certificate(plan, required, strategy)
+    remaining_time(deadline, strategy)
+    if (!is.null(certified)) return(certified)
+  }
+  remaining <- remaining_time(deadline, strategy)
+  model <- strategy$compiler(plan)
+  deadline <- if (is.null(remaining)) NULL else elapsed() + remaining
+  problem <- model$problem
+  decisions <- problem$decision_columns
+  if (length(decisions) != count || anyDuplicated(decisions) || !is.numeric(decisions) ||
+      any(!is.finite(decisions) | decisions != floor(decisions) | decisions < 1 |
+          decisions > problem$num_cols) || length(problem$cost) != problem$num_cols) invalid()
+  auxiliary <- rep(TRUE, problem$num_cols)
+  auxiliary[decisions] <- FALSE
+  if (anyNA(problem$cost) || !identical(as.numeric(problem$cost[decisions]), as.numeric(plan$cost)) ||
+      any(problem$cost[auxiliary] != 0)) invalid()
+  canonical_trials(model, strategy, decisions[required], deadline)
 }

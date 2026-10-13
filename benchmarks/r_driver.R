@@ -202,7 +202,7 @@ bench_driver <- function(repo, presolve = "off") {
       return(list(result = normalize(result), canonical = observation$canonical))
     }
 
-    phase_names <- c("input", "vertex_reduction", "enumeration", "model_construction",
+    phase_names <- c("input", "vertex_reduction", "enumeration", "decision_plan", "model_construction",
                      "essential_scan", "adapter_setup", "model_load", "initial_optimization",
                      "canonical_trials", "output_expansion", "final_validation", "total")
     observation$phases <- stats::setNames(rep(list(NULL), length(phase_names)), phase_names)
@@ -219,6 +219,7 @@ bench_driver <- function(repo, presolve = "off") {
     observation$trial <- FALSE
     observation$required <- NULL
     observation$model <- NULL
+    observation$plan <- NULL
     observation$strategy <- NULL
     observation$render_total <- NULL
     add_phase <- function(name, elapsed) {
@@ -257,8 +258,15 @@ bench_driver <- function(repo, presolve = "off") {
     hook(runtime, "maximal_cliques", "enumeration", after = function(answer, args, elapsed) {
       observation$cliques <- answer
     })
-    hook(runtime, "graph_context", "model_construction")
-    for (name in c("build_model", "build_letter_model")) {
+    lazy <- exists("build_assignment_plan", runtime, inherits = FALSE)
+    hook(runtime, "graph_context", if (lazy) "decision_plan" else "model_construction")
+    if (lazy) for (name in c("build_assignment_plan", "build_letter_plan")) {
+      hook(runtime, name, "decision_plan", after = function(answer, args, elapsed) {
+        observation$plan <- answer
+      })
+    }
+    for (name in if (lazy) c("compile_assignment_plan", "compile_letter_plan") else
+         c("build_model", "build_letter_model")) {
       hook(runtime, name, "model_construction", after = function(answer, args, elapsed) {
         observation$model <- answer
       })
@@ -302,7 +310,7 @@ bench_driver <- function(repo, presolve = "off") {
     )
     if (identical(action, "preprocess")) {
       replace(runtime, "solve_canonical", function(model, time_limit, strategy) {
-        observation$model <- model
+        if (lazy) strategy$compiler(model) else observation$model <- model
         observation$required <- strategy$essential_decisions(model)
         stop(structure(list(message = "preprocessing complete", call = NULL),
                        class = c("benchmark_preprocess_done", "condition")))
@@ -426,10 +434,11 @@ bench_driver <- function(repo, presolve = "off") {
     started <- now()
     result <- tryCatch(invoke(prepared), benchmark_preprocess_done = function(e) NULL)
     observation$phases$total <- duration(started)
-    model <- observation$model
+    model <- if (lazy) observation$plan else observation$model
     if (is.null(model) || is.null(observation$required)) stop("Production model or essential scan was not observed")
-    problem <- model$problem
-    essential <- problem$decision_columns %in% observation$required
+    problem <- observation$model$problem
+    decisions <- if (lazy) seq_len(model$decision_count) else problem$decision_columns
+    essential <- decisions %in% observation$required
     canonical <- observation$canonical
     counters <- if (length(observation$counters)) {
       list(available = TRUE, source = "highs native solver_info", by_solve = observation$counters)
@@ -458,9 +467,10 @@ bench_driver <- function(repo, presolve = "off") {
       vertices_after = nrow(observation$reduced$adjacency),
       edges = sum(observation$graph$adjacency & upper.tri(observation$graph$adjacency)),
       edges_after = nrow(model$edges), maximal_cliques = length(observation$cliques),
-      decision_variables = length(problem$decision_columns),
-      auxiliary_variables = problem$num_cols - length(problem$decision_columns),
-      constraints = nrow(problem$matrix), nonzeros = Matrix::nnzero(problem$matrix),
+      decision_variables = length(decisions), model_compiled = !is.null(problem),
+      auxiliary_variables = if (is.null(problem)) NULL else problem$num_cols - length(decisions),
+      constraints = if (is.null(problem)) NULL else nrow(problem$matrix),
+      nonzeros = if (is.null(problem)) NULL else Matrix::nnzero(problem$matrix),
       essential_decisions = length(observation$required), solve_count = observation$solve_count,
       solver_total_ns = observation$solver_total_ns,
       probe_ns = observation$probe_ns,
@@ -498,7 +508,10 @@ bench_driver <- function(repo, presolve = "off") {
     notes$solver_counters <- paste("Native info values are returned without reinterpretation.",
                                     "Negative counters are native unavailable markers; nonfinite values serialize as null.")
     notes["full_call_overhead"] <- list(NULL)
-    answer <- list(metrics = metrics, phases_ns = observation$phases, profile_notes = notes)
+    if (is.null(problem)) for (name in c("auxiliary_variables", "constraints", "nonzeros")) {
+      notes$unavailable[[name]] <- "Certificate returned before BIP compilation."
+    }
+    answer <- list(profile_schema = if (lazy) 2L else 1L, metrics = metrics, phases_ns = observation$phases, profile_notes = notes)
     if (!is.null(result)) answer <- c(list(result = normalize(result), canonical = canonical), answer)
     answer
   }

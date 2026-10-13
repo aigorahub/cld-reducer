@@ -1,6 +1,6 @@
 # Benchmark driver protocol
 
-This is development code. Runtime source remains unchanged in this PR. Each driver accepts `--repo ABSOLUTE_PATH` and optional `--presolve on|off` (R supports off only). Python: python_driver.py. R: r_driver.R. JavaScript: js_driver.mjs. The JavaScript source repository must have js/dist built. Drivers resolve runtime code and data from --repo, never from the current directory.
+This is development code. Each driver accepts `--repo ABSOLUTE_PATH` and optional `--presolve on|off` (R supports off only). Python: python_driver.py. R: r_driver.R. JavaScript: js_driver.mjs. The JavaScript source repository must have js/dist built. Drivers resolve runtime code and data from --repo, never from the current directory.
 
 Use UTF-8 JSON lines on stdin and stdout. One response per request, no other stdout. Send diagnostics to stderr. Flush after each response. Continue after a package error; malformed requests return an error. EOF stops. Do not open output files. The coordinator supplies an explicit external output directory.
 
@@ -41,3 +41,28 @@ A profile-only temporary source patch must have its hash and source head in prof
 Profiles report `metrics.solver_settings`. It contains one ordered record per actual native solve. Each record contains stable native values. Store the changing shared deadline value separately under `excluded_values.time_limit`. Record no observed settings when no solver runs. JavaScript records its single thread API constraint separately because that API has no native thread option. R records both native and package global thread settings. The acceptance gate checks these observations against the declared settings.
 
 An unlimited `excluded_values.time_limit` is null. Preprocessing has no uninstrumented reference call, so `profile_notes.full_call_overhead` is null. JavaScript total time includes per-model hook installation inside adapter calls. Initial profile hook setup stays outside total time.
+
+
+## Lazy compilation profile schema
+
+Profiles and preprocessing responses include `profile_schema`. Version 2 describes
+the decision-plan runtime. Version 1 describes the earlier compiled-model runtime.
+Existing saved records without this field retain their earlier meaning. Do not
+rewrite archived records or pinned study inputs.
+
+Version 2 adds the `decision_plan` phase and the boolean `metrics.model_compiled`.
+Decision-plan time includes graph context and coverage data. Model-construction
+time measures only BIP compilation. A certified public call reports
+`model_compiled: false`, null model-construction time, and null
+`auxiliary_variables`, `constraints`, and `nonzeros`, with reasons in profile notes.
+Those nulls mean that no compiled model was observed. They are not zero dimensions.
+Decision count, essentials, result, and canonical vector remain available. Solver
+counts and measured solver work are zero when no solver runs.
+
+Fallback profiles retain actual compiled dimensions. The explicit `preprocess`
+request forces BIP compilation through the private compiler and scans the plan
+without solving. It measures that diagnostic path, not the certified public path.
+Capture reads decision costs and selections without requiring a compiled problem.
+Drivers also retain support for the earlier runtime and its native column mapping.
+These schema changes apply to local driver checks. They do not resume the stopped
+cloud timing study.

@@ -12,6 +12,8 @@ from .algorithms.assignment_minimum import (
     _essential_decisions,
     _selected_columns,
     _validate_solver_controls,
+    build_plan,
+    compile_plan,
 )
 from .canonical import _solve_canonical
 from .cliques import maximal_cliques
@@ -33,6 +35,8 @@ class Strategy:
     essential_decisions: Callable
     decoder: Callable
     counts_assignments: bool
+    planner: Callable
+    compiler: Callable
 
 
 METHODS = (
@@ -45,6 +49,8 @@ METHODS = (
         _essential_decisions,
         _selected_columns,
         True,
+        build_plan,
+        compile_plan,
     ),
     Strategy(
         "letter_minimum",
@@ -55,6 +61,8 @@ METHODS = (
         letter_minimum.essential_decisions,
         letter_minimum.decode,
         False,
+        letter_minimum.build_plan,
+        letter_minimum.compile_plan,
     ),
 )
 
@@ -70,13 +78,14 @@ def reduce_validated(adjacency, groups, means, strategy, time_limit, max_cliques
     time_limit, max_cliques = _validate_solver_controls(time_limit, max_cliques)
     reduced = reduce_graph(adjacency)
     cliques = maximal_cliques(reduced.adjacency, max_cliques=max_cliques)
-    model = strategy.builder(
+    model = strategy.planner(
         graph_context(
             reduced.adjacency,
             [groups[c[0]] for c in reduced.classes],
             None,
             cliques,
             reduced.weights,
+            assignments=strategy.counts_assignments,
         )
     )
     selected, minimum = _solve_canonical(model, time_limit, strategy)

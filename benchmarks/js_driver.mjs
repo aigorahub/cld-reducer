@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const now = () => process.hrtime.bigint();
 const elapsed = start => Number(now() - start);
-const PHASES = ['input', 'vertex_reduction', 'enumeration', 'model_construction',
+const PHASES = ['input', 'vertex_reduction', 'enumeration', 'decision_plan', 'model_construction',
   'essential_scan', 'adapter_setup', 'model_load', 'initial_optimization',
   'canonical_trials', 'output_expansion', 'final_validation', 'total'];
 const unavailable = reason => ({ available: false, reason });
@@ -82,7 +82,7 @@ function replace(target, key, replacement, restores) {
 export function collector() {
   const phases = Object.fromEntries(PHASES.map(key => [key, null]));
   const state = {
-    phases, model: null, context: null, required: null, canonical: null,
+    phases, plan: null, model: null, context: null, required: null, canonical: null,
     verticesBefore: null, edgesBefore: null, solves: 0, feasible: 0, infeasible: 0,
     feasibleNs: 0, infeasibleNs: 0, solverTotalNs: 0, probeNs: 0,
     counters: [], nativeRuns: 0, solverSettings: [],
@@ -104,14 +104,15 @@ export function collector() {
 }
 
 function canonicalOf(model, selected) {
-  if (!Array.isArray(selected) || selected.length !== model.problem.decisionColumns.length ||
+  const costs = model.problem ? model.problem.decisionColumns.map(k => model.problem.cost[k]) : model.cost;
+  if (!Array.isArray(selected) || selected.length !== costs.length ||
       selected.some(value => typeof value !== 'boolean')) {
     throw new Error('The runtime decoder did not receive the canonical decision vector');
   }
   return {
     selected: selected.map(Number),
     objective: selected.reduce((sum, on, k) =>
-      sum + (on ? model.problem.cost[model.problem.decisionColumns[k]] : 0), 0),
+      sum + (on ? costs[k] : 0), 0),
   };
 }
 
@@ -123,12 +124,22 @@ function instrumentStrategies(runtime, state, restores, profile) {
       return originalDecoder.call(this, cliques, model, selected);
     }, restores);
     if (!profile) continue;
-    const originalBuilder = strategy.builder;
-    replace(strategy, 'builder', function (context) {
+    const lazy = typeof strategy.planner === 'function';
+    const builderKey = lazy ? 'planner' : 'builder';
+    const originalBuilder = strategy[builderKey];
+    replace(strategy, builderKey, function (context) {
       state.context = context;
-      state.model = state.timed('model_construction', () => originalBuilder.call(this, context));
-      return state.model;
+      const data = state.timed(lazy ? 'decision_plan' : 'model_construction', () => originalBuilder.call(this, context));
+      if (lazy) state.plan = data; else state.model = data;
+      return data;
     }, restores);
+    if (lazy) {
+      const compiler = strategy.compiler;
+      replace(strategy, 'compiler', function (plan) {
+        state.model = state.timed('model_construction', () => compiler.call(this, plan));
+        return state.model;
+      }, restores);
+    }
     const originalEssential = strategy.essentialDecisions;
     replace(strategy, 'essentialDecisions', function (model) {
       const required = state.timed('essential_scan', () => originalEssential.call(this, model));
@@ -208,10 +219,11 @@ export function instrumentSolver(runtime, state, restores) {
 }
 
 function metricsOf(runtime, state) {
-  const model = state.model;
+  const model = state.plan ?? state.model;
   if (!model || !state.context || !state.required) throw new Error('Runtime model/essential hooks were not observed');
   const strategy = state.strategy;
-  const decisions = model.problem.decisionColumns;
+  const problem = state.model?.problem;
+  const decisions = state.plan ? Array.from({length:state.plan.decisionCount}, (_,k) => k) : problem.decisionColumns;
   const essential = new Set(state.required);
   const selected = state.canonical?.selected ?? null;
   return {
@@ -221,9 +233,10 @@ function metricsOf(runtime, state) {
     edges_after: state.context.edges.length,
     maximal_cliques: state.context.cliques.length,
     decision_variables: decisions.length,
-    auxiliary_variables: model.problem.numCols - decisions.length,
-    constraints: model.problem.rowLower.length,
-    nonzeros: model.problem.values.length,
+    model_compiled: !!problem,
+    auxiliary_variables: problem ? problem.numCols - decisions.length : null,
+    constraints: problem ? problem.rowLower.length : null,
+    nonzeros: problem ? problem.values.length : null,
     essential_decisions: state.required.length,
     essential_cover: strategy.coverage(model, decisions.map(k => essential.has(k))),
     solve_count: state.solves,
@@ -257,11 +270,12 @@ function patchOnce(source, search, replacement) {
 // Patch only an isolated built module. Fail closed if a later runtime changes
 // the observed boundaries. No loader or optimization runs during patch setup.
 export function profileSource(source) {
+  const lazy = source.includes("strategy.planner(");
   let patched = 'import { probe } from "./benchmark-probes.js";\n' + source;
   const wrappers = [];
   for (const [name, phase] of Object.entries({ adjacencyToGraph: 'input', pairsToGraph: 'input',
     checkControls: 'input', checkMethod: 'input', reduceGraphVertices: 'vertex_reduction',
-    maximalCliques: 'enumeration', graphContext: 'model_construction' })) {
+    maximalCliques: 'enumeration', graphContext: lazy ? 'decision_plan' : 'model_construction' })) {
     const pattern = new RegExp(`(import\\s*\\{[^}]*?)\\b${name}\\b([^}]*\\}\\s*from)`, 'g');
     let count = 0;
     patched = patched.replace(pattern, (_, prefix, suffix) => {
@@ -295,7 +309,8 @@ function profileNotes(state, patch, preprocessing = false) {
     probe_scope: 'Only added native option/counter reads and their record assembly are subtracted. Production reads and wrapper overhead remain in adapter/trial times.',
     phase_scope: {
       input: 'Public graph normalization, method and control validation; JSON conversion is outside timing',
-      model_construction: 'Actual graphContext plus strategy.builder',
+      decision_plan: 'Graph context and coverage plan on the lazy runtime',
+      model_construction: 'Lazy BIP compilation, or graph context and builder on the legacy runtime',
       adapter_setup: 'Native model creation and options.set calls; other adapter bookkeeping remains in total/canonical_trials',
       initial_optimization: 'First native model.run call only',
       output_expansion: 'Decoder, expansion, letter ordering, assignments and letter maps; result-object assembly remains in total',
@@ -303,8 +318,10 @@ function profileNotes(state, patch, preprocessing = false) {
     },
     edges: 'edges is the input graph edge count; edges_after is the reduced graph edge count',
     unavailable_phases: reasons,
-    unavailable_metrics: preprocessing ? { selected: 'No optimization was requested', objective: 'No optimization was requested',
-      final_zero_decisions: 'No optimization was requested' } : {},
+    unavailable_metrics: { ...(!state.model ? Object.fromEntries(
+      ["auxiliary_variables", "constraints", "nonzeros"].map(k => [k, "Certificate returned before BIP compilation"])) : {}),
+      ...(preprocessing ? { selected: 'No optimization was requested', objective: 'No optimization was requested',
+      final_zero_decisions: 'No optimization was requested' } : {}) },
     full_call_overhead: preprocessing ? null : state.overhead,
   };
 }
@@ -432,6 +449,7 @@ export class Driver {
       state.strategy = runtime.model.methods.find(s => s.name === result.method);
       // The wrapper observes the absence of canonical calls too.
       state.phases.canonical_trials ??= 0;
+      response.profile_schema = state.plan ? 2 : 1;
       response.metrics = metricsOf(runtime, state);
       response.phases_ns = state.phases;
       if (JSON.stringify(normalizeResult(referenceResult)) !== JSON.stringify(response.result)) {
@@ -460,12 +478,16 @@ export class Driver {
     const smallGraph = { adjacency: reduced.adjacency,
       groups: reduced.classes.map(group => graph.groups[group[0]]), means: null };
     const cliques = state.timed('enumeration', () => runtime.cliques.maximalCliques(reduced.adjacency, controls.maxCliques));
-    state.context = state.timed('model_construction', () => runtime.model.graphContext(smallGraph, cliques, reduced.weights));
-    state.model = state.timed('model_construction', () => strategy.builder(state.context));
-    state.required = state.timed('essential_scan', () => strategy.essentialDecisions(state.model));
+    const lazy = typeof strategy.planner === 'function';
+    state.context = state.timed(lazy ? 'decision_plan' : 'model_construction', () => runtime.model.graphContext(smallGraph, cliques, reduced.weights, lazy && strategy.countsAssignments));
+    if (lazy) {
+      state.plan = state.timed('decision_plan', () => strategy.planner(state.context));
+      state.model = state.timed('model_construction', () => strategy.compiler(state.plan));
+    } else state.model = state.timed('model_construction', () => strategy.builder(state.context));
+    state.required = state.timed('essential_scan', () => strategy.essentialDecisions(state.plan ?? state.model));
     state.strategy = strategy;
     state.phases.total = elapsed(start);
-    return { metrics: metricsOf(runtime, state), phases_ns: state.phases,
+    return { profile_schema: state.plan ? 2 : 1, metrics: metricsOf(runtime, state), phases_ns: state.phases,
       profile_notes: profileNotes(state, { source_head: this.sourceHead, source_patch: null }, true) };
   }
 

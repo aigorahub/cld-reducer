@@ -19,6 +19,7 @@ import pandas as pd
 from highspy import kHighsInf
 
 from .. import _solver
+from ..context import DecisionPlan, shared_positions
 from ..exceptions import SolverError
 from ..result import CLDReductionResult
 from ..validation import (
@@ -78,58 +79,65 @@ def _validate_solver_controls(
     )
 
 
+def build_plan(context):
+    members, group_columns = context.members, context.group_columns
+    if members is None:
+        members = []
+        group_columns = [[] for _ in context.groups]
+        for c, clique in enumerate(context.cliques):
+            for g in clique:
+                group_columns[g].append(len(members))
+                members.append((c, g))
+    edge_ends = [
+        [
+            (group_columns[i][a], group_columns[j][b])
+            for a, b in shared_positions(context.cliques_of[i], context.cliques_of[j])
+        ]
+        for i, j in context.edges
+    ]
+    return DecisionPlan(
+        context, [context.weights[g] for _, g in members], members, group_columns, edge_ends, []
+    )
+
+
 def _build_model(context) -> _Model:
-    """Build the model of docs/algorithm.md section 4."""
-    adjacency, cliques = context.adjacency, context.cliques
-    num_groups = adjacency.shape[0]
-    members = [(c, g) for c, clique in enumerate(cliques) for g in clique]
-    x_index = {member: k for k, member in enumerate(members)}
-    cliques_of = context.cliques_of
-    edges = context.edges
+    """Legacy compiled-model entry point."""
+    return compile_plan(build_plan(context))
 
-    num_x = len(members)
-    y_pairs: list[tuple[int, int]] = []  # (edge, clique)
-    for e, (i, j) in enumerate(edges):
-        shared = sorted(set(cliques_of[i]) & set(cliques_of[j]))
-        y_pairs.extend((e, c) for c in shared)
 
-    rows: list[list[tuple[int, float]]] = []
-    row_lower: list[float] = []
-    row_upper: list[float] = []
-    # Every group is in at least one clique.
-    for g in range(num_groups):
-        rows.append([(x_index[(c, g)], 1.0) for c in cliques_of[g]])
+def compile_plan(plan) -> _Model:
+    """Compile the same BIP from coverage data, only when required."""
+    num_x = len(plan.members)
+    num_y = sum(map(len, plan.edge_ends))
+    rows = [[(k, 1.0) for k in columns] for columns in plan.group_columns]
+    row_lower = [1.0] * len(rows)
+    row_upper = [kHighsInf] * len(rows)
+    witness = num_x
+    for ends in plan.edge_ends:
+        rows.append([(witness + k, 1.0) for k in range(len(ends))])
         row_lower.append(1.0)
         row_upper.append(kHighsInf)
-    # Every non-significant edge is covered by at least one clique that holds both ends.
-    by_edge: dict[int, list[int]] = {}
-    for k, (e, _) in enumerate(y_pairs):
-        by_edge.setdefault(e, []).append(num_x + k)
-    for e in range(len(edges)):
-        rows.append([(col, 1.0) for col in by_edge[e]])
-        row_lower.append(1.0)
-        row_upper.append(kHighsInf)
-    # A covering clique needs both ends: y <= x for each end.
-    for k, (e, c) in enumerate(y_pairs):
-        i, j = edges[e]
-        for g in (i, j):
-            rows.append([(num_x + k, 1.0), (x_index[(c, g)], -1.0)])
-            row_lower.append(-kHighsInf)
-            row_upper.append(0.0)
-
+        witness += len(ends)
+    witness = num_x
+    for ends in plan.edge_ends:
+        for pair in ends:
+            for k in pair:
+                rows.append([(witness, 1.0), (k, -1.0)])
+                row_lower.append(-kHighsInf)
+                row_upper.append(0.0)
+            witness += 1
     start = [0]
-    index: list[int] = []
-    value: list[float] = []
+    index = []
+    value = []
     for row in rows:
         for col, coefficient in row:
             index.append(col)
             value.append(coefficient)
         start.append(len(index))
-    num_cols = num_x + len(y_pairs)
-    cost = np.zeros(num_cols)
-    cost[:num_x] = [context.weights[g] for _, g in members]
+    cost = np.zeros(num_x + num_y)
+    cost[:num_x] = plan.cost
     problem = _solver.Problem(
-        num_cols=num_cols,
+        num_cols=num_x + num_y,
         decision_columns=list(range(num_x)),
         cost=cost,
         start=np.asarray(start, dtype=np.int32),
@@ -138,16 +146,7 @@ def _build_model(context) -> _Model:
         row_lower=np.asarray(row_lower, dtype=np.float64),
         row_upper=np.asarray(row_upper, dtype=np.float64),
     )
-    edge_ends: list[list[tuple[int, int]]] = [[] for _ in edges]
-    for e, c in y_pairs:
-        edge_ends[e].append((x_index[(c, edges[e][0])], x_index[(c, edges[e][1])]))
-    return _Model(
-        problem=problem,
-        members=members,
-        edges=edges,
-        group_columns=[[x_index[(c, g)] for c in cliques_of[g]] for g in range(num_groups)],
-        edge_ends=edge_ends,
-    )
+    return _Model(problem, plan.members, plan.context.edges, plan.group_columns, plan.edge_ends)
 
 
 def _coverage(model: _Model, selected: np.ndarray) -> bool:

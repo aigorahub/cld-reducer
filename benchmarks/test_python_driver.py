@@ -115,7 +115,7 @@ def test_capture_profile_measure_and_model_structure(runtime, method, monkeypatc
             metrics["auxiliary_variables"],
             metrics["constraints"],
             metrics["nonzeros"],
-        ) == (2, 0, 5, 6)
+        ) == (2, None, None, None)
         assert capture["canonical"] == {"selected": [1, 1], "objective": 2}
     else:
         assert (
@@ -123,12 +123,20 @@ def test_capture_profile_measure_and_model_structure(runtime, method, monkeypatc
             metrics["auxiliary_variables"],
             metrics["constraints"],
             metrics["nonzeros"],
-        ) == (4, 2, 9, 14)
+        ) == (4, None, None, None)
         assert capture["canonical"] == {"selected": [1, 1, 1, 1], "objective": 6}
     assert metrics["essential_decisions"] == metrics["decision_variables"]
     assert metrics["solver_counters"]["available"] is False
     assert metrics["solver_counters"]["per_solve"] == []
-    missing = {"adapter_setup", "model_load", "initial_optimization", "canonical_trials"}
+    assert profile["profile_schema"] == 2
+    assert metrics["model_compiled"] is False
+    missing = {
+        "model_construction",
+        "adapter_setup",
+        "model_load",
+        "initial_optimization",
+        "canonical_trials",
+    }
     assert set(profile["profile_notes"]["phase_unavailable"]) == missing
     for name, value in profile["phases_ns"].items():
         if name in missing:

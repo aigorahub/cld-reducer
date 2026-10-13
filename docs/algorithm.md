@@ -126,9 +126,11 @@ of a nonessential decision gives a valid full cover minus that decision.
 The scan preserves the feasible covers, minimum cost, and canonical optimum.
 Class weights affect cost but do not change essentiality on the reduced graph.
 
-Each strategy returns essential native model column indices as a sorted unique
-list. The shared canonical engine validates that each index is an integer and
-belongs to the ordered decision set. Malformed lists, duplicate or unsorted
+The public pipeline first builds a decision plan without solver arrays. Each
+strategy returns essential semantic decision positions as a sorted unique list.
+Positions are zero-based in Python and JavaScript and one-based in R. The shared
+engine validates them against the decision count. The legacy direct compiled-model
+interface still accepts sorted native column indices belonging to `decision_columns`. Malformed lists, duplicate or unsorted
 indices, and auxiliary or absent columns raise `HiGHS returned an invalid solution`
 before the solver adapter runs. In Python, booleans are not indices. R requires
 a numeric vector without dimensions. Its edge alternatives have two columns;
@@ -145,8 +147,9 @@ HiGHS chooses compatible optional decisions when the certificate does not apply.
 ### Essential cover certificate
 
 Select exactly the essential decisions in canonical decision order. The engine
-checks that every decision has a finite positive integer cost and every auxiliary
-column has zero cost. It also checks that the selected cost can retain the
+checks that every decision has a finite positive integer cost. Built-in compilers
+supply only zero-cost auxiliary columns. Compiler validation and tests enforce
+this contract. The legacy compiled-model certificate checks auxiliary costs directly. It also checks that the selected cost can retain the
 implementation's exact objective representation. If these assumptions fail, use
 the solver path. Otherwise, apply the existing strategy coverage predicate to
 the selected vector.
@@ -162,9 +165,11 @@ sigma, and also proves that the returned vector is the canonical optimum.
 Check the shared deadline after scan validation and after the certificate
 attempt. A certified result uses normal expansion, rendering, statistics, and
 relationship validation. It reports `Optimal` because the proof establishes
-optimality. No HiGHS solve occurs on that path. Module and dependency loading
+optimality. Neither BIP compilation nor a HiGHS solve occurs on that path. Module and dependency loading
 remain unchanged. If coverage fails, retain all essential bounds and run the
-existing BIP and canonical loop. A private engine argument disables the
+existing BIP and canonical loop. Compile from the same plan without rescanning.
+Validate the semantic-to-native mapping, costs, and zero auxiliary costs. Preserve
+canonical mapping order even when native column indices are not contiguous. A private engine argument disables the
 certificate for differential tests; the public API has no new option.
 
 ## 4. CLD-sigma model
@@ -233,7 +238,7 @@ R keeps presolve off because the CRAN `highs` package bundles HiGHS 1.14, where 
 
 **Failure prefix.** Solver status errors use `letter-minimum MILP failed: ` for CLD-C and `assignment-minimum MILP failed: ` for CLD-sigma.
 
-**One budget.** `time_limit` is one budget for the essential scan, certificate check, and all solves in a call, measured from just before that scan with a monotonic clock (R `proc.time()[["elapsed"]]`, Python `time.monotonic()`, JavaScript `performance.now() / 1000`). Check the deadline after scan validation and after the certificate attempt. Each solve gets the time left as its HiGHS time limit. When no time is left at a deadline check, or HiGHS stops on the time limit, the call raises a solver error with the selected method's failure prefix and the text `Time limit reached`. Vertex reduction, clique enumeration, and model construction are not part of the budget.
+**One budget.** `time_limit` is one budget for the essential scan, certificate check, and all solves in a call, measured from just before that scan with a monotonic clock (R `proc.time()[["elapsed"]]`, Python `time.monotonic()`, JavaScript `performance.now() / 1000`). Check the deadline after scan validation and after the certificate attempt. Each solve gets the time left as its HiGHS time limit. When no time is left at a deadline check, or HiGHS stops on the time limit, the call raises a solver error with the selected method's failure prefix and the text `Time limit reached`. Vertex reduction, clique enumeration, decision-plan construction, and BIP compilation are not part of the budget. Pause the remaining budget only during fallback BIP compilation. Resume it before compiled-model validation; never reset the full limit.
 
 **Checks after each solve.**
 
@@ -471,8 +476,14 @@ stable mean/index sort and formatting. The simple five-group example has C=3 and
 
 Each language has one pipeline, registry, binary-model contract, canonical engine,
 solver adapter, renderer and result checks. The two registry entries supply their
-model builder, decision coverage check, essential decision scan and column decoder.
+decision-plan builder, lazy BIP compiler, decision coverage check, essential decision scan and column decoder. Legacy model builders compose the plan builder and compiler.
 The common engine uses the same essential cover proof for both strategies.
+One pass over canonical cliques builds each vertex's sorted incidence. For sigma,
+the same pass assigns membership positions in parallel lists. Ordered intersections
+of endpoint incidence lists produce coverage alternatives. Sigma retains endpoint
+position pairs and decodes through canonical members. It needs no dense membership
+index matrix, string-keyed lookup, or separate edge-witness list. The lazy compiler
+emits the same ordered rows and columns from this coverage data.
 Production normalization
 uses this registry; the independent reference has its own allow-list. No foreign
 runtime or generator is needed.

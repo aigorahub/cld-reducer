@@ -24,6 +24,7 @@ PHASES = (
     "input",
     "vertex_reduction",
     "enumeration",
+    "decision_plan",
     "model_construction",
     "essential_scan",
     "adapter_setup",
@@ -293,6 +294,7 @@ class Profile:
         self.probe_ns = 0
         self.solve_records = []
         self.model = self.context = self.original_adjacency = self.reduced = None
+        self.plan = None
         self.required = None
         self.canonical = None
         self.strategy = None
@@ -318,6 +320,25 @@ class Profile:
             self.context = context
             started = self.enumeration_end or time.perf_counter_ns()
             self.model = original(context)
+            self.phases["model_construction"] = time.perf_counter_ns() - started
+            return self.model
+
+        return wrapped
+
+    def planner(self, original):
+        def wrapped(context):
+            self.context = context
+            started = self.enumeration_end or time.perf_counter_ns()
+            self.plan = original(context)
+            self.phases["decision_plan"] = time.perf_counter_ns() - started
+            return self.plan
+
+        return wrapped
+
+    def compiler(self, original):
+        def wrapped(plan):
+            started = time.perf_counter_ns()
+            self.model = original(plan)
             self.phases["model_construction"] = time.perf_counter_ns() - started
             return self.model
 
@@ -366,6 +387,8 @@ class Profile:
         def canonical(model, time_limit, strategy):
             self.strategy = strategy
             if self.preprocess:
+                if self.plan is not None:
+                    strategy.compiler(model)
                 strategy.essential_decisions(model)
                 raise PreprocessComplete
             selected, objective = original_canonical(model, time_limit, strategy)
@@ -406,7 +429,14 @@ class Profile:
         strategies = tuple(
             replace(
                 strategy,
-                builder=self.builder(strategy.builder),
+                **(
+                    {
+                        "planner": self.planner(strategy.planner),
+                        "compiler": self.compiler(strategy.compiler),
+                    }
+                    if hasattr(strategy, "planner")
+                    else {"builder": self.builder(strategy.builder)}
+                ),
                 essential_decisions=self.essentials(strategy.essential_decisions),
             )
             for strategy in reduction.METHODS
@@ -439,7 +469,7 @@ class Profile:
                 if not self.preprocess:
                     raise
             self.phases["total"] = time.perf_counter_ns() - self.started
-        if self.model is None or self.strategy is None:
+        if (self.plan is None and self.model is None) or self.strategy is None:
             raise RuntimeError("The runtime did not call the model and canonical profile hooks")
         if not self.preprocess and self.canonical is None:
             raise RuntimeError("The runtime did not return a canonical vector")
@@ -454,6 +484,7 @@ class Profile:
             if value is None
         }
         response = {
+            "profile_schema": 2 if self.plan is not None else 1,
             "metrics": metrics,
             "phases_ns": self.phases,
             "profile_notes": {
@@ -488,7 +519,8 @@ class Profile:
                     "total includes the public API and hooks; it excludes conversion and metrics",
                     "solver_total_ns and trial times exclude measured native diagnostic probes",
                     "probe_ns includes only added settings/counter reads and record assembly",
-                    "model_construction includes graph_context and the actual strategy builder",
+                    "decision_plan includes graph_context and planning on the lazy runtime",
+                    "model_construction measures compilation; legacy includes graph_context",
                     "initial_optimization is the initial native Highs.run call",
                     "canonical_trials sums later adapter calls with setup, load and native run",
                     "adapter_setup is adapter call time minus native load and native run",
@@ -499,6 +531,13 @@ class Profile:
                 ],
             },
         }
+        if self.model is None:
+            response["profile_notes"]["metric_unavailable"].update(
+                {
+                    name: "Certificate returned before BIP compilation"
+                    for name in ("auxiliary_variables", "constraints", "nonzeros")
+                }
+            )
         if not self.preprocess:
             response.update(result=normalize(result), canonical=self.canonical)
             if normalize(reference) != response["result"]:
@@ -509,13 +548,18 @@ class Profile:
 
     def metrics(self):
         np = self.runtime.np
-        problem = self.model.problem
-        decisions = problem.decision_columns
+        problem = None if self.model is None else self.model.problem
+        data = self.plan if self.plan is not None else self.model
+        decisions = (
+            list(range(self.plan.decision_count))
+            if self.plan is not None
+            else problem.decision_columns
+        )
         essential_cover = None
         if self.required is not None:
             required = set(self.required)
             selected = np.asarray([column in required for column in decisions], dtype=bool)
-            essential_cover = bool(self.strategy.coverage(self.model, selected))
+            essential_cover = bool(self.strategy.coverage(data, selected))
         trials = [record for record in self.solve_records if not record["primary"]]
         first = [record for record in self.solve_records if record["primary"]]
         if self.native_calls["model_load"]:
@@ -534,15 +578,16 @@ class Profile:
         if not self.native_counters:
             counters["reason"] = "No native Highs.run call was observed"
         return {
-            "vertices_before": int(len(self.original_adjacency)),
-            "vertices_after": int(len(self.reduced.adjacency)),
+            "vertices_before": len(self.original_adjacency),
+            "vertices_after": len(self.reduced.adjacency),
             "edges": int(np.count_nonzero(np.triu(self.original_adjacency, 1))),
             "edges_after": len(self.context.edges),
             "maximal_cliques": len(self.context.cliques),
             "decision_variables": len(decisions),
-            "auxiliary_variables": problem.num_cols - len(decisions),
-            "constraints": len(problem.row_lower),
-            "nonzeros": len(problem.value),
+            "model_compiled": problem is not None,
+            "auxiliary_variables": None if problem is None else problem.num_cols - len(decisions),
+            "constraints": None if problem is None else len(problem.row_lower),
+            "nonzeros": None if problem is None else len(problem.value),
             "essential_decisions": None if self.required is None else len(self.required),
             "essential_cover": essential_cover,
             "solve_count": len(self.solve_records),

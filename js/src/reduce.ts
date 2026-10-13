@@ -61,7 +61,7 @@ async function reduceGraph(graph: Graph, options: ReduceOptions): Promise<CldRed
   const smallGraph = { adjacency: reduced.adjacency,
     groups: reduced.classes.map(group => groups[group[0]]), means: null };
   const cliques = maximalCliques(reduced.adjacency, maxCliques);
-  const model = strategy.builder(graphContext(smallGraph, cliques, reduced.weights));
+  const model = strategy.planner(graphContext(smallGraph, cliques, reduced.weights, strategy.countsAssignments));
   await getSolver();
   const { selected, minimum } = solveCanonical(model, timeLimit, strategy);
 

@@ -1,3 +1,4 @@
+import type { DecisionData } from "../src/model.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -63,7 +64,7 @@ it("counts scan time in the existing deadline before the first adapter call", as
     let now=0;clock.now=()=>now;
     solver.hooks.run=()=>{throw new Error("expired scan reached adapter");};
     const context=graphContext({adjacency:SIMPLE,groups:["1","2","3","4","5"],means:null},[[0,1,2],[1,2,3],[2,3,4]]);
-    const custom={...strategy,essentialDecisions:(model:Model)=>{now+=10;return strategy.essentialDecisions(model);}};
+    const custom={...strategy,essentialDecisions:(model:DecisionData)=>{now+=10;return strategy.essentialDecisions(model);}};
     expect(()=>solveCanonical(custom.builder(context),5,custom)).toThrow("MILP failed: Time limit reached");
   }
 });
