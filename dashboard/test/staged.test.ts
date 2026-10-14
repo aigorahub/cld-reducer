@@ -154,3 +154,12 @@ describe("staged solve time limit", () => {
     }
   });
 });
+
+describe("staged solve errors", () => {
+  it("name the second stage, also when the third solve finds another minimum than the bound", () => {
+    // 20 is not the minimum assignment count of Table II (18): the cliques with the fewest letters
+    // within 20 assignments need only 19, so the third solve does not reach the bound.
+    expect(() => stagedSolve(parsePairs(TABLE_II), null, "assignment_then_letter", 20))
+      .toThrow(/^staged solve failed: /);
+  });
+});

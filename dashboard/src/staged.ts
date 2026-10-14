@@ -126,10 +126,11 @@ export function stagedSolve(pairs: PairRow[], means: MeanRow[] | null, order: St
     // Canonical memberships inside the chosen cliques. Their minimum must be the bound.
     const subset = cliques.filter((_, c) => chosen[c]);
     const subPlan = ASSIGNMENTS.planner(graphContext(small, subset, reduced.weights, true));
-    const inner = timed((left) => solveCanonical(subPlan, left, ASSIGNMENTS));
-    if (inner.minimum !== bound) throw new SolverError("HiGHS returned an invalid solution");
+    // The failure prefix of the second stage, so that an error names the second stage.
+    const inner = timed((left) => solveCanonical(subPlan, left, { ...ASSIGNMENTS, failurePrefix: FAILED }));
+    if (inner.minimum !== bound) throw new SolverError(FAILED + "HiGHS returned an invalid solution");
     columns = ASSIGNMENTS.decoder(subset, subPlan, inner.selected);
-    if (columns.length !== subset.length) throw new SolverError("HiGHS returned an invalid solution");
+    if (columns.length !== subset.length) throw new SolverError(FAILED + "HiGHS returned an invalid solution");
   }
 
   const expanded = expandGraphColumns(columns, reduced.classes);
@@ -137,7 +138,7 @@ export function stagedSolve(pairs: PairRow[], means: MeanRow[] | null, order: St
   for (let i = 0; i < groups.length; i++) {
     for (let j = 0; j < groups.length; j++) {
       if (tokens[i].some((t) => tokens[j].includes(t)) !== adjacency[i][j]) {
-        throw new SolverError("optimized letters did not preserve the input pairwise relationships");
+        throw new SolverError(FAILED + "optimized letters did not preserve the input pairwise relationships");
       }
     }
   }
@@ -145,7 +146,7 @@ export function stagedSolve(pairs: PairRow[], means: MeanRow[] | null, order: St
   const after = tokens.reduce((sum, t) => sum + t.length, 0);
   const letters = expanded.length;
   // The first stage is optimal, so the second stage keeps its value exactly.
-  if (lettersFirst ? letters !== bound : after !== bound) throw new SolverError("HiGHS returned an invalid solution");
+  if (lettersFirst ? letters !== bound : after !== bound) throw new SolverError(FAILED + "HiGHS returned an invalid solution");
   const display = tokens.map(formatTokens);
   return {
     letters: Object.fromEntries(groups.map((g, i) => [g, display[i]])),

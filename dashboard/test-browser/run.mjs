@@ -467,10 +467,12 @@ async function main() {
     await page.click("#run");
     await wait(() => window.__held.filter((r) => r.type === "done").length === 2);
     await page.evaluate(() => {
-      const current = window.__workers.at(-1);
+      const [old, current] = window.__workers.slice(-2);
       const [stale, fresh] = [window.__held.slice(0, 3), window.__held.slice(3)];
       window.__hold = false;
       for (const reply of stale) current.deliver(reply);
+      // The old worker's replies with the id of the current run: the page takes no reply of an old worker.
+      for (const reply of stale) old.deliver({ ...reply, id: fresh[0].id });
       window.__afterStale = document.getElementById("run").textContent;
       for (const reply of fresh) current.deliver(reply);
     });
@@ -727,6 +729,34 @@ async function main() {
     await wait(() => document.querySelector(".problem > p")?.textContent === "The reply is for another method.");
     noResult(await read(), "run after a start reply for another method");
     await page.evaluate(() => { window.__alterStart = null; });
+    await ready();
+    // A start or result reply with the right method but another stage stops the run.
+    for (const which of ["start", "result"]) {
+      await page.evaluate((which) => {
+        const another = (reply) => { reply.stage = 2; return reply; };
+        if (which === "start") window.__alterStart = another; else window.__alter = another;
+      }, which);
+      await ready();
+      await page.click("#run");
+      await wait(() => document.querySelector(".problem > p")?.textContent === "The reply is for another method.");
+      noResult(await read(), `run after a ${which} reply for another stage`);
+      await page.evaluate(() => { window.__alterStart = null; window.__alter = null; });
+    }
+    // An error in the second stage says so. An error reply without a text message is a solver error.
+    for (const [message, title, text] of [
+      ["staged solve failed: Solve error", "The second stage stopped with an error", "staged solve failed: Solve error"],
+      [42, "The second stage stopped with an error", "The worker sent an error without a message."],
+    ]) {
+      await page.evaluate((message) => {
+        window.__alter = (reply) => (reply.stage === 2 ? { type: "error", id: reply.id, kind: "bogus", message } : reply);
+      }, message);
+      await ready();
+      await page.click("#run");
+      await wait((t) => document.querySelector(".problem > h2")?.textContent === t, title);
+      const problem = (await read()).problem;
+      check(problem[1] === text, `second stage error: ${problem}`);
+      await page.evaluate(() => { window.__alter = null; });
+    }
     await ready();
     // A solver error in a run ends it, and the next run starts from a new worker.
     await page.evaluate(() => {

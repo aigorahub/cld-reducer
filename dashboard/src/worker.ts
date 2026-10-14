@@ -4,7 +4,7 @@
 import { InvalidInputError, SolverError, loadSolver, reduceLetters,
          type CldReduction } from "../../js/src/index.js";
 import type { MeanRow, PairRow } from "./csv.js";
-import { SECOND_STAGE, type Method, type ResultMethod } from "./data.js";
+import { SECOND_STAGE, methodInfo, type Method, type ResultMethod } from "./data.js";
 import { seedAfter, simulate } from "./simulate.js";
 import { beforeDisplay, stagedSolve, type Before } from "./staged.js";
 
@@ -67,8 +67,8 @@ const isTimeout = (e: unknown): boolean => e instanceof SolverError && e.message
  * enumeration and model construction come before it. Table X counts the whole time, so a solve
  * whose whole time reaches the limit counts as not finished.
  */
-export async function timed(solve: () => Promise<CldReduction> | CldReduction,
-                            timeLimit: number): Promise<{ result: CldReduction | null; solve: Solve }> {
+export async function timed(solve: () => Promise<CldReduction> | CldReduction, timeLimit: number,
+                            method?: ResultMethod): Promise<{ result: CldReduction | null; solve: Solve }> {
   const t0 = performance.now();
   try {
     const result = await solve();
@@ -78,7 +78,11 @@ export async function timed(solve: () => Promise<CldReduction> | CldReduction,
     const s = result.stats;
     return { result, solve: { letters: s.numLettersAfter, assignments: s.assignmentsAfter, milliseconds } };
   } catch (e) {
-    if (!isTimeout(e)) throw e;
+    if (!isTimeout(e)) {
+      // Name the solve, so that a study error can be traced.
+      if (method && e instanceof Error) e.message = `${methodInfo(method).name}: ${e.message}`;
+      throw e;
+    }
     return { result: null, solve: { letters: null, assignments: null, milliseconds: performance.now() - t0 } };
   }
 }
@@ -92,13 +96,14 @@ export async function studyInstance(n: number, seed: number, timeLimit: number):
   }
   const means = e.groups.map((group, i) => ({ group, mean: e.means[i] }));
   const options = { means, timeLimit };
-  const c = await timed(() => reduceLetters(pairs, { ...options, method: "letter_minimum" }), timeLimit);
-  const sigma = await timed(() => reduceLetters(pairs, { ...options, method: "assignment_minimum" }), timeLimit);
+  const c = await timed(() => reduceLetters(pairs, { ...options, method: "letter_minimum" }), timeLimit, "letter_minimum");
+  const sigma = await timed(() => reduceLetters(pairs, { ...options, method: "assignment_minimum" }), timeLimit,
+                            "assignment_minimum");
   const missing = { result: null, solve: { letters: null, assignments: null, milliseconds: null } };
   const cs = c.result ? await timed(() => stagedSolve(pairs, means, "letter_then_assignment", c.result!.stats.objective,
-                                                      timeLimit), timeLimit) : missing;
+                                                      timeLimit), timeLimit, "letter_then_assignment") : missing;
   const sc = sigma.result ? await timed(() => stagedSolve(pairs, means, "assignment_then_letter", sigma.result!.stats.objective,
-                                                          timeLimit), timeLimit) : missing;
+                                                          timeLimit), timeLimit, "assignment_then_letter") : missing;
   const any = c.result ?? sigma.result;
   const before = beforeDisplay(pairs, means);
   return {
@@ -112,6 +117,8 @@ export async function studyInstance(n: number, seed: number, timeLimit: number):
 /** Answer one request. A run solves its methods in order and stops at the first error. */
 export async function handle(msg: Request, post: (reply: Reply) => void): Promise<void> {
   const id = msg.type === "load" ? null : msg.id;
+  // The study instance in progress, for an error message.
+  let where = "";
   try {
     if (msg.type === "load") {
       await loadSolver({ wasmBinary: msg.wasm });
@@ -139,14 +146,17 @@ export async function handle(msg: Request, post: (reply: Reply) => void): Promis
       const { sizes, count, firstSeed, timeLimit } = msg.study;
       for (const n of sizes) {
         for (let k = 0; k < count; k++) {
-          post({ type: "instance", id: msg.id, instance: await studyInstance(n, seedAfter(firstSeed, k), timeLimit) });
+          const seed = seedAfter(firstSeed, k);
+          where = `The instance with ${n} treatments and seed ${seed}: `;
+          post({ type: "instance", id: msg.id, instance: await studyInstance(n, seed, timeLimit) });
         }
+        where = "";
       }
       post({ type: "done", id: msg.id });
     }
   } catch (e) {
     const kind = e instanceof InvalidInputError ? "input" : e instanceof SolverError ? "solver" : "other";
-    post({ type: "error", id, kind, message: e instanceof Error ? e.message : String(e) });
+    post({ type: "error", id, kind, message: where + (e instanceof Error ? e.message : String(e)) });
   }
 }
 

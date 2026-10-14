@@ -257,8 +257,14 @@ function problemOf(kind: string, message: string): Problem {
         message, detail: explain(message) };
 }
 
-function onReply(r: Reply): void {
-  if (r.type === "ready") return;
+function onReply(reply: Reply): void {
+  if (reply.type === "ready") return;
+  // An error reply is used as text: a message that is not text, or an unknown kind, is a solver error.
+  const r: Reply = reply.type !== "error" ? reply : {
+    ...reply,
+    kind: (["input", "solver", "other"] as unknown[]).includes(reply.kind) ? reply.kind : "solver",
+    message: typeof reply.message === "string" ? reply.message : "The worker sent an error without a message.",
+  };
   if (beforeRequest && r.id === beforeRequest.id && (r.type === "before" || r.type === "error")) {
     const { version, input } = beforeRequest;
     beforeRequest = null;
@@ -331,7 +337,12 @@ function onReply(r: Reply): void {
   } else if (r.type === "done") {
     finishRun(run);
   } else if (r.type === "error") {
-    fail(problemOf(r.kind, r.message));
+    const problem = problemOf(r.kind, r.message);
+    // The first stage finished and passed its checks; the error is in the experimental second stage.
+    fail(run.stage === 2 && r.kind !== "input"
+      ? { ...problem, title: "The second stage stopped with an error",
+          detail: "The first stage finished. Clear \"Then minimize the other quantity\" to see its result." }
+      : problem);
     // After a solver error, the next run starts from a clean worker.
     if (r.kind !== "input") restartWorker();
   }

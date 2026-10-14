@@ -253,3 +253,18 @@ describe("timed", () => {
     expect(within.solve).toMatchObject({ letters: 2, assignments: 4 });
   });
 });
+
+describe("study errors", () => {
+  it("name the instance and the solve", async () => {
+    const run = hooks.run;
+    hooks.run = () => ({ status: "failed", text: "Solve error" });
+    try {
+      const replies = await ask({ type: "study", id: 4, study: { sizes: [30], count: 1, firstSeed: 1, timeLimit: 30 } });
+      const error = replies.find((r) => r.type === "error");
+      expect(error && error.type === "error" && error.message)
+        .toMatch(/^The instance with 30 treatments and seed 1: CLD-(C|sigma|C then CLD-sigma|sigma then CLD-C): .*Solve error$/);
+    } finally {
+      hooks.run = run;
+    }
+  });
+});
