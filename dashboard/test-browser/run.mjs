@@ -776,6 +776,29 @@ async function main() {
       check(await page.evaluate((n) => window.__workers.length === n + 1, workersBefore), `the worker runs on after a ${type} reply`);
       await page.evaluate(() => { window.__alter = null; });
     }
+    // A done before the last result stops the run and starts a new worker.
+    await page.evaluate(() => { window.__alterStart = (reply) => ({ type: "done", id: reply.id }); });
+    await ready();
+    const workersBeforeDone = await page.evaluate(() => window.__workers.length);
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > p")?.textContent === "A method has no result.");
+    check(await page.evaluate((n) => window.__workers.length === n + 1, workersBeforeDone), "the worker runs on after an early done");
+    await page.evaluate(() => { window.__alterStart = null; });
+    // A reply of another type for the display before reduction is not shown, and its request ends.
+    await page.evaluate(() => { window.__alterBefore = (reply) => ({ type: "start", id: reply.id, method: "letter_minimum", stage: 1 }); });
+    await ready();
+    await page.click('button.example:has-text("Table II graph")');
+    await wait(() => document.querySelector(".empty .hint")?.textContent === "The display before reduction is not available: " +
+      "The reply failed the check of the page. The worker sent a reply that the display before reduction does not have.");
+    await page.evaluate(() => { window.__alterBefore = null; });
+    // A display before reduction of an earlier input is not shown for a later input.
+    await page.click('button.example:has-text("Simple example")');
+    await wait(() => document.querySelector(".headline-title")?.textContent === "Before reduction: 3 letters and 9 assignments");
+    await page.fill("#means", "");
+    const staleTitle = await page.evaluate(() => document.querySelector(".headline-title")?.textContent ?? null);
+    check(staleTitle === null, `the display before reduction of an earlier input is shown: ${staleTitle}`);
+    await page.click('button.example:has-text("Simple example")');
+    await wait(() => document.querySelector(".headline-title")?.textContent === "Before reduction: 3 letters and 9 assignments");
     // A start or result reply with the right method but another stage stops the run.
     for (const which of ["start", "result"]) {
       await page.evaluate((which) => {
@@ -899,11 +922,13 @@ async function main() {
       ["seed", "The reply is not for the instance with 10 treatments and seed 1."],
       ["type", "The worker sent a reply that a study does not have."],
       ["ready", "The worker sent a reply that a study does not have."],
+      ["null", "The worker sent a reply that is not a record."],
     ]) {
       await page.evaluate((alter) => {
         window.__alterInstance = (reply) => {
           if (alter === "type") return { type: "start", id: reply.id, method: "letter_minimum", stage: 1 };
           if (alter === "ready") return { type: "ready", id: reply.id };
+          if (alter === "null") return null;
           if (alter === "order") reply.instance.solves.letter_then_assignment = { letters: 999, assignments: 999, milliseconds: 1 };
           else reply.instance.seed = 999;
           return reply;

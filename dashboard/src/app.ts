@@ -295,11 +295,13 @@ function onReply(value: unknown): void {
     ...reply, kind: "solver" as const,
     message: typeof reply.message === "string" ? reply.message : "The worker sent an error without a message.",
   };
-  if (beforeRequest && r.id === beforeRequest.id && (r.type === "before" || r.type === "error")) {
+  if (beforeRequest && r.id === beforeRequest.id) {
     const { version, input } = beforeRequest;
     beforeRequest = null;
-    const defect = r.type !== "before" ? null : safely(() =>
-      checkBefore(r.before, input.pairs, input.means) ?? (isTime(r.milliseconds) ? null : "The time of the reply is not a time."));
+    const defect = r.type === "error" ? null
+      : r.type !== "before" ? "The worker sent a reply that the display before reduction does not have."
+      : safely(() => checkBefore(r.before, input.pairs, input.means) ??
+                     (isTime(r.milliseconds) ? null : "The time of the reply is not a time."));
     // An error here comes from the input checks or from the clique limit, not from HiGHS, so the
     // worker stays. A new worker would ask for the same display and fail the same way.
     if (defect) {
@@ -308,7 +310,7 @@ function onReply(value: unknown): void {
     } else if (r.type === "before") {
       state.before = { ...r.before, milliseconds: r.milliseconds, version };
       state.beforeNote = null;
-    } else {
+    } else if (r.type === "error") {
       state.before = null;
       state.beforeNote = r.message;
     }
@@ -403,6 +405,7 @@ function beforeDefect(run: Run, reduction: CldReduction): string | null {
 function finishRun(run: Run): void {
   if (run.results.length !== run.expected.length) {
     fail({ title: "The solver returned an invalid result", message: "A method has no result.", detail: null });
+    restartWorker();
     return;
   }
   const before = state.before && state.before.version === run.inputVersion ? state.before : null;
