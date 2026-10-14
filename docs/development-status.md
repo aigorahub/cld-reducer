@@ -53,6 +53,15 @@ quantities for each result. It adds no solver code and no public API. It is not
 part of the R, Python, or npm archives, and it is not hosted or published.
 See [the dashboard README](../dashboard/README.md).
 
+The page also shows the letters before reduction next to the reduced letters,
+with the time of each solve. It has simulated experiments with the model of
+Gramm et al. (2007), which Section 8 of the 2012 paper uses, and a simulation
+study view. That model gives denser graphs than Table X of the 2012 paper
+reports; the dashboard README gives the figures. An experimental second stage
+minimizes the other quantity at the minimum of the first method. It reuses the
+package model and solver and exists in the page only. A change of the
+specification or of the R and Python packages for it is a separate decision.
+
 The first review of the page found four defects: a late file read could
 replace newer input, the reply check did not cover the display string, a long
 file name widened the narrow page, and one sentence on group order was inexact.

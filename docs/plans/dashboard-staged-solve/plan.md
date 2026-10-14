@@ -1,6 +1,6 @@
 # Staged solve, simulated examples, and before and after letters in the browser page
 
-Status: plan. Implementation follows in the same pull request.
+Status: implemented on branch `feat/dashboard-staged-solve`. The pull request holds the verification record.
 
 Workspace: `/Users/john/aigora/dev/cld-reducer-pre-model-certificate`.
 Branch: `feat/dashboard-staged-solve`.
@@ -40,9 +40,15 @@ Gramm et al. Section 3.2 of Gramm, Guo, Hüffner, Niedermeier, Piepho, and Schmi
   t = (m_i - m_j) / sqrt(s_ii + s_jj - 2 s_ij).
 
 The page generates such an experiment for a chosen n and seed. A seeded
-generator makes each example reproducible. A Node test compares the mean
-assignment count of the maximal display, and of the CLD-sigma result, with the
-MA and EA columns of Table X of the 2012 paper.
+generator makes each example reproducible.
+
+Result of the implementation: the graphs of this model are denser than Table X
+of the 2012 paper reports. The mean assignment count of the maximal display is
+18.0, 60.3, and 126.9 for n = 10, 20, and 30, against 14.38, 42.87, and 80.03 in
+Table X. No reading of the ambiguous parameters (variance or standard deviation,
+gamma scale or rate, gamma value as variance or standard deviation) matches.
+The page keeps the published model and states the difference. It does not fit
+parameters to Table X.
 
 The page also gets the graph of Table II of the 2012 paper. In that graph no
 letter-minimum display is assignment-minimum. The triticale data of Table VI

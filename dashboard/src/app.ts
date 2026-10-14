@@ -1,12 +1,18 @@
-// The page: read the input, run cld-reducer in a worker, and show the result.
+// The page: read the input, show the display before reduction, run cld-reducer
+// and the experimental second stage in a worker, and run the simulation study.
 
 import wasmGzipBase64 from "virtual:highs-wasm";
 import repository from "virtual:repository";
 import workerSource from "virtual:worker-source";
 import { DataError, MAX_CHARS, TEMPLATE_MEANS, TEMPLATE_PAIRS, parseMeans, parsePairs } from "./csv.js";
-import { EXAMPLES, METHODS, checkReduction, count, displayOf, duration, explain, meanText, methodInfo, resultsCsv,
-         resultsJson, sharedTokens, tokensOf, type Example, type Method, type MethodResult } from "./data.js";
-import type { Input, Reply, Request } from "./worker.js";
+import {
+  EXAMPLES, METHODS, SECOND_STAGE, TABLE_X, TABLE_XI, checkReduction, count, displayOf, duration, explain,
+  meanText, methodInfo, resultsCsv, resultsJson, sharedTokens, tokensOf,
+  type BeforeRows, type Example, type Method, type MethodResult, type ResultMethod,
+} from "./data.js";
+import { experimentCsv, simulate } from "./simulate.js";
+import { summarize, studyCsv, ALL_METHODS } from "./study.js";
+import type { Input, Instance, Reply, Request, Study } from "./worker.js";
 
 /** The matrix of shared letters has one cell for each pair, so it is shown for small inputs only. */
 const MAX_MATRIX_GROUPS = 30;
@@ -21,15 +27,32 @@ function $<T extends HTMLElement>(id: string): T {
 
 const ui = {
   status: $("solver-status"),
+  viewReduce: $<HTMLButtonElement>("view-reduce"),
+  viewStudy: $<HTMLButtonElement>("view-study"),
+  reduceView: $("reduce-view"),
+  studyView: $("study-view"),
   examples: $("examples"),
   exampleNote: $("example-note"),
+  simN: $<HTMLInputElement>("sim-n"),
+  simSeed: $<HTMLInputElement>("sim-seed"),
+  simGenerate: $<HTMLButtonElement>("sim-generate"),
   pairs: $<HTMLTextAreaElement>("pairs"),
   means: $<HTMLTextAreaElement>("means"),
+  staged: $<HTMLInputElement>("staged"),
   run: $<HTMLButtonElement>("run"),
   compare: $<HTMLButtonElement>("compare"),
   reset: $<HTMLButtonElement>("reset"),
   runHint: $("run-hint"),
   results: $("results"),
+  studyFrom: $<HTMLInputElement>("study-from"),
+  studyTo: $<HTMLInputElement>("study-to"),
+  studyStep: $<HTMLInputElement>("study-step"),
+  studyCount: $<HTMLInputElement>("study-count"),
+  studySeed: $<HTMLInputElement>("study-seed"),
+  studyLimit: $<HTMLInputElement>("study-limit"),
+  studyRun: $<HTMLButtonElement>("study-run"),
+  studyHint: $("study-hint"),
+  studyResults: $("study-results"),
 };
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string,
@@ -53,10 +76,14 @@ function button(className: string, text: string, parent: Element, onClick: () =>
 interface Run {
   id: number;
   methods: Method[];
+  /** Every result that the run must return, in order. */
+  expected: ResultMethod[];
   input: Input;
+  inputVersion: number;
   source: string;
   results: MethodResult[];
-  current: Method;
+  current: ResultMethod;
+  stage: 1 | 2;
   currentStart: number;
 }
 
@@ -65,6 +92,7 @@ interface Shown {
   results: MethodResult[];
   input: Input;
   source: string;
+  before: BeforeRows | null;
 }
 
 interface Problem {
@@ -73,19 +101,42 @@ interface Problem {
   detail: string | null;
 }
 
+interface StudyRun {
+  id: number;
+  study: Study;
+  total: number;
+  instances: Instance[];
+  status: "running" | "done" | "cancelled" | "error";
+  message: string | null;
+  started: number;
+  ended: number | null;
+}
+
 const state = {
+  view: "reduce" as "reduce" | "study",
   solver: "loading" as "loading" | "ready" | "failed",
   solverMessage: "",
   example: null as Example | null,
-  /** Name of the input for the result files: an example, a file, or pasted text. */
+  /** Name of the input for the result files. */
   source: "Pasted text",
+  /** A note under the examples for a simulated experiment. */
+  sourceNote: null as string | null,
+  /** Each change of the input text gets a new number. */
+  inputVersion: 0,
+  before: null as (BeforeRows & { version: number }) | null,
+  /** Why the page shows no display before reduction. */
+  beforeNote: null as string | null,
   run: null as Run | null,
   shown: null as Shown | null,
   problem: null as Problem | null,
   notice: null as string | null,
+  study: null as StudyRun | null,
 };
 
 let nextId = 1;
+let beforeId = 0;
+let beforeVersion = -1;
+let beforeTimer: ReturnType<typeof setTimeout> | undefined;
 
 // Each change of a field gets a new number. A file read that ends after a
 // later change of its field is then out of date, and the page drops it.
@@ -97,6 +148,10 @@ function changed(...areas: HTMLTextAreaElement[]): void {
 function selectedMethod(): Method {
   const checked = document.querySelector<HTMLInputElement>('input[name="method"]:checked');
   return checked?.value === "assignment_minimum" ? "assignment_minimum" : "letter_minimum";
+}
+
+function currentBefore(): BeforeRows | null {
+  return state.before && state.before.version === state.inputVersion ? state.before : null;
 }
 
 // Solver
@@ -121,6 +176,8 @@ function solverFailed(message: string): void {
 /** Start a worker and load the solver in it. Replies of any earlier worker are ignored. */
 function startWorker(): void {
   state.solver = "loading";
+  // A request to the old worker is lost; ask the new one again.
+  beforeVersion = -1;
   let w: Worker;
   try {
     w = new Worker(workerUrl, { name: "cld-reducer-solver" });
@@ -137,6 +194,7 @@ function startWorker(): void {
     if (r.type === "ready") {
       ready = true;
       state.solver = "ready";
+      if (!currentBefore()) requestBefore();
       render();
     } else if (r.type === "error") {
       w.terminate();
@@ -149,8 +207,9 @@ function startWorker(): void {
     w.terminate();
     const message = e.message || "The solver worker stopped.";
     if (!ready) { solverFailed(message); return; }
-    // The worker failed after it started: end the run and start a new worker.
+    // The worker failed after it started: end the work and start a new worker.
     if (state.run) fail({ title: "The solver stopped", message, detail: null });
+    if (state.study?.status === "running") endStudy("error", message);
     startWorker();
     render();
   };
@@ -158,7 +217,7 @@ function startWorker(): void {
   w.postMessage({ type: "load", wasm: copy } satisfies Request, [copy.buffer]);
 }
 
-/** Stop the solve in progress: terminate the worker and start a new one. */
+/** Stop the work in progress: terminate the worker and start a new one. */
 function restartWorker(): void {
   worker?.terminate();
   worker = null;
@@ -183,17 +242,42 @@ function fail(problem: Problem): void {
   state.problem = problem;
 }
 
+function problemOf(kind: string, message: string): Problem {
+  return kind === "input"
+    ? { title: "The package rejected the input", message, detail: explain(message) }
+    : { title: kind === "solver" ? "The solver stopped with an error" : "The run stopped with an error",
+        message, detail: explain(message) };
+}
+
 function onReply(r: Reply): void {
+  if (r.type === "ready") return;
+  if (r.id === beforeId && (r.type === "before" || r.type === "error")) {
+    if (r.type === "before") {
+      state.before = { ...r.before, milliseconds: r.milliseconds, version: beforeVersion };
+      state.beforeNote = null;
+    } else {
+      state.before = null;
+      state.beforeNote = r.message;
+    }
+    render();
+    return;
+  }
+  if (state.study && r.id === state.study.id) {
+    if (state.study.status === "running") onStudyReply(r);
+    return;
+  }
   const run = state.run;
   // A reply of a run that was cancelled or replaced has another id.
-  if (!run || r.type === "ready" || (r.id !== null && r.id !== run.id)) return;
+  if (!run || r.id !== run.id) return;
   if (r.type === "start") {
     run.current = r.method;
+    run.stage = r.stage;
     run.currentStart = performance.now();
   } else if (r.type === "result") {
-    const expected = run.methods[run.results.length];
+    const expected = run.expected[run.results.length];
     const groups = run.results[0]?.reduction.groups;
-    const defect = r.method !== expected ? "The reply is for another method."
+    const stage = METHODS.some((m) => m.id === r.method) ? 1 : 2;
+    const defect = r.method !== expected || r.stage !== stage ? "The reply is for another method."
       : checkReduction(r.reduction, r.method)
       ?? (groups && JSON.stringify(groups) !== JSON.stringify(r.reduction.groups)
         ? "The methods returned different groups." : null);
@@ -202,27 +286,35 @@ function onReply(r: Reply): void {
       // The worker can hold more replies of this run. Start again from a clean worker.
       restartWorker();
     } else {
-      run.results.push({ method: r.method, reduction: r.reduction, milliseconds: r.milliseconds });
+      run.results.push({ method: r.method, stage: r.stage, reduction: r.reduction, milliseconds: r.milliseconds });
     }
   } else if (r.type === "done") {
-    if (run.results.length === run.methods.length) {
-      state.shown = { results: run.results, input: run.input, source: run.source };
-      state.run = null;
-    } else {
-      fail({ title: "The solver returned an invalid result", message: "A method has no result.", detail: null });
-    }
-  } else {
-    fail(r.kind === "input"
-      ? { title: "The package rejected the input", message: r.message, detail: explain(r.message) }
-      : { title: r.kind === "solver" ? "The solver stopped with an error" : "The run stopped with an error",
-          message: r.message, detail: explain(r.message) });
+    finishRun(run);
+  } else if (r.type === "error") {
+    fail(problemOf(r.kind, r.message));
   }
   render();
 }
 
+function finishRun(run: Run): void {
+  if (run.results.length !== run.expected.length) {
+    fail({ title: "The solver returned an invalid result", message: "A method has no result.", detail: null });
+    return;
+  }
+  const before = state.before && state.before.version === run.inputVersion ? state.before : null;
+  const stats = run.results[0].reduction.stats;
+  if (before && (before.letters !== stats.numLettersBefore || before.assignments !== stats.assignmentsBefore)) {
+    fail({ title: "The solver returned an invalid result", detail: "The page shows no result.",
+           message: "The display before reduction does not match the statistics of the package." });
+    return;
+  }
+  state.shown = { results: run.results, input: run.input, source: run.source, before };
+  state.run = null;
+}
+
 // Input
 
-/** The input or the method changed: stop a run and remove what the page shows. */
+/** The method or the second stage changed: stop a run and remove the result. */
 function invalidate(): void {
   const had = state.run !== null || state.shown !== null;
   if (state.run) {
@@ -235,15 +327,68 @@ function invalidate(): void {
   render();
 }
 
-function loadExample(example: Example): void {
-  changed(ui.pairs, ui.means);
-  ui.pairs.value = repository.examples[example.pairsFile];
-  ui.means.value = example.meansFile ? repository.examples[example.meansFile] : "";
-  state.example = example;
-  state.source = example.title;
+/** The input text changed: also compute the display before reduction again. */
+function inputChanged(): void {
+  state.inputVersion++;
+  state.beforeNote = null;
+  clearTimeout(beforeTimer);
+  beforeTimer = setTimeout(requestBefore, 250);
   invalidate();
+}
+
+function readInput(): Input {
+  return { pairs: parsePairs(ui.pairs.value), means: parseMeans(ui.means.value) };
+}
+
+/** Ask the worker for the display before reduction of the current input, once for each version. */
+function requestBefore(): void {
+  clearTimeout(beforeTimer);
+  if (state.solver !== "ready" || !worker || beforeVersion === state.inputVersion) return;
+  beforeVersion = state.inputVersion;
+  let input: Input;
+  try {
+    input = readInput();
+  } catch (e) {
+    state.before = null;
+    state.beforeNote = e instanceof Error ? e.message : String(e);
+    render();
+    return;
+  }
+  beforeId = nextId++;
+  worker.postMessage({ type: "before", id: beforeId, input } satisfies Request);
+}
+
+function setInput(pairs: string, means: string, source: string, example: Example | null, note: string | null): void {
+  changed(ui.pairs, ui.means);
+  ui.pairs.value = pairs;
+  ui.means.value = means;
+  state.example = example;
+  state.source = source;
+  state.sourceNote = note;
+  inputChanged();
   state.notice = null;
   render();
+}
+
+function loadExample(example: Example): void {
+  const pairs = example.pairsText ?? repository.examples[example.pairsFile!];
+  setInput(pairs, example.meansFile ? repository.examples[example.meansFile] : "", example.title, example, null);
+}
+
+function wholeNumber(input: HTMLInputElement, min: number, max: number, fallback: number): number {
+  const v = Number(input.value);
+  const n = input.value.trim() !== "" && Number.isInteger(v) ? Math.min(max, Math.max(min, v)) : fallback;
+  input.value = String(n);
+  return n;
+}
+
+function generate(): void {
+  const n = wholeNumber(ui.simN, 2, 80, 20);
+  const seed = wholeNumber(ui.simSeed, 1, 2 ** 31 - 1, 1);
+  const files = experimentCsv(simulate(n, seed));
+  setInput(files.pairs, files.means, `Simulated, ${n} treatments, seed ${seed}`, null,
+           `Simulated experiment with ${n} treatments and seed ${seed}. The next Generate uses seed ${seed + 1}.`);
+  ui.simSeed.value = String(seed + 1);
 }
 
 async function loadFile(file: File, target: HTMLTextAreaElement): Promise<void> {
@@ -269,8 +414,9 @@ async function loadFile(file: File, target: HTMLTextAreaElement): Promise<void> 
   if (fieldChange.get(target) !== change) return;
   target.value = text;
   state.example = null;
+  state.sourceNote = null;
   if (target === ui.pairs) state.source = file.name;
-  invalidate();
+  inputChanged();
 }
 
 function download(name: string, text: string, type: string): void {
@@ -284,10 +430,14 @@ function download(name: string, text: string, type: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function slug(text: string): string {
+  return text.replace(/\.[^.]+$/, "").replace(/[^\w-]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "result";
+}
+
 // Run
 
 function startRun(methods: Method[]): void {
-  if (state.solver !== "ready" || state.run) return;
+  if (state.solver !== "ready" || state.run || state.study?.status === "running") return;
   state.shown = null;
   state.problem = null;
   state.notice = null;
@@ -303,9 +453,13 @@ function startRun(methods: Method[]): void {
     render();
     return;
   }
-  state.run = { id: nextId++, methods, input, source: state.source, results: [], current: methods[0],
-                currentStart: performance.now() };
-  worker!.postMessage({ type: "run", id: state.run.id, input, methods } satisfies Request);
+  // The display before reduction goes first, so that it is ready with the result.
+  requestBefore();
+  const staged = ui.staged.checked;
+  const expected = methods.flatMap((m): ResultMethod[] => (staged ? [m, SECOND_STAGE[m]] : [m]));
+  state.run = { id: nextId++, methods, expected, input, inputVersion: state.inputVersion, source: state.source,
+                results: [], current: methods[0], stage: 1, currentStart: performance.now() };
+  worker!.postMessage({ type: "run", id: state.run.id, input, methods, staged } satisfies Request);
   render();
 }
 
@@ -323,7 +477,62 @@ function reset(): void {
     restartWorker();
   }
   document.querySelector<HTMLInputElement>('input[name="method"][value="letter_minimum"]')!.checked = true;
+  ui.staged.checked = true;
   loadExample(EXAMPLES[0]);
+}
+
+// Study
+
+function studyPlan(): Study | string {
+  const from = wholeNumber(ui.studyFrom, 2, 80, 10);
+  const to = wholeNumber(ui.studyTo, 2, 80, 45);
+  const step = wholeNumber(ui.studyStep, 1, 40, 5);
+  const countEach = wholeNumber(ui.studyCount, 1, 1000, 10);
+  const firstSeed = wholeNumber(ui.studySeed, 1, 2 ** 31 - 1, 1);
+  const timeLimit = wholeNumber(ui.studyLimit, 1, 600, 30);
+  if (from > to) return "The first number of treatments must not be larger than the last.";
+  const sizes: number[] = [];
+  for (let n = from; n <= to; n += step) sizes.push(n);
+  return { sizes, count: countEach, firstSeed, timeLimit };
+}
+
+function startStudy(): void {
+  if (state.solver !== "ready" || state.run || state.study?.status === "running") return;
+  const study = studyPlan();
+  if (typeof study === "string") {
+    ui.studyHint.textContent = study;
+    return;
+  }
+  state.study = { id: nextId++, study, total: study.sizes.length * study.count, instances: [], status: "running",
+                  message: null, started: performance.now(), ended: null };
+  worker!.postMessage({ type: "study", id: state.study.id, study } satisfies Request);
+  render();
+}
+
+function endStudy(status: StudyRun["status"], message: string | null): void {
+  if (!state.study) return;
+  state.study.status = status;
+  state.study.message = message;
+  state.study.ended = performance.now();
+}
+
+function onStudyReply(r: Reply): void {
+  if (r.type === "instance") state.study!.instances.push(r.instance);
+  else if (r.type === "done") endStudy("done", null);
+  else if (r.type === "error") endStudy("error", r.message);
+  render();
+}
+
+function cancelStudy(): void {
+  if (state.study?.status !== "running") return;
+  endStudy("cancelled", null);
+  restartWorker();
+  render();
+}
+
+function showView(view: "reduce" | "study"): void {
+  state.view = view;
+  render();
 }
 
 // Rendering
@@ -332,7 +541,11 @@ function renderStatus(): void {
   ui.status.classList.toggle("is-error", state.solver === "failed");
   ui.status.textContent = state.solver === "failed" ? `The solver could not start: ${state.solverMessage}`
     : state.solver === "loading" ? "Loading the solver…"
-    : state.run ? "Solving…" : "Solver ready";
+    : state.run || state.study?.status === "running" ? "Solving…" : "Solver ready";
+  ui.reduceView.hidden = state.view !== "reduce";
+  ui.studyView.hidden = state.view !== "study";
+  ui.viewReduce.setAttribute("aria-pressed", String(state.view === "reduce"));
+  ui.viewStudy.setAttribute("aria-pressed", String(state.view === "study"));
 }
 
 const exampleButtons = new Map<string, HTMLButtonElement>();
@@ -348,7 +561,7 @@ function buildExamples(): void {
 function renderControls(): void {
   for (const [id, b] of exampleButtons) b.setAttribute("aria-pressed", String(state.example?.id === id));
   const example = state.example;
-  ui.exampleNote.hidden = !example;
+  ui.exampleNote.hidden = !example && !state.sourceNote;
   ui.exampleNote.replaceChildren();
   if (example) {
     ui.exampleNote.append(`${example.description} Source: `);
@@ -360,35 +573,67 @@ function renderControls(): void {
       a.rel = "noopener";
     });
     ui.exampleNote.append(".");
+  } else if (state.sourceNote) {
+    ui.exampleNote.textContent = state.sourceNote;
   }
 
   const running = state.run !== null;
+  const studying = state.study?.status === "running";
   ui.run.textContent = running ? "Cancel" : "Run";
   ui.run.classList.toggle("is-cancel", running);
-  ui.run.disabled = !running && state.solver !== "ready";
-  ui.compare.disabled = running || state.solver !== "ready";
+  ui.run.disabled = !running && (state.solver !== "ready" || studying);
+  ui.compare.disabled = running || studying || state.solver !== "ready";
   ui.runHint.textContent = state.solver === "failed" ? "The solver is not available."
+    : studying ? "The simulation study is running."
     : running ? "Cancel stops the solver." : state.solver === "loading" ? "Waiting for the solver…" : "";
+
+  ui.studyRun.textContent = studying ? "Cancel" : "Run the study";
+  ui.studyRun.classList.toggle("is-cancel", studying);
+  ui.studyRun.disabled = !studying && (state.solver !== "ready" || running);
 }
 
 function renderResults(): void {
   const host = ui.results;
   host.replaceChildren();
   if (state.problem) renderProblem(host, state.problem);
+  const before = currentBefore();
   if (state.run) {
     renderRunning(host, state.run);
   } else if (state.shown) {
     renderShown(host, state.shown);
-  } else if (!state.problem) {
+  } else {
     if (state.notice) el("p", "notice", state.notice, host).setAttribute("role", "status");
-    const empty = el("div", "empty", undefined, host);
-    el("h2", undefined, "Reduce a compact letter display", empty);
-    el("p", undefined,
-       "Give one row for each pair of groups, with the decision of your analysis: significant or not significant. " +
-       "Choose a method, then press Run.", empty);
-    el("p", undefined,
-       "Two groups share a letter exactly when they are not significantly different. " +
-       "The solve runs in this browser. The data does not leave this computer.", empty);
+    if (before) {
+      const head = el("section", "headline", undefined, host);
+      el("h2", "headline-title", `Before reduction: ${count(before.letters, "letter", "letters")} and ` +
+         `${count(before.assignments, "assignment", "assignments")}`, head);
+      el("p", "headline-text", "One letter for each maximal clique. Press Run to reduce it. The reduced letters appear next to these.", head);
+      el("p", "muted", `${state.source}. Computed in ${duration(before.milliseconds)} in this browser.`, head);
+    } else if (!state.problem) {
+      const empty = el("div", "empty", undefined, host);
+      el("h2", undefined, "Reduce a compact letter display", empty);
+      el("p", undefined,
+         "Give one row for each pair of groups, with the decision of your analysis: significant or not significant. " +
+         "Choose a method, then press Run.", empty);
+      el("p", undefined,
+         "Two groups share a letter exactly when they are not significantly different. " +
+         "The solve runs in this browser. The data does not leave this computer.", empty);
+      if (state.beforeNote) el("p", "hint", `The display before reduction is not available: ${state.beforeNote}`, empty);
+    }
+  }
+  const shownBefore = state.shown ? state.shown.before : before;
+  const results = state.shown?.results ?? [];
+  const means = state.shown ? state.shown.input.means : state.run ? state.run.input.means : meansForBefore();
+  if (shownBefore || results.length) renderLetters(host, shownBefore, results, means);
+  if (state.shown) renderMatrices(host, state.shown);
+}
+
+/** The means of the current input for the before column, when they can be read. */
+function meansForBefore(): Input["means"] {
+  try {
+    return parseMeans(ui.means.value);
+  } catch {
+    return null;
   }
 }
 
@@ -408,87 +653,115 @@ function renderProblem(host: HTMLElement, problem: Problem): void {
 function renderRunning(host: HTMLElement, run: Run): void {
   const head = el("section", "headline", undefined, host);
   el("h2", "headline-title", `Solving with ${methodInfo(run.current).name}…`, head);
-  const step = run.methods.length > 1 ? `Method ${run.results.length + 1} of ${run.methods.length}. ` : "";
-  const p = el("p", "muted", step, head);
+  const step = run.expected.length > 1 ? `Step ${run.results.length + 1} of ${run.expected.length}. ` : "";
+  const p = el("p", "muted", `${step}Stage ${run.stage}. `, head);
   const time = el("span", "live-time", duration(performance.now() - run.currentStart), p);
   time.dataset.start = String(run.currentStart);
 }
 
+/** The result of each method after its last stage. */
+const finalsOf = (results: readonly MethodResult[]): MethodResult[] =>
+  results.filter((r, k) => r.stage === 2 || results[k + 1]?.stage !== 2);
+
+function removal(r: MethodResult): string {
+  const s = r.reduction.stats;
+  return `The reduction removes ${count(s.assignmentsBefore - s.assignmentsAfter, "assignment", "assignments")} ` +
+    `(${s.reductionPct.toFixed(1)}%) and ${count(s.numLettersBefore - s.numLettersAfter, "letter", "letters")}.`;
+}
+
 function renderShown(host: HTMLElement, shown: Shown): void {
   const { results } = shown;
-  const first = results[0].reduction;
-  const names = results.map((r) => methodInfo(r.method).name);
-  const sentence = (r: MethodResult): string => {
+  const finals = finalsOf(results);
+  const both = (r: MethodResult): string => {
     const s = r.reduction.stats;
     return `${count(s.numLettersAfter, "letter", "letters")} and ${count(s.assignmentsAfter, "assignment", "assignments")}`;
   };
-
+  const s0 = results[0].reduction.stats;
+  const beforeText = `Before reduction: ${count(s0.numLettersBefore, "letter", "letters")} and ` +
+    `${count(s0.assignmentsBefore, "assignment", "assignments")}.`;
   const head = el("section", "headline", undefined, host);
-  if (results.length === 1) {
-    el("h2", "headline-title", `${names[0]}: ${sentence(results[0])}`, head);
+  if (finals.length === 1) {
+    const last = finals[0];
+    el("h2", "headline-title", `${methodInfo(last.method).name}: ${both(last)}`, head);
+    el("p", "headline-text", `${beforeText} ${removal(last)}`, head);
+    el("p", "headline-text", results.length === 2
+      ? `Stage 1, ${methodInfo(results[0].method).name}, took ${duration(results[0].milliseconds)}. ` +
+        `Stage 2 took ${duration(results[1].milliseconds)}. Both ran in this browser.`
+      : `${methodInfo(last.method).name} took ${duration(last.milliseconds)} in this browser.`, head);
   } else {
-    el("h2", "headline-title", `${names[0]} and ${names[1]}`, head);
-    el("p", "headline-text", results.map((r, k) => `${names[k]} uses ${sentence(r)}.`).join(" "), head);
+    el("h2", "headline-title", results.length > 2 ? "CLD-C and CLD-sigma, each with a second stage" : "CLD-C and CLD-sigma", head);
+    el("p", "headline-text", `${beforeText} ${finals.map((r) => `${methodInfo(r.method).name}: ${both(r)}.`).join(" ")}`, head);
+    el("p", "headline-text", `All solves together took ${duration(results.reduce((t, r) => t + r.milliseconds, 0))} in this browser.`, head);
   }
-  const s = first.stats;
-  const pairs = s.numGroups * (s.numGroups - 1) / 2;
+  const pairs = s0.numGroups * (s0.numGroups - 1) / 2;
   el("p", "muted",
-     `${shown.source}: ${count(s.numGroups, "group", "groups")} and ${count(pairs, "pair", "pairs")}. ` +
-     `${count(s.numEdges, "pair is", "pairs are")} not significantly different.`, head);
+     `${shown.source}: ${count(s0.numGroups, "group", "groups")} and ${count(pairs, "pair", "pairs")}. ` +
+     `${count(s0.numEdges, "pair is", "pairs are")} not significantly different.`, head);
   const actions = el("div", "actions", undefined, head);
-  const slug = shown.source.replace(/\.[^.]+$/, "").replace(/[^\w-]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "result";
+  const name = slug(shown.source);
   button("button-secondary", "Download CSV", actions,
-         () => download(`cld-${slug}.csv`, resultsCsv(results, shown.input.means), "text/csv"));
-  button("button-secondary", "Download JSON", actions, () => download(`cld-${slug}.json`,
+         () => download(`cld-${name}.csv`, resultsCsv(results, shown.input.means, shown.before), "text/csv"));
+  button("button-secondary", "Download JSON", actions, () => download(`cld-${name}.json`,
          resultsJson(results, { source: shown.source, pairs: shown.input.pairs.length, means: shown.input.means },
-                     repository.version), "application/json"));
+                     repository.version, shown.before), "application/json"));
 
-  // Summary: one column for each method, so that both quantities are side by side.
+  // Summary: one column before reduction and one for each result, so that both quantities are side by side.
   const summary = el("section", "panel-block", undefined, host);
   el("h3", undefined, "Summary", summary);
   const table = el("table", "data-table summary-table", undefined, el("div", "table-wrap", undefined, summary));
   const headRow = el("tr", undefined, undefined, el("thead", undefined, undefined, table));
   el("td", undefined, undefined, headRow);
-  for (const name of names) el("th", "num", name, headRow).scope = "col";
+  const before = shown.before;
+  if (before) el("th", "num", "Before", headRow).scope = "col";
+  for (const r of results) el("th", "num", methodInfo(r.method).name, headRow).scope = "col";
   const body = el("tbody", undefined, undefined, table);
-  const line = (label: string, value: (r: MethodResult) => string): void => {
+  const line = (label: string, beforeText: string, value: (r: MethodResult) => string, cls = "num"): void => {
     const tr = el("tr", undefined, undefined, body);
     el("th", undefined, label, tr).scope = "row";
-    for (const r of results) el("td", "num", value(r), tr);
+    if (before) el("td", cls, beforeText, tr);
+    for (const r of results) el("td", cls, value(r), tr);
   };
-  line("Minimizes", (r) => methodInfo(r.method).minimizes);
-  line("Objective value", (r) => String(r.reduction.stats.objective));
-  line("Distinct letters", (r) => String(r.reduction.stats.numLettersAfter));
-  line("Assignments", (r) => String(r.reduction.stats.assignmentsAfter));
-  line("Letters before reduction", (r) => String(r.reduction.stats.numLettersBefore));
-  line("Assignments before reduction", (r) => String(r.reduction.stats.assignmentsBefore));
-  line("Relationships preserved", (r) => r.reduction.relationshipPreserved ? "Yes" : "No");
-  line("Time in this browser", (r) => duration(r.milliseconds));
+  line("Minimizes", "One letter for each maximal clique", (r) => methodInfo(r.method).minimizes, "num wrap");
+  line("Distinct letters", before ? String(before.letters) : "", (r) => String(r.reduction.stats.numLettersAfter));
+  line("Assignments", before ? String(before.assignments) : "", (r) => String(r.reduction.stats.assignmentsAfter));
+  line("Assignments removed", "", (r) => {
+    const s = r.reduction.stats;
+    return `${s.assignmentsBefore - s.assignmentsAfter} (${s.reductionPct.toFixed(1)}%)`;
+  });
+  line("Letters removed", "", (r) => String(r.reduction.stats.numLettersBefore - r.reduction.stats.numLettersAfter));
+  line("Relationships preserved", "", (r) => (r.reduction.relationshipPreserved ? "Yes" : "No"));
+  line("Time in this browser", before ? duration(before.milliseconds) : "", (r) => duration(r.milliseconds));
   el("p", "hint",
-     "\"Before reduction\" is the display with one letter for each maximal clique. " +
-     "The package checks that the letters give back every input decision.", summary);
+     "Stage 2 starts from the minimum of stage 1 and keeps it. Its time covers the second solve only. " +
+     "The relationship check gives back every input decision from the letters.", summary);
+}
 
-  // Letters of each group.
-  const letters = el("section", "panel-block", undefined, host);
-  el("h3", undefined, "Letters", letters);
-  const lettersTable = el("table", "data-table letters-table", undefined, el("div", "table-wrap", undefined, letters));
-  const lettersHead = el("tr", undefined, undefined, el("thead", undefined, undefined, lettersTable));
-  el("th", undefined, "Group", lettersHead).scope = "col";
-  const means = shown.input.means === null ? null : new Map(shown.input.means.map((m) => [m.group, m.mean]));
-  if (means) el("th", "num", "Mean", lettersHead).scope = "col";
-  for (const name of names) el("th", undefined, name, lettersHead).scope = "col";
-  const lettersBody = el("tbody", undefined, undefined, lettersTable);
-  first.rows.forEach((row, i) => {
-    const tr = el("tr", undefined, undefined, lettersBody);
+function renderLetters(host: HTMLElement, before: BeforeRows | null, results: readonly MethodResult[],
+                       means: Input["means"]): void {
+  const section = el("section", "panel-block", undefined, host);
+  el("h3", undefined, results.length ? "Letters before and after reduction" : "Letters before reduction", section);
+  const table = el("table", "data-table letters-table", undefined, el("div", "table-wrap", undefined, section));
+  const headRow = el("tr", undefined, undefined, el("thead", undefined, undefined, table));
+  el("th", undefined, "Group", headRow).scope = "col";
+  const meanOf = means === null ? null : new Map(means.map((m) => [m.group, m.mean]));
+  if (meanOf) el("th", "num", "Mean", headRow).scope = "col";
+  if (before) el("th", undefined, "Before", headRow).scope = "col";
+  for (const r of results) el("th", undefined, methodInfo(r.method).name, headRow).scope = "col";
+  const body = el("tbody", undefined, undefined, table);
+  const rows = before?.rows ?? results[0].reduction.rows;
+  rows.forEach((row, i) => {
+    const tr = el("tr", undefined, undefined, body);
     el("th", "label", row.group, tr).scope = "row";
-    if (means) el("td", "num", meanText(means.get(row.group)!), tr);
+    if (meanOf) el("td", "num", meanOf.has(row.group) ? meanText(meanOf.get(row.group)!) : "", tr);
+    if (before) el("td", "letters before", before.rows[i].letters, tr);
     for (const r of results) el("td", "letters", r.reduction.rows[i].letters, tr);
   });
+}
 
-  // Letters that each pair shares.
-  for (const [k, r] of results.entries()) {
+function renderMatrices(host: HTMLElement, shown: Shown): void {
+  for (const r of finalsOf(shown.results)) {
     const section = el("section", "panel-block", undefined, host);
-    el("h3", undefined, `Shared letters, ${names[k]}`, section);
+    el("h3", undefined, `Shared letters, ${methodInfo(r.method).name}`, section);
     const groups = r.reduction.groups;
     if (groups.length > MAX_MATRIX_GROUPS) {
       el("p", "muted", `The page shows this matrix for up to ${MAX_MATRIX_GROUPS} groups. This input has ${groups.length}.`, section);
@@ -522,39 +795,125 @@ function renderShown(host: HTMLElement, shown: Shown): void {
   }
 }
 
+function studyHint(run: StudyRun): string {
+  const done = run.instances.length;
+  const elapsed = (run.ended ?? performance.now()) - run.started;
+  return run.status === "running" ? `Instance ${done + 1} of ${run.total}. ${duration(elapsed)} so far.`
+    : run.status === "cancelled" ? `Cancelled after ${done} of ${run.total} instances.`
+    : run.status === "error" ? `The study stopped with an error after ${done} instances: ${run.message}`
+    : `Done: ${run.total} instances in ${duration(elapsed)}.`;
+}
+
+function renderStudy(): void {
+  const run = state.study;
+  const host = ui.studyResults;
+  host.replaceChildren();
+  if (!run) {
+    ui.studyHint.textContent = state.solver === "ready" ? "" : "Waiting for the solver…";
+    return;
+  }
+  ui.studyHint.textContent = studyHint(run);
+  const done = run.instances.length;
+  if (!done) return;
+
+  const rows = summarize(run.instances);
+  const allTimes = run.instances.flatMap((i) => ALL_METHODS.map((m) => i.solves[m].milliseconds));
+  const finished = rows.reduce((t, r) => t + r.finished, 0);
+  const head = el("section", "headline", undefined, host);
+  el("p", "headline-text",
+     `${finished} of ${count(done, "instance", "instances")} finished all four solves within the limit of ` +
+     `${run.study.timeLimit} s. The slowest solve took ${duration(Math.max(...allTimes))}.`, head);
+  const actions = el("div", "actions", undefined, head);
+  button("button-secondary", "Download instances (CSV)", actions,
+         () => download("cld-simulation-study.csv", studyCsv(run.instances), "text/csv"));
+
+  const fixed = (v: number | null): string => (v === null ? "" : v.toFixed(1));
+  const table = (title: string, note: string, heads: string[], body: string[][]): void => {
+    const section = el("section", "panel-block", undefined, host);
+    el("h3", undefined, title, section);
+    el("p", "hint", note, section);
+    const t = el("table", "data-table study-table", undefined, el("div", "table-wrap", undefined, section));
+    const tr = el("tr", undefined, undefined, el("thead", undefined, undefined, t));
+    heads.forEach((h, k) => { el("th", k === 0 ? undefined : "num", h, tr).scope = "col"; });
+    const tb = el("tbody", undefined, undefined, t);
+    for (const row of body) {
+      const r = el("tr", undefined, undefined, tb);
+      row.forEach((cell, k) => { if (k === 0) el("th", undefined, cell, r).scope = "row"; else el("td", "num", cell, r); });
+    }
+  };
+  table("Letters and assignments", "Means over the instances of each size. A solve that did not finish within the limit is left out of its mean.",
+        ["Treatments", "Instances", "Letters before", "Assignments before", "CLD-C letters", "CLD-sigma assignments",
+         "Assignments removed by CLD-sigma", "CLD-C then CLD-sigma assignments", "CLD-sigma then CLD-C letters",
+         "Letter minimum not assignment minimum"],
+        rows.map((r) => [String(r.n), String(r.instances), fixed(r.lettersBefore), fixed(r.assignmentsBefore),
+          fixed(r.value.letter_minimum), fixed(r.value.assignment_minimum),
+          r.value.assignment_minimum === null ? "" : `${(100 * (1 - r.value.assignment_minimum / r.assignmentsBefore)).toFixed(1)}%`,
+          fixed(r.value.letter_then_assignment), fixed(r.value.assignment_then_letter), String(r.tradeOff)]));
+  table("Time in this browser", "Mean and maximum time of each solve. A stage 2 time covers the second solve only.",
+        ["Treatments", "CLD-C mean", "CLD-C max", "CLD-sigma mean", "CLD-sigma max", "Stage 2 after CLD-C mean",
+         "Stage 2 after CLD-C max", "Stage 2 after CLD-sigma mean", "Stage 2 after CLD-sigma max",
+         "All four solves within the limit"],
+        rows.map((r) => [String(r.n), ...ALL_METHODS.flatMap((m) => [duration(r.mean[m]), duration(r.max[m])]),
+                         `${r.finished} of ${r.instances}`]));
+  const published = rows.flatMap((r) => {
+    const x = TABLE_X.find((t) => t.n === r.n);
+    return x ? [[String(r.n), x.ma.toFixed(1), x.ea.toFixed(1), `${x.pc.toFixed(1)}%`, `${x.et.toFixed(3)} s`,
+                 String(TABLE_XI[r.n] ?? 0)]] : [];
+  });
+  if (published.length) {
+    table("Published in 2012",
+          "Table X and Table XI of Ennis, Fayle, and Ennis (2012): 1,000 other instances for each size, solved by " +
+          "FIND-AM on 2012 hardware. MA and EA are means over the searches that finished. The instances above follow " +
+          "the published model text and are denser than Table X reports, so read the two tables as separate studies.",
+          ["Treatments", "MA: assignments before", "EA: exact assignments", "Finished within 30 s",
+           "Mean time of finished searches", "Letter minimum not assignment minimum, per 1,000"], published);
+  }
+}
+
 function render(): void {
   renderStatus();
   renderControls();
   renderResults();
+  renderStudy();
 }
 
-// Time of the running solve.
+// Live time of the running solve and of the study.
 setInterval(() => {
   for (const cell of ui.results.querySelectorAll<HTMLElement>(".live-time")) {
     cell.textContent = duration(performance.now() - Number(cell.dataset.start));
   }
+  if (state.study?.status === "running") ui.studyHint.textContent = studyHint(state.study);
 }, 200);
 
 // Events
 
+ui.viewReduce.addEventListener("click", () => showView("reduce"));
+ui.viewStudy.addEventListener("click", () => showView("study"));
 ui.run.addEventListener("click", () => {
   if (state.run) cancelRun();
   else startRun([selectedMethod()]);
 });
 ui.compare.addEventListener("click", () => startRun(METHODS.map((m) => m.id)));
 ui.reset.addEventListener("click", reset);
+ui.simGenerate.addEventListener("click", generate);
+ui.studyRun.addEventListener("click", () => {
+  if (state.study?.status === "running") cancelStudy();
+  else startStudy();
+});
 
 for (const area of [ui.pairs, ui.means]) {
   area.addEventListener("input", () => {
     changed(area);
     state.example = null;
+    state.sourceNote = null;
     if (area === ui.pairs) state.source = "Pasted text";
-    invalidate();
+    inputChanged();
   });
 }
 for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="method"]')) {
   radio.addEventListener("change", invalidate);
 }
+ui.staged.addEventListener("change", invalidate);
 
 for (const [name, area, template] of [["pairs", ui.pairs, TEMPLATE_PAIRS], ["means", ui.means, TEMPLATE_MEANS]] as const) {
   const file = $<HTMLInputElement>(`${name}-file`);

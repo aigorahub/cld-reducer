@@ -102,7 +102,7 @@ function instrument() {
     set onmessage(fn) {
       this.deliver = (data) => fn.call(this, new MessageEvent("message", { data }));
       super.onmessage = (e) => {
-        if (window.__hold && e.data?.type !== "ready") { window.__held.push(e.data); return; }
+        if (window.__hold && ["start", "result", "done"].includes(e.data?.type)) { window.__held.push(e.data); return; }
         if (window.__alter && e.data?.type === "result") { this.deliver(window.__alter(structuredClone(e.data))); return; }
         fn.call(this, e);
       };
@@ -126,7 +126,13 @@ async function main() {
     await page.addInitScript(instrument);
     await page.goto(file);
 
-    const wait = (fn, arg) => page.waitForFunction(fn, arg, { timeout: 60_000 });
+    // A timeout names the condition, so that a failure says where the test stopped.
+    const wait = (fn, arg) => page.waitForFunction(fn, arg, { timeout: 60_000 }).catch(async (e) => {
+      const shown = await page.evaluate(() => [document.getElementById("solver-status").textContent,
+        document.getElementById("run").textContent, document.querySelector(".results")?.innerText.slice(0, 400)])
+        .catch(() => null);
+      throw new Error(`${e.message.split("\n")[0]} Waiting for: ${fn.toString().slice(0, 300)} Page: ${JSON.stringify(shown)}`);
+    });
     const ready = () => wait(() => document.getElementById("solver-status").textContent === "Solver ready" &&
                                    document.getElementById("run").textContent === "Run" &&
                                    !document.getElementById("run").disabled);
@@ -156,8 +162,10 @@ async function main() {
       const [download] = await Promise.all([page.waitForEvent("download"), page.click(`text=${label}`)]);
       return { name: download.suggestedFilename(), text: readFileSync(await download.path(), "utf8") };
     };
-    const noResult = (state, what) => check(state.summary === null && state.letters === null &&
-                                            state.matrices.length === 0 && state.title === null, `${what}: a result is shown`);
+    // No result: no summary and no matrix, and at most the display before reduction.
+    const noResult = (state, what) => check(state.summary === null && state.matrices.length === 0 &&
+      (state.letters === null || state.letters[0].every((h) => ["Group", "Mean", "Before"].includes(h))) &&
+      (state.title === null || state.title.startsWith("Before reduction")), `${what}: a result is shown`);
 
     // The page starts with the solver loading and the simple example in the fields.
     await ready();
@@ -165,24 +173,32 @@ async function main() {
     check(await page.$eval(".brand-version", (e) => e.textContent) === version, "the version is not the one of js/package.json");
     check(state.pairs === SIMPLE_PAIRS && state.means === SIMPLE_MEANS, "the fields do not hold the simple example");
     check(same(state.pressed, ["Simple example"]) && state.checked === "letter_minimum", "the default example or method");
-    check(state.empty === "Reduce a compact letter display", "the page does not start empty");
+    // The display before reduction appears without a run: one letter for each maximal clique.
+    await wait(() => document.querySelector(".letters-table") !== null);
+    state = await read();
+    check(state.title === "Before reduction: 3 letters and 9 assignments", `before title: ${state.title}`);
+    check(same(state.letters, [["Group", "Mean", "Before"], ["1", "3.73", "A"], ["2", "3.57", "AB"], ["3", "3.46", "ABC"],
+                               ["4", "3.33", "BC"], ["5", "3.3", "C"]]), `before letters: ${JSON.stringify(state.letters)}`);
     noResult(state, "start");
     check(await page.evaluate(() => window.__workers.length) === 1, "the page did not start one worker");
     if (shots) await page.screenshot({ path: join(shots, "wide-start.png") });
 
-    // CLD-C is the default. The simple example with it is an essential cover result.
+    // CLD-C is the default. The simple example with it is an essential cover result. First without the second stage.
+    await page.uncheck("#staged");
     await page.click("#run");
     await solved();
     state = await read();
     check(state.title === "CLD-C: 3 letters and 9 assignments", `simple CLD-C title: ${state.title}`);
-    check(same(state.summary[0], ["", "CLD-C"]), "simple CLD-C summary head");
-    check(same(summaryRow(state, "Minimizes"), ["Distinct letters"]), "CLD-C does not state its objective");
-    check(same(summaryRow(state, "Objective value"), ["3"]) && same(summaryRow(state, "Distinct letters"), ["3"]) &&
-          same(summaryRow(state, "Assignments"), ["9"]) && same(summaryRow(state, "Relationships preserved"), ["Yes"]),
+    check(same(state.summary[0], ["", "Before", "CLD-C"]), "simple CLD-C summary head");
+    check(same(summaryRow(state, "Minimizes"), ["One letter for each maximal clique", "Distinct letters"]),
+          "CLD-C does not state its objective");
+    check(same(summaryRow(state, "Distinct letters"), ["3", "3"]) && same(summaryRow(state, "Assignments"), ["9", "9"]) &&
+          same(summaryRow(state, "Assignments removed"), ["", "0 (0.0%)"]) &&
+          same(summaryRow(state, "Relationships preserved"), ["", "Yes"]),
           `simple CLD-C summary: ${JSON.stringify(state.summary)}`);
-    check(/^(<1|\d+) ms$|^\d+\.\d+ s$/.test(summaryRow(state, "Time in this browser")[0]), "no browser time");
-    check(same(state.letters, [["Group", "Mean", "CLD-C"], ["1", "3.73", "A"], ["2", "3.57", "AB"],
-                               ["3", "3.46", "ABC"], ["4", "3.33", "BC"], ["5", "3.3", "C"]]),
+    check(summaryRow(state, "Time in this browser").every((t) => /^(<1|\d+) ms$|^\d+\.\d+ s$/.test(t)), "no browser time");
+    check(same(state.letters, [["Group", "Mean", "Before", "CLD-C"], ["1", "3.73", "A", "A"], ["2", "3.57", "AB", "AB"],
+                               ["3", "3.46", "ABC", "ABC"], ["4", "3.33", "BC", "BC"], ["5", "3.3", "C", "C"]]),
           `simple CLD-C letters: ${JSON.stringify(state.letters)}`);
     check(state.matrices.length === 1 && same(state.matrices[0][1], ["1", "A", "A", "A", "different", "different"]) &&
           same(state.matrices[0][3], ["3", "A", "AB", "ABC", "BC", "C"]), `simple matrix: ${JSON.stringify(state.matrices[0])}`);
@@ -190,7 +206,8 @@ async function main() {
     check(json.name === "cld-simple-example.json", `JSON name: ${json.name}`);
     let saved = JSON.parse(json.text);
     check(saved.package === "cld-reducer" && saved.version === version && saved.input.source === "Simple example" &&
-          saved.input.pairs === 10 && saved.input.means.length === 5 && saved.results.length === 1, "JSON head");
+          saved.input.pairs === 10 && saved.input.means.length === 5 && saved.results.length === 1 &&
+          saved.before.letters === 3 && saved.before.assignments === 9, "JSON head");
     checkAgainst(saved.results[0], EXPECTED.simple.letter_minimum, "simple CLD-C");
 
     // A method change removes the result. Keyboard: the arrow key moves the choice.
@@ -205,9 +222,9 @@ async function main() {
     await solved();
     state = await read();
     check(state.title === "CLD-sigma: 3 letters and 8 assignments", `simple CLD-sigma title: ${state.title}`);
-    check(same(summaryRow(state, "Minimizes"), ["Assignments"]) && same(summaryRow(state, "Objective value"), ["8"]),
-          "CLD-sigma does not state its objective");
-    check(state.letters[3][2] === "AC", "simple CLD-sigma does not give group 3 the letters AC");
+    check(same(summaryRow(state, "Minimizes"), ["One letter for each maximal clique", "Assignments"]) &&
+          same(summaryRow(state, "Assignments"), ["9", "8"]), "CLD-sigma does not state its objective");
+    check(state.letters[3][3] === "AC", "simple CLD-sigma does not give group 3 the letters AC");
     checkAgainst(JSON.parse((await save("Download JSON")).text).results[0], EXPECTED.simple.assignment_minimum, "simple CLD-sigma");
 
     // Wheat, both methods. CLD-sigma needs HiGHS here.
@@ -219,13 +236,13 @@ async function main() {
     await solved();
     state = await read();
     check(state.title === "CLD-C and CLD-sigma", `compare title: ${state.title}`);
-    check(same(state.summary[0], ["", "CLD-C", "CLD-sigma"]) &&
-          same(summaryRow(state, "Minimizes"), ["Distinct letters", "Assignments"]) &&
-          same(summaryRow(state, "Distinct letters"), ["4", "4"]) && same(summaryRow(state, "Assignments"), ["56", "44"]) &&
-          same(summaryRow(state, "Objective value"), ["4", "44"]) &&
-          same(summaryRow(state, "Assignments before reduction"), ["56", "56"]),
+    check(same(state.summary[0], ["", "Before", "CLD-C", "CLD-sigma"]) &&
+          same(summaryRow(state, "Minimizes"), ["One letter for each maximal clique", "Distinct letters", "Assignments"]) &&
+          same(summaryRow(state, "Distinct letters"), ["4", "4", "4"]) &&
+          same(summaryRow(state, "Assignments"), ["56", "56", "44"]) &&
+          same(summaryRow(state, "Assignments removed"), ["", "0 (0.0%)", "12 (21.4%)"]),
           `wheat summary: ${JSON.stringify(state.summary)}`);
-    check(state.letters.length === 21 && same(state.letters[0], ["Group", "CLD-C", "CLD-sigma"]), "wheat letters table");
+    check(state.letters.length === 21 && same(state.letters[0], ["Group", "Before", "CLD-C", "CLD-sigma"]), "wheat letters table");
     json = await save("Download JSON");
     saved = JSON.parse(json.text);
     check(json.name === "cld-wheat-yield.json" && saved.input.means === null && saved.input.pairs === 190, "wheat JSON head");
@@ -247,8 +264,9 @@ async function main() {
     }
     const csv = await save("Download CSV");
     const csvLines = csv.text.trimEnd().split("\n");
-    check(csv.name === "cld-wheat-yield.csv" && csvLines.length === 41 && csvLines[0] === "method,group,letters,assignments" &&
-          csvLines[1] === "letter_minimum,1,ABCD,A B C D" && csvLines[40] === "assignment_minimum,20,C,C", `CSV: ${csvLines[1]}`);
+    check(csv.name === "cld-wheat-yield.csv" && csvLines.length === 61 && csvLines[0] === "method,group,letters,assignments" &&
+          csvLines[1] === "before,1,ABCD,A B C D" && csvLines[21] === "letter_minimum,1,ABCD,A B C D" &&
+          csvLines[60] === "assignment_minimum,20,C,C", `CSV: ${csvLines[1]}`);
     if (shots) await page.screenshot({ path: join(shots, "wide-wheat.png") });
 
     // Paste: semicolons, quotes, decision words, and labels that look like markup or a formula.
@@ -261,15 +279,16 @@ async function main() {
     await solved();
     state = await read();
     check(same(state.letters.slice(1).map((row) => row[0]), LABELS), `labels: ${JSON.stringify(state.letters)}`);
-    check(same(state.letters.slice(1).map((row) => row[1]), ["A", "AB", "BC", "C"]), "letters of the pasted input");
+    check(same(state.letters.slice(1).map((row) => row[2]), ["A", "AB", "BC", "C"]), "letters of the pasted input");
     check(same(state.matrices[0][0].slice(1), LABELS), "matrix labels");
     check(await page.evaluate(() => document.querySelector("#results img, #results b") === null && window.__xss === undefined),
           "a label was read as markup");
     saved = JSON.parse((await save("Download JSON")).text);
     check(saved.input.source === "Pasted text" && same(saved.results[0].rows.map((r) => r.group), LABELS), "JSON labels");
     const labelCsv = (await save("Download CSV")).text.split("\n");
-    check(labelCsv[1] === 'letter_minimum,"<img src=x onerror=""window.__xss=1"">",A,A' &&
-          labelCsv[3] === "letter_minimum,'=1+1,BC,B C" && labelCsv[4] === 'letter_minimum,"a,b",C,C', `CSV labels: ${labelCsv}`);
+    check(labelCsv[1] === 'before,"<img src=x onerror=""window.__xss=1"">",A,A' &&
+          labelCsv[5] === 'letter_minimum,"<img src=x onerror=""window.__xss=1"">",A,A' &&
+          labelCsv[7] === "letter_minimum,'=1+1,BC,B C" && labelCsv[8] === 'letter_minimum,"a,b",C,C', `CSV labels: ${labelCsv}`);
 
     // Files: decisions with tabs, and means that set the group order.
     await page.setInputFiles("#pairs-file", { name: "trial 1.tsv", mimeType: "text/tab-separated-values",
@@ -282,7 +301,8 @@ async function main() {
     await page.click("#run");
     await solved();
     state = await read();
-    check(same(state.letters, [["Group", "Mean", "CLD-C"], ["high", "9.5", "A"], ["mid", "5", "AB"], ["low", "1.25", "B"]]),
+    check(same(state.letters, [["Group", "Mean", "Before", "CLD-C"], ["high", "9.5", "A", "A"], ["mid", "5", "AB", "AB"],
+                               ["low", "1.25", "B", "B"]]),
           `file letters: ${JSON.stringify(state.letters)}`);
     json = await save("Download JSON");
     check(json.name === "cld-trial-1.json" && JSON.parse(json.text).input.source === "trial 1.tsv", `file source: ${json.name}`);
@@ -324,7 +344,7 @@ async function main() {
     await page.click("#run");
     await solved();
     state = await read();
-    check(same(state.letters.slice(1), [["low", "1", "B"], ["mid", "2", "AB"], ["high", "3", "A"]]),
+    check(same(state.letters.slice(1), [["low", "1", "B", "B"], ["mid", "2", "AB", "AB"], ["high", "3", "A", "A"]]),
           `letters after a dropped file: ${JSON.stringify(state.letters)}`);
 
     // Invalid input shows an error and no result.
@@ -392,7 +412,7 @@ async function main() {
     await solved();
     state = await read();
     check(state.title === "CLD-C: 6 letters and 30 assignments" &&
-          same(state.letters.slice(1).map((row) => row[1]), BUSY_C_LETTERS), `run after cancel: ${state.title}`);
+          same(state.letters.slice(1).map((row) => row[2]), BUSY_C_LETTERS), `run after cancel: ${state.title}`);
 
     // A change of the method during a solve stops it too.
     await method("assignment_minimum");
@@ -411,6 +431,7 @@ async function main() {
     noResult(state, "reset");
 
     // Replies of a cancelled run arrive late: the page ignores them, from the old worker and with the old id.
+    await page.uncheck("#staged");
     await page.evaluate(() => { window.__hold = true; });
     await page.click("#run");
     await wait(() => window.__held.some((r) => r.type === "done"));
@@ -476,6 +497,84 @@ async function main() {
     await solved();
     check((await read()).problem === null, "the error stays after a good run");
 
+    // The second stage: CLD-C, then CLD-sigma at the minimum letter count, and the reverse order.
+    await page.check("#staged");
+    await page.click('button.example:has-text("Simple example")');
+    await page.click("#run");
+    await solved();
+    state = await read();
+    check(state.title === "CLD-C then CLD-sigma: 3 letters and 8 assignments", `staged title: ${state.title}`);
+    check(same(state.summary[0], ["", "Before", "CLD-C", "CLD-C then CLD-sigma"]), "staged summary head");
+    const stagedText = await page.$eval(".headline", (e) => e.textContent);
+    check(/Stage 1, CLD-C, took (<1|\d+) ms\. Stage 2 took (<1|\d+) ms\./.test(stagedText), `stage times: ${stagedText}`);
+    // The graph of Table II of the 2012 paper: no letter-minimum display is assignment-minimum.
+    await page.click('button.example:has-text("Table II graph")');
+    await wait(() => document.querySelector(".headline-title")?.textContent === "Before reduction: 7 letters and 26 assignments");
+    await page.click("#compare");
+    await solved();
+    state = await read();
+    check(state.title === "CLD-C and CLD-sigma, each with a second stage", `Table II title: ${state.title}`);
+    check(same(state.summary[0], ["", "Before", "CLD-C", "CLD-C then CLD-sigma", "CLD-sigma", "CLD-sigma then CLD-C"]),
+          "Table II summary head");
+    saved = JSON.parse((await save("Download JSON")).text);
+    const [c, cs, sigma, sc] = saved.results;
+    check(same(saved.results.map((r) => [r.method, r.stage]), [["letter_minimum", 1], ["letter_then_assignment", 2],
+          ["assignment_minimum", 1], ["assignment_then_letter", 2]]), "Table II stages");
+    check(cs.stats.numLettersAfter === c.stats.numLettersAfter && sc.stats.assignmentsAfter === sigma.stats.assignmentsAfter &&
+          cs.stats.assignmentsAfter > sigma.stats.assignmentsAfter && sc.stats.numLettersAfter > c.stats.numLettersAfter,
+          `Table II results: ${JSON.stringify(saved.results.map((r) => r.stats))}`);
+    check(saved.before.letters === 7 && saved.before.assignments === 26 && state.matrices.length === 2, "Table II before and matrices");
+
+    // A simulated experiment as input. Generate moves the seed on by one.
+    await page.fill("#sim-n", "12");
+    await page.fill("#sim-seed", "4");
+    await page.click("#sim-generate");
+    state = await read();
+    check(state.pairs.trim().split("\n").length === 67 && state.means.trim().split("\n").length === 13, "simulated input size");
+    check(await page.$eval("#sim-seed", (e) => e.value) === "5", "the seed does not move on");
+    check((await page.$eval("#example-note", (e) => e.textContent)).startsWith("Simulated experiment with 12 treatments and seed 4."),
+          "simulated note");
+    await wait(() => document.querySelector(".headline-title")?.textContent.startsWith("Before reduction"));
+    await page.click("#run");
+    await solved();
+    state = await read();
+    check(state.title.startsWith("CLD-C then CLD-sigma: "), `simulated title: ${state.title}`);
+    json = await save("Download JSON");
+    check(json.name === "cld-simulated-12-treatments-seed-4.json" &&
+          JSON.parse(json.text).input.source === "Simulated, 12 treatments, seed 4", `simulated file: ${json.name}`);
+
+    // The simulation study, its tables and file, and Cancel.
+    await page.click("#view-study");
+    check(await page.evaluate(() => document.getElementById("reduce-view").hidden && !document.getElementById("study-view").hidden),
+          "the study view does not show");
+    for (const [id, value] of [["study-from", "8"], ["study-to", "12"], ["study-step", "4"], ["study-count", "2"]]) {
+      await page.fill(`#${id}`, value);
+    }
+    await page.click("#study-run");
+    await wait(() => document.getElementById("study-hint").textContent.startsWith("Done: 4 instances"));
+    const study = await page.evaluate(() => [...document.querySelectorAll(".study-table")]
+      .map((t) => [...t.querySelectorAll("tr")].map((tr) => [...tr.children].map((cell) => cell.textContent))));
+    check(study.length === 3 && same(study[0].slice(1).map((r) => [r[0], r[1]]), [["8", "2"], ["12", "2"]]),
+          `study tables: ${JSON.stringify(study)}`);
+    check(same(study[1].slice(1).map((r) => r[r.length - 1]), ["2 of 2", "2 of 2"]), "study solves within the limit");
+    check(same(study[2].slice(1).map((r) => [r[0], r[1]]), [["12", "18.8"]]), "published row for 12 treatments");
+    const studyFile = await save("Download instances (CSV)");
+    check(studyFile.name === "cld-simulation-study.csv" && studyFile.text.trimEnd().split("\n").length === 5, "study file");
+    for (const [id, value] of [["study-from", "45"], ["study-to", "45"], ["study-count", "5"]]) await page.fill(`#${id}`, value);
+    const workersBefore = await page.evaluate(() => window.__workers.length);
+    await page.click("#study-run");
+    await wait(() => document.getElementById("study-run").textContent === "Cancel");
+    check(await page.$eval("#run", (e) => e.disabled) && await page.$eval("#compare", (e) => e.disabled),
+          "Run is open during the study");
+    await page.waitForTimeout(300);
+    await page.click("#study-run");
+    const studyHint = await page.$eval("#study-hint", (e) => e.textContent);
+    check(/^Cancelled after \d of 5 instances\.$/.test(studyHint), `study cancel: ${studyHint}`);
+    check(await page.evaluate((n) => window.__workers.length === n + 1 && window.__workers[n - 1].terminated, workersBefore),
+          "Cancel did not stop the study worker");
+    await ready();
+    await page.click("#view-reduce");
+
     // The licenses and the data sources are in the file.
     const notices = await page.$eval(".foot", (e) => e.textContent);
     for (const part of ["Copyright (c) 2026 Aigora", "Copyright (c) 2023 highs-js", "Copyright (c) 2026 HiGHS",
@@ -493,6 +592,11 @@ async function main() {
                matrixScrolls: wrap.scrollWidth > wrap.clientWidth && wrap.getBoundingClientRect().right <= innerWidth };
     });
     check(narrow.page <= narrow.screen && narrow.below && narrow.matrixScrolls, `narrow layout: ${JSON.stringify(narrow)}`);
+    await page.click("#view-study");
+    const narrowStudy = await page.evaluate(() => [document.documentElement.scrollWidth, innerWidth]);
+    check(narrowStudy[0] <= narrowStudy[1], `narrow study view: ${narrowStudy}`);
+    if (shots) await page.screenshot({ path: join(shots, "narrow-study.png") });
+    await page.click("#view-reduce");
     if (shots) {
       await page.screenshot({ path: join(shots, "narrow-top.png") });
       await page.evaluate(() => document.querySelector(".headline").scrollIntoView());
@@ -501,6 +605,7 @@ async function main() {
 
     // A long file name wraps in the result and does not widen the page.
     const longName = `${"x".repeat(200)}.csv`;
+    await page.fill("#means", "");
     await page.setInputFiles("#pairs-file", { name: longName, mimeType: "text/csv",
       buffer: Buffer.from("group1,group2,significant\nB,C,true\nA,B,true\nA,C,true\n") });
     await wait(() => document.getElementById("pairs").value.startsWith("group1,group2,significant\nB,C"));

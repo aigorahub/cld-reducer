@@ -2,32 +2,55 @@
 
 import type { CldReduction } from "../../js/src/index.js";
 import type { MeanRow } from "./csv.js";
+import { TABLE_II } from "./simulate.js";
 
 export type Method = "letter_minimum" | "assignment_minimum";
+/** The experimental two-stage orders of the page (src/staged.ts). */
+export type StagedOrder = "letter_then_assignment" | "assignment_then_letter";
+export type ResultMethod = Method | StagedOrder;
+
+/** The objective value of a result is its letter count for these methods, else its assignment count. */
+const COUNTS_LETTERS: readonly ResultMethod[] = ["letter_minimum", "assignment_then_letter"];
 
 export interface MethodInfo {
-  id: Method;
+  id: ResultMethod;
   name: string;
-  /** The one quantity that the method minimizes. */
+  /** What the method minimizes. */
   minimizes: string;
 }
 
 // CLD-C first: it is the default of the package.
-export const METHODS: readonly MethodInfo[] = [
+export const METHODS: readonly (MethodInfo & { id: Method })[] = [
   { id: "letter_minimum", name: "CLD-C", minimizes: "Distinct letters" },
   { id: "assignment_minimum", name: "CLD-sigma", minimizes: "Assignments" },
 ];
 
-export function methodInfo(id: Method): MethodInfo {
-  return METHODS.find((m) => m.id === id)!;
+/** The second stages of the page. They are experimental and not part of the packages. */
+export const STAGES: readonly (MethodInfo & { id: StagedOrder })[] = [
+  { id: "letter_then_assignment", name: "CLD-C then CLD-sigma",
+    minimizes: "Assignments, among displays with the fewest letters" },
+  { id: "assignment_then_letter", name: "CLD-sigma then CLD-C",
+    minimizes: "Letters, among displays with the fewest assignments" },
+];
+
+/** The second stage that follows each method. */
+export const SECOND_STAGE: Readonly<Record<Method, StagedOrder>> = {
+  letter_minimum: "letter_then_assignment",
+  assignment_minimum: "assignment_then_letter",
+};
+
+export function methodInfo(id: ResultMethod): MethodInfo {
+  return [...METHODS, ...STAGES].find((m) => m.id === id)!;
 }
 
 export interface Example {
   id: string;
   title: string;
   /** Files in conformance/data. build.mjs puts their text into the page. */
-  pairsFile: string;
+  pairsFile: string | null;
   meansFile: string | null;
+  /** The decisions as text, for an example without a file. */
+  pairsText?: string;
   description: string;
   sources: { text: string; url: string }[];
 }
@@ -49,10 +72,18 @@ export const EXAMPLES: readonly Example[] = [
       { text: "Table VIII of Ennis, Fayle, and Ennis (2012)", url: "https://doi.org/10.1145/2133803.2275596" },
     ],
   },
+  {
+    id: "table-ii", title: "Table II graph",
+    pairsFile: null, meansFile: null, pairsText: TABLE_II,
+    description: "8 groups and 28 pairwise decisions, without means. No letter-minimum display of this graph is assignment-minimum.",
+    sources: [{ text: "Table II of Ennis, Fayle, and Ennis (2012)", url: "https://doi.org/10.1145/2133803.2275596" }],
+  },
 ];
 
 export interface MethodResult {
-  method: Method;
+  method: ResultMethod;
+  /** 1 for a package method, 2 for the second stage that follows it. */
+  stage: 1 | 2;
   reduction: CldReduction;
   /** Time of the package call in the worker. */
   milliseconds: number;
@@ -80,7 +111,7 @@ const isCount = (v: unknown): v is number => typeof v === "number" && Number.isI
  * relationship check; this one protects the page from a reply that changed
  * on the way. Returns the first problem, or null.
  */
-export function checkReduction(value: unknown, method: Method): string | null {
+export function checkReduction(value: unknown, method: ResultMethod): string | null {
   if (value === null || typeof value !== "object") return "The reply holds no result.";
   const r = value as Partial<CldReduction>;
   if (r.method !== method) return `The reply is for the method ${String(r.method)}, not ${method}.`;
@@ -131,7 +162,7 @@ export function checkReduction(value: unknown, method: Method): string | null {
   if (stats.numGroups !== n || stats.assignmentsAfter !== assignments || stats.numLettersAfter !== letters) {
     return "The statistics of the reply do not match its letters.";
   }
-  if (stats.objective !== (method === "letter_minimum" ? letters : assignments)) {
+  if (stats.objective !== (COUNTS_LETTERS.includes(method) ? letters : assignments)) {
     return "The objective value of the reply does not match its letters.";
   }
   return null;
@@ -184,11 +215,24 @@ function csvField(value: string): string {
   return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
-/** The results as CSV: one row for each method and group. */
-export function resultsCsv(results: readonly MethodResult[], means: readonly MeanRow[] | null): string {
+/** The display before reduction, as the result files write it. */
+export interface BeforeRows {
+  rows: readonly { group: string; letters: string; assignments: string }[];
+  letters: number;
+  assignments: number;
+  milliseconds: number;
+}
+
+/** The results as CSV: one row for each group before reduction, then one for each method and group. */
+export function resultsCsv(results: readonly MethodResult[], means: readonly MeanRow[] | null,
+                           before: BeforeRows | null = null): string {
   const mean = means === null ? null : new Map(means.map((m) => [m.group, m.mean]));
   const head = ["method", "group", ...(mean ? ["mean"] : []), "letters", "assignments"].join(",");
-  const lines = results.flatMap(({ method, reduction }) => reduction.rows.map((row) => [
+  const sets: [string, readonly { group: string; letters: string; assignments: string }[]][] = [
+    ...(before ? [["before", before.rows] as [string, BeforeRows["rows"]]] : []),
+    ...results.map(({ method, reduction }): [string, BeforeRows["rows"]] => [method, reduction.rows]),
+  ];
+  const lines = sets.flatMap(([method, rows]) => rows.map((row) => [
     method, csvField(row.group), ...(mean ? [String(mean.get(row.group) ?? "")] : []),
     csvField(row.letters), csvField(row.assignments),
   ].join(",")));
@@ -197,13 +241,20 @@ export function resultsCsv(results: readonly MethodResult[], means: readonly Mea
 
 /** The results as JSON, with the exact labels and all statistics. */
 export function resultsJson(results: readonly MethodResult[], input: { source: string; pairs: number;
-                            means: readonly MeanRow[] | null }, version: string): string {
+                            means: readonly MeanRow[] | null }, version: string,
+                            before: BeforeRows | null = null): string {
+  const rowsOf = (rows: BeforeRows["rows"]) => rows.map((row) => ({
+    group: row.group, letters: row.letters, assignments: tokensOf(row.assignments),
+  }));
   return JSON.stringify({
     package: "cld-reducer",
     version,
     input: { source: input.source, pairs: input.pairs, means: input.means },
-    results: results.map(({ method, reduction, milliseconds }) => ({
+    before: before && { letters: before.letters, assignments: before.assignments,
+                        milliseconds: Math.round(before.milliseconds * 10) / 10, rows: rowsOf(before.rows) },
+    results: results.map(({ method, stage, reduction, milliseconds }) => ({
       method,
+      stage,
       minimizes: methodInfo(method).minimizes.toLowerCase(),
       relationshipPreserved: reduction.relationshipPreserved,
       stats: reduction.stats,
@@ -214,3 +265,31 @@ export function resultsJson(results: readonly MethodResult[], input: { source: s
     })),
   }, null, 2) + "\n";
 }
+
+// Section 8 of Ennis, Fayle, and Ennis (2012)
+
+/**
+ * Table X: for each number of means N, the percentage of FIND-AM searches that
+ * finished within 30 seconds (PC), their mean time in seconds (ET), and the mean
+ * assignments of the maximal covering (MA) and of the exact solution (EA), over
+ * the searches that finished. 1,000 simulations for each N.
+ */
+export const TABLE_X: readonly { n: number; pc: number; et: number; ma: number; ea: number }[] = [
+  [10, 100.0, 0.000, 14.381, 13.980], [11, 100.0, 0.000, 16.361, 15.789], [12, 100.0, 0.000, 18.826, 17.930],
+  [13, 100.0, 0.000, 21.295, 20.136], [14, 100.0, 0.000, 23.915, 22.330], [15, 100.0, 0.000, 26.717, 24.660],
+  [16, 100.0, 0.003, 29.673, 27.056], [17, 100.0, 0.002, 32.527, 29.334], [18, 100.0, 0.020, 36.032, 32.078],
+  [19, 99.7, 0.058, 39.886, 34.897], [20, 99.9, 0.058, 42.873, 37.181], [21, 99.4, 0.078, 46.522, 39.802],
+  [22, 99.3, 0.169, 49.395, 42.021], [23, 99.0, 0.271, 53.924, 45.164], [24, 97.2, 0.404, 58.031, 48.051],
+  [25, 95.6, 0.691, 62.252, 51.002], [26, 91.7, 0.712, 64.907, 53.103], [27, 87.3, 0.729, 68.841, 55.969],
+  [28, 81.4, 1.235, 72.641, 58.534], [29, 76.4, 1.881, 76.271, 61.232], [30, 70.4, 7.626, 80.026, 63.966],
+  [31, 59.6, 2.109, 83.151, 66.218], [32, 49.2, 2.547, 86.079, 68.675], [33, 41.9, 2.831, 88.341, 70.501],
+  [34, 33.7, 3.487, 91.018, 72.605], [35, 26.5, 4.071, 95.883, 76.102], [36, 20.0, 4.817, 98.200, 78.170],
+  [37, 15.9, 4.106, 101.182, 80.465], [38, 11.1, 6.157, 103.946, 82.108], [39, 11.1, 4.442, 106.396, 84.793],
+  [40, 6.5, 4.787, 108.769, 87.077], [41, 4.7, 6.983, 113.596, 89.234], [42, 4.0, 4.461, 112.300, 91.000],
+  [43, 2.8, 6.535, 118.071, 94.679], [44, 1.3, 11.457, 120.462, 96.231], [45, 0.8, 10.444, 124.000, 99.750],
+].map(([n, pc, et, ma, ea]) => ({ n, pc, et, ma, ea }));
+
+/** Table XI: graphs out of 1,000 for which no letter-minimum covering is assignment-minimum. Other N: 0. */
+export const TABLE_XI: Readonly<Record<number, number>> = {
+  21: 2, 22: 1, 24: 1, 25: 1, 26: 3, 27: 4, 28: 2, 29: 4, 31: 2, 33: 2, 34: 2, 38: 1,
+};

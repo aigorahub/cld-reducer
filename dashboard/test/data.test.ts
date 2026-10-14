@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { CldReduction } from "../../js/src/index.js";
 import { parseMeans, parsePairs } from "../src/csv.js";
-import { EXAMPLES, METHODS, checkReduction, count, displayOf, duration, explain, meanText, resultsCsv, resultsJson,
-         sharedTokens, tokensOf, type MethodResult } from "../src/data.js";
+import { EXAMPLES, METHODS, SECOND_STAGE, STAGES, TABLE_X, checkReduction, count, displayOf, duration, explain,
+         meanText, methodInfo, resultsCsv, resultsJson, sharedTokens, tokensOf, type MethodResult } from "../src/data.js";
 
 const repo = (path: string): string => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 
@@ -27,6 +27,11 @@ function chain(): CldReduction {
 }
 
 describe("methods", () => {
+  it("follow each method with the stage that minimizes the other quantity", () => {
+    expect(SECOND_STAGE).toEqual({ letter_minimum: "letter_then_assignment", assignment_minimum: "assignment_then_letter" });
+    expect(STAGES.map((s) => methodInfo(s.id).name)).toEqual(["CLD-C then CLD-sigma", "CLD-sigma then CLD-C"]);
+  });
+
   it("lists CLD-C first, with the one quantity that each method minimizes", () => {
     expect(METHODS.map((m) => [m.id, m.name, m.minimizes])).toEqual([
       ["letter_minimum", "CLD-C", "Distinct letters"], ["assignment_minimum", "CLD-sigma", "Assignments"],
@@ -37,13 +42,13 @@ describe("methods", () => {
 describe("examples", () => {
   it("name files that the conformance manifest pins", () => {
     const pinned = Object.keys(JSON.parse(repo("conformance/manifest.json")).data);
-    const used = EXAMPLES.flatMap((e) => [e.pairsFile, ...(e.meansFile ? [e.meansFile] : [])]);
+    const used = EXAMPLES.flatMap((e) => [...(e.pairsFile ? [e.pairsFile] : []), ...(e.meansFile ? [e.meansFile] : [])]);
     expect([...used].sort()).toEqual([...pinned].sort());
   });
 
   it("describe the size of their data", () => {
     for (const example of EXAMPLES) {
-      const pairs = parsePairs(repo(`conformance/data/${example.pairsFile}`));
+      const pairs = parsePairs(example.pairsText ?? repo(`conformance/data/${example.pairsFile}`));
       const groups = new Set(pairs.flatMap((p) => [p.group1, p.group2])).size;
       expect(example.description).toContain(`${groups} `);
       expect(example.description).toContain(`${pairs.length} pairwise decisions`);
@@ -110,8 +115,12 @@ describe("checkReduction", () => {
     expect(checkReduction(more, "letter_minimum")).toBe("The statistics of the reply do not match its letters.");
     const objective = { ...chain(), stats: { ...chain().stats, objective: 4 } };
     expect(checkReduction(objective, "letter_minimum")).toBe("The objective value of the reply does not match its letters.");
-    // For CLD-sigma the objective is the number of assignments.
+    // For CLD-sigma and its second stage the objective is the number of assignments; for the other two, letters.
     expect(checkReduction({ ...objective, method: "assignment_minimum" }, "assignment_minimum")).toBeNull();
+    expect(checkReduction({ ...objective, method: "letter_then_assignment" }, "letter_then_assignment")).toBeNull();
+    expect(checkReduction({ ...chain(), method: "assignment_then_letter" }, "assignment_then_letter")).toBeNull();
+    expect(checkReduction({ ...objective, method: "assignment_then_letter" }, "assignment_then_letter"))
+      .toBe("The objective value of the reply does not match its letters.");
   });
 });
 
@@ -151,7 +160,7 @@ describe("result files", () => {
   const result = (): MethodResult => {
     const reduction = chain();
     reduction.groups[0] = reduction.rows[0].group = '=SUM(A1), "low"';
-    return { method: "letter_minimum", reduction, milliseconds: 12.345 };
+    return { method: "letter_minimum", stage: 1, reduction, milliseconds: 12.345 };
   };
 
   it("write CSV with one row for each method and group, and guard a spreadsheet formula", () => {
@@ -171,8 +180,9 @@ describe("result files", () => {
     expect(file).toEqual({
       package: "cld-reducer", version: "9.9.9",
       input: { source: "Pasted text", pairs: 3, means: null },
+      before: null,
       results: [{
-        method: "letter_minimum", minimizes: "distinct letters", relationshipPreserved: true,
+        method: "letter_minimum", stage: 1, minimizes: "distinct letters", relationshipPreserved: true,
         stats: chain().stats, milliseconds: 12.3,
         rows: [
           { group: '=SUM(A1), "low"', letters: "A", assignments: ["A"] },
@@ -181,5 +191,32 @@ describe("result files", () => {
         ],
       }],
     });
+  });
+});
+
+describe("result files with the display before reduction", () => {
+  it("put the before rows first and record each stage", () => {
+    const before = { rows: [{ group: "low", letters: "A", assignments: "A" }, { group: "mid", letters: "AB", assignments: "A B" },
+                            { group: "high", letters: "B", assignments: "B" }], letters: 2, assignments: 4, milliseconds: 0.44 };
+    const stage2: MethodResult = { method: "letter_then_assignment", stage: 2, reduction: { ...chain(), method: "letter_then_assignment",
+      stats: { ...chain().stats, objective: 4 } }, milliseconds: 3 };
+    const csv = resultsCsv([{ method: "letter_minimum", stage: 1, reduction: chain(), milliseconds: 1 }, stage2], null, before)
+      .trimEnd().split("\n");
+    expect(csv.map((l) => l.split(",")[0])).toEqual(["method", "before", "before", "before", "letter_minimum", "letter_minimum",
+      "letter_minimum", "letter_then_assignment", "letter_then_assignment", "letter_then_assignment"]);
+    const json = JSON.parse(resultsJson([stage2], { source: "x", pairs: 3, means: null }, "1.0.0", before));
+    expect(json.before).toEqual({ letters: 2, assignments: 4, milliseconds: 0.4,
+      rows: [{ group: "low", letters: "A", assignments: ["A"] }, { group: "mid", letters: "AB", assignments: ["A", "B"] },
+             { group: "high", letters: "B", assignments: ["B"] }] });
+    expect(json.results[0]).toMatchObject({ method: "letter_then_assignment", stage: 2,
+                                            minimizes: "assignments, among displays with the fewest letters" });
+  });
+});
+
+describe("Table X", () => {
+  it("has N from 10 to 45 with the published first and last rows", () => {
+    expect(TABLE_X.map((r) => r.n)).toEqual(Array.from({ length: 36 }, (_, k) => k + 10));
+    expect(TABLE_X[0]).toEqual({ n: 10, pc: 100, et: 0, ma: 14.381, ea: 13.98 });
+    expect(TABLE_X[35]).toEqual({ n: 45, pc: 0.8, et: 10.444, ma: 124, ea: 99.75 });
   });
 });
