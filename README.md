@@ -217,7 +217,7 @@ result$stats$objective            # 3 letters
 result$stats$assignments_after    # 9 assignments
 ```
 
-Version 0.3.0 is the merged candidate for these changes. The current development
-version is 0.3.1. The published 0.2.0 packages and
+Version 0.3.0 is the merged candidate for these changes. Version 0.3.1 adds the
+browser page and no algorithm or public API change. The published 0.2.0 packages and
 frozen CRAN candidate are unchanged. See [development status](docs/development-status.md)
 for implementation, review, version, and timing records.

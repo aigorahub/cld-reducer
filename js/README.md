@@ -103,6 +103,8 @@ When several optimal displays exist, the one returned is the lexicographically g
 
 The solve is synchronous inside the returned promise and blocks the JavaScript thread until it finishes. Typical inputs take milliseconds, but a large display can take longer. Run big inputs in a worker thread (Node.js `worker_threads` or a Web Worker), and use `timeLimit` to bound the time.
 
+The repository has a browser page that does this. It runs the package in a Web Worker, loads the solver from bytes with `wasmBinary`, and stops a long solve when it terminates the worker. See `dashboard/` in the repository.
+
 ## Loading the WebAssembly solver
 
 The first call loads the solver; later calls reuse it. Concurrent first calls share one load, and a failed load is not cached. `loadSolver` is optional: call it to load early or to control where `highs.wasm` comes from.
