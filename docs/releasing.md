@@ -2,7 +2,8 @@
 
 The repository follows the turfLP layout: R at the root, Python in `python/`,
 and JavaScript in `js/`. Version 0.2.0 is tagged and published on PyPI and npm.
-The merged candidate is 0.3.0. The current development version is 0.3.1.
+The merged candidate for the method changes is 0.3.0. Version 0.3.1 adds the
+browser page in `dashboard/` and no algorithm or public API change.
 The recorded CRAN submission is still 0.2.0;
 the package was absent from the public CRAN index on 2026-10-13.
 See [submission status](submission-status.md) for the current evidence.
@@ -50,7 +51,7 @@ Version 0.2.0 is already used. Version 0.3.0 is the candidate for CLD-C and
 the essential-cover changes. Registry checks on 2026-10-13 found no 0.3.0
 publication on PyPI or npm. Check again before publishing. The retained 0.3.0
 candidate commit is `7d9b923ed1e5c867e97f485071e1d1f742a0aeaa`. Use a clean
-checkout of that commit for candidate checks. The development checkout uses
+checkout of that commit for candidate checks. The current checkout uses
 0.3.1. Keep the selected version in `DESCRIPTION`,
 `CITATION.cff`, `NEWS.md`, both package manifests and locks, and Python's
 `__version__`. `scripts/release.py version` checks agreement. Never replace an
@@ -58,8 +59,9 @@ uploaded version.
 
 Before merging a feature release, synchronize the candidate version and its
 NEWS entry. After that merge, set the next unused patch version for development
-in a separate reviewed commit. For this stack, those versions are 0.3.0 and
-0.3.1. Add a NEWS entry that marks the later version as unreleased. The version
+in a separate reviewed commit. For the method stack, those versions are 0.3.0 and
+0.3.1. For the browser page, they are 0.3.1 and 0.3.2.
+Add a NEWS entry that marks the later version as unreleased. The version
 check uses the same three-part number in R, Python, npm, citation metadata, and
 both lock files. Record the earlier candidate commit so that a later authorized
 tag can identify it. Do not tag or upload the development commit by default.
@@ -83,6 +85,12 @@ npm run build
 npm test
 npm run test:conformance
 npm run check:package
+cd ../dashboard
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm run test:browser
 cd ..
 python3 conformance/generate.py --check
 python3 conformance/test_generate.py
@@ -99,6 +107,9 @@ source distribution; the wheel does not need them. Shared conformance files
 remain repository tests. Source-distribution tests skip shared cases when those
 files are absent. Do not report those skipped tests as source-distribution proof.
 The npm check compiles an installed TypeScript consumer and runs the WASM solver.
+The `dashboard/` commands build the browser page from `js/src` and test the built
+file in Chrome. They need Chrome. The page is not a registry artifact, and no
+archive contains it.
 
 Build R outside the checkout, with a PDF toolchain, pandoc, and HTML Tidy available:
 

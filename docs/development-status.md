@@ -11,10 +11,11 @@ version from 0.2.0 to 0.3.0. The final 0.3.0 candidate is merge commit
 Its source tree matches reviewed head
 `2fe4f9a5c7f679f4c05b8b1b18d4a9e98dde3c4b`.
 
-The next development version is 0.3.1. This metadata update adds no algorithm
-or public API changes. Neither merge nor the development version bump publishes
-a package. Tags and registry uploads remain separate. Keep the 0.3.0 candidate
-commit when preparing a later authorized release.
+Version 0.3.1 follows that candidate. It adds the browser page in `dashboard/`
+and no algorithm or public API change. After its merge, the next development
+version is 0.3.2. Neither merge nor a version update publishes a package. Tags
+and registry uploads remain separate. Keep the 0.3.0 candidate commit when
+preparing a later authorized release.
 
 ## Implemented behavior
 
@@ -37,6 +38,15 @@ solve budget. The scan, proof, and canonical solves do consume it.
 The code uses the structural results of Ennis, Fayle, and Ennis (2012).
 It does not implement FIND-AM backtracking. The exact contracts are in
 [the algorithm specification](algorithm.md).
+
+## Browser page
+
+`dashboard/` holds a private package that builds one offline HTML file. The
+page runs the JavaScript package and the HiGHS WebAssembly solver in a worker.
+It reads pairwise decisions, solves with CLD-C or CLD-sigma, and shows both
+quantities for each result. It adds no solver code and no public API. It is not
+part of the R, Python, or npm archives, and it is not hosted or published.
+See [the dashboard README](../dashboard/README.md).
 
 ## Review and verification
 

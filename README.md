@@ -127,6 +127,18 @@ console.log(result.letters);
 
 See [js/README.md](js/README.md) for the pairwise input, the options, and loading the WebAssembly solver in a browser.
 
+## Browser page
+
+[`dashboard/`](dashboard/) builds one HTML file that runs the JavaScript package in a browser. Open the file; it needs no server and no network connection, and the data does not leave the computer. The page reads pairwise significance decisions as CSV, by paste or by file. It does not run significance tests. It solves with CLD-C or CLD-sigma, or with both for a comparison, and shows the distinct letters and the assignments of each result. The results download as CSV and JSON.
+
+```sh
+cd js && npm ci
+cd ../dashboard && npm ci && npm run build
+open dist/cld-reducer-dashboard.html
+```
+
+The page is built from source and is not published. The `js.yaml` workflow keeps the built file as the `cld-reducer-dashboard` artifact of each run. See [dashboard/README.md](dashboard/README.md) for the input format, the limits, and the tests.
+
 ## Method
 
 The default method is `letter_minimum` (CLD-C). Use `assignment_minimum` for CLD-sigma.
@@ -156,6 +168,7 @@ R, Python, and JavaScript run all cases in CI. Python and JavaScript repeat with
 | `DESCRIPTION`, `R/`, `man/`, `tests/`, `data/` | R package `cldreducer` |
 | `python/` | Python package `cld-reducer` (import name `cld_reducer`) |
 | `js/` | npm package `cld-reducer` |
+| `dashboard/` | Browser page for the JavaScript package (private, not in any archive) |
 | `docs/algorithm.md` | Specification |
 | `conformance/` | Fixtures, the generator, and the R runner |
 
@@ -204,7 +217,7 @@ result$stats$objective            # 3 letters
 result$stats$assignments_after    # 9 assignments
 ```
 
-Version 0.3.0 is the merged candidate for these changes. The current development
-version is 0.3.1. The published 0.2.0 packages and
+Version 0.3.0 is the merged candidate for these changes. Version 0.3.1 adds the
+browser page and no algorithm or public API change. The published 0.2.0 packages and
 frozen CRAN candidate are unchanged. See [development status](docs/development-status.md)
 for implementation, review, version, and timing records.
