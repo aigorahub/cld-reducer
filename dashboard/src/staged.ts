@@ -47,6 +47,17 @@ const FAILED = "staged solve failed: ";
  */
 export function stagedSolve(pairs: PairRow[], means: MeanRow[] | null, order: StagedOrder, bound: number,
                             timeLimit: number | null = null): CldReduction {
+  try {
+    return solveStaged(pairs, means, order, bound, timeLimit);
+  } catch (e) {
+    // Every solver error of the second stage names it, also a check of the engine on a HiGHS reply.
+    if (e instanceof SolverError && !e.message.startsWith(FAILED)) throw new SolverError(FAILED + e.message);
+    throw e;
+  }
+}
+
+function solveStaged(pairs: PairRow[], means: MeanRow[] | null, order: StagedOrder, bound: number,
+                     timeLimit: number | null): CldReduction {
   const limit = checkControls({ timeLimit }).timeLimit;
   // One budget for the solves, as in the package (docs/algorithm.md): input checks, vertex
   // reduction, clique enumeration, and model construction are not part of it.

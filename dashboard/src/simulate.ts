@@ -1,6 +1,6 @@
 // Simulated multiple comparisons with the model of Gramm, Guo, Hüffner,
-// Niedermeier, Piepho, and Schmid (2007), Section 3.2. Ennis, Fayle, and Ennis
-// (2012), Section 8, generate their test graphs with this method.
+// Niedermeier, Piepho, and Schmid (2007), Section 3.2, which Ennis, Fayle, and
+// Ennis (2012), Section 8, cite as Gramm et al. [2006] for their test graphs.
 
 /** Parameters of Section 3.2, fitted there to oilseed rape trials. */
 export const MODEL = {
@@ -101,6 +101,24 @@ export interface Experiment {
   significant: boolean[][];
 }
 
+/**
+ * Section 3.2: set each eigenvalue that is not positive to the smallest positive eigenvalue,
+ * and compute R = Q diag(d) Q' again. Section 3.2 keeps the diagonal as it is. The paper says that
+ * it can fall below 1. In exact arithmetic a larger eigenvalue adds a positive semidefinite term,
+ * so the diagonal cannot fall; rounding can leave it a little below 1.
+ */
+export function repairEigenvalues(r: number[][]): number[][] {
+  const n = r.length;
+  const { values, vectors } = symmetricEigen(r);
+  const smallest = Math.min(...values.filter((d) => d > 0));
+  const repaired = values.map((d) => (d > 0 ? d : smallest));
+  return Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => {
+    let sum = 0;
+    for (let k = 0; k < n; k++) sum += vectors[i][k] * repaired[k] * vectors[j][k];
+    return sum;
+  }));
+}
+
 /** The largest seed of Generate and of the study. After it, the next seed is 1. */
 export const MAX_SEED = 2 ** 31 - 1;
 
@@ -124,17 +142,7 @@ export function simulate(n: number, seed: number, model: { readonly [K in keyof 
       r[i][j] = r[j][i] = Math.tanh(m.correlationMean + Math.sqrt(m.correlationVariance) * z());
     }
   }
-  const { values, vectors } = symmetricEigen(r);
-  const smallest = Math.min(...values.filter((d) => d > 0));
-  const repaired = values.map((d) => (d > 0 ? d : smallest));
-  // R = Q diag(d) Q'. Section 3.2 keeps the diagonal as it is. The paper says that it can fall
-  // below 1. In exact arithmetic a larger eigenvalue adds a positive semidefinite term, so the
-  // diagonal cannot fall; rounding can leave it a little below 1.
-  const corr = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => {
-    let sum = 0;
-    for (let k = 0; k < n; k++) sum += vectors[i][k] * repaired[k] * vectors[j][k];
-    return sum;
-  }));
+  const corr = repairEigenvalues(r);
   const cov = (i: number, j: number): number => Math.sqrt(variances[i] * variances[j]) * corr[i][j];
 
   const order = means.map((_, i) => i).sort((a, b) => means[b] - means[a]);

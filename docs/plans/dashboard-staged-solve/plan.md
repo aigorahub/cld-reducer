@@ -28,7 +28,8 @@ of `main`; the documents describe 0.3.2 as this change.
 
 Section 8 of Ennis, Fayle, and Ennis (2012) generates graphs with the method of
 Gramm et al. Section 3.2 of Gramm, Guo, Hüffner, Niedermeier, Piepho, and Schmid
-(2007), Computational Statistics and Data Analysis 52, 725-736, gives the model:
+(2007), Computational Statistics and Data Analysis 52, 725-736, which the 2012
+paper cites as Gramm et al. [2006], gives the model:
 
 - n treatment means from a normal distribution with mean 42.6 and variance 12.7;
 - variances of the sample means from a gamma distribution with shape 4.12 and

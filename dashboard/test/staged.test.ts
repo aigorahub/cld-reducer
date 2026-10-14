@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { beforeAll, describe, expect, it } from "vitest";
 import { SolverError, loadSolver, reduceLetters } from "../../js/src/index.js";
 import { clock } from "../../js/src/canonical.js";
+import { hooks } from "../../js/src/solver.js";
 import { maximalCliques } from "../../js/src/cliques.js";
 import { parseMeans, parsePairs, type PairRow } from "../src/csv.js";
 import { checkReduction } from "../src/data.js";
@@ -156,6 +157,17 @@ describe("staged solve time limit", () => {
 });
 
 describe("staged solve errors", () => {
+  it("name the second stage also for a check of the engine on a HiGHS reply", () => {
+    const run = hooks.run;
+    hooks.run = () => ({ status: "optimal", text: "Optimal", values: new Float64Array(0), objective: 0 });
+    try {
+      expect(() => stagedSolve(parsePairs(TABLE_II), null, "assignment_then_letter", 18))
+        .toThrow(/^staged solve failed: HiGHS returned an invalid solution/);
+    } finally {
+      hooks.run = run;
+    }
+  });
+
   it("name the second stage, also when the third solve finds another minimum than the bound", () => {
     // 20 is not the minimum assignment count of Table II (18): the cliques with the fewest letters
     // within 20 assignments need only 19, so the third solve does not reach the bound.

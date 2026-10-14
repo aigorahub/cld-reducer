@@ -117,7 +117,7 @@ The triticale data of Table VI of the 2012 paper is not in the page. The data re
 
 ### Simulated experiments
 
-"Generate" makes a new input from a number of treatments and a seed. The same pair gives the same experiment. Each click uses the seed shown and then adds 1; after 2,147,483,647 the next seed is 1. A study uses the same rule for the seeds of its instances. Section 8 of the 2012 paper generates its graphs with the method of Section 3.2 of Gramm, Guo, Hüffner, Niedermeier, Piepho, and Schmid (2007), Computational Statistics and Data Analysis 52, 725-736. The page uses that model:
+"Generate" makes a new input from a number of treatments and a seed. The same pair gives the same experiment. Each click uses the seed shown and then adds 1; after 2,147,483,647 the next seed is 1. A study uses the same rule for the seeds of its instances. Section 8 of the 2012 paper generates its graphs with the method of Section 3.2 of Gramm, Guo, Hüffner, Niedermeier, Piepho, and Schmid (2007), Computational Statistics and Data Analysis 52, 725-736, which the 2012 paper cites as Gramm et al. [2006]. The page uses that model:
 
 - treatment means from a normal distribution with mean 42.6 and variance 12.7;
 - variances of the sample means from a gamma distribution with shape 4.12 and scale 0.429;
@@ -131,7 +131,7 @@ These graphs have larger maximal displays than the graphs of Table X of the 2012
 
 ## Simulation study
 
-The second view repeats the experiment of Section 8 of the 2012 paper. It takes a range of treatment counts, a count of instances for each, a first seed, and a time limit for each solve (30 seconds by default, as in 2012). Each instance runs CLD-C, CLD-sigma, and both second stages with the `timeLimit` option of the package. That option covers the solves only; the enumeration of the maximal cliques comes before it. As in Table X, a solve counts as finished only when its whole time is under the limit. The view shows, for each number of treatments:
+The second view repeats the experiment of Section 8 of the 2012 paper. It takes a range of treatment counts, a count of instances for each, a first seed, and a time limit for each solve (30 seconds by default, as in 2012). Each instance runs CLD-C, CLD-sigma, and both second stages with the `timeLimit` option of the package. That option covers the essential scan, the certificate check, and the solves; the enumeration of the maximal cliques and the construction of the model come before it. As in Table X, a solve counts as finished only when its whole time is under the limit. The view shows, for each number of treatments:
 
 - the mean letters and assignments before reduction;
 - the mean of the quantity that each solve minimizes: letters for CLD-C and for the second stage after CLD-sigma, assignments for CLD-sigma and for the second stage after CLD-C, and the share of the assignments that CLD-sigma removes;

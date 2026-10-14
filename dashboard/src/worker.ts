@@ -63,8 +63,8 @@ export type Reply =
 const isTimeout = (e: unknown): boolean => e instanceof SolverError && e.message.endsWith("Time limit reached");
 
 /**
- * One solve of the study with its whole time. The timeLimit option covers the solves; clique
- * enumeration and model construction come before it. Table X counts the whole time, so a solve
+ * One solve of the study with its whole time. The timeLimit option covers the essential scan, the
+ * certificate check, and the solves; clique enumeration and model construction come before it. Table X counts the whole time, so a solve
  * whose whole time reaches the limit counts as not finished.
  */
 export async function timed(solve: () => Promise<CldReduction> | CldReduction, timeLimit: number,

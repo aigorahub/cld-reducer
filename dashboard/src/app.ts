@@ -917,15 +917,23 @@ function studyHint(run: StudyRun): string {
     : `Done: ${run.total} instances in ${duration(elapsed)}.`;
 }
 
+// The study drawn last. The page draws the study tables again only when the study changes, not on
+// each render: a render can come from a key stroke in another field.
+let studyDrawn: { run: StudyRun | null; count: number; status: string } = { run: null, count: -1, status: "" };
+
 function renderStudy(): void {
   const run = state.study;
   const host = ui.studyResults;
-  host.replaceChildren();
   if (!run) {
+    host.replaceChildren();
+    studyDrawn = { run: null, count: -1, status: "" };
     ui.studyHint.textContent = state.solver === "ready" ? "" : "Waiting for the solver…";
     return;
   }
   ui.studyHint.textContent = studyHint(run);
+  if (studyDrawn.run === run && studyDrawn.count === run.instances.length && studyDrawn.status === run.status) return;
+  studyDrawn = { run, count: run.instances.length, status: run.status };
+  host.replaceChildren();
   const done = run.instances.length;
   if (!done) return;
 

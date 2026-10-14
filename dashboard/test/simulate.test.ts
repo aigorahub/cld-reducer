@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { maximalCliques } from "../../js/src/cliques.js";
 import { parsePairs } from "../src/csv.js";
-import { MODEL, TABLE_II, experimentCsv, gamma, normal, simulate, symmetricEigen, uniform } from "../src/simulate.js";
+import { MODEL, TABLE_II, experimentCsv, gamma, normal, repairEigenvalues, simulate, symmetricEigen, uniform } from "../src/simulate.js";
 
 const mean = (a: number[]): number => a.reduce((x, y) => x + y, 0) / a.length;
 const variance = (a: number[]): number => a.reduce((x, y) => x + (y - mean(a)) ** 2, 0) / (a.length - 1);
@@ -40,6 +40,19 @@ describe("symmetricEigen", () => {
       }
     }
     expect(values.reduce((s, d) => s + d, 0)).toBeCloseTo(6, 10);
+  });
+});
+
+describe("repairEigenvalues", () => {
+  it("sets an eigenvalue that is not positive to the smallest positive one and keeps the diagonal", () => {
+    // Eigenvalues -0.8, 1.9, and 1.9: the repair gives 1.9 three times, so R becomes 1.9 times I.
+    const r = repairEigenvalues([[1, 0.9, -0.9], [0.9, 1, 0.9], [-0.9, 0.9, 1]]);
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 3; j++) expect(r[i][j]).toBeCloseTo(i === j ? 1.9 : 0, 10);
+    }
+    // A matrix with positive eigenvalues stays as it is.
+    const ok = [[1, 0.2], [0.2, 1]];
+    expect(repairEigenvalues(ok).flat().map((v) => Number(v.toFixed(12)))).toEqual(ok.flat());
   });
 });
 

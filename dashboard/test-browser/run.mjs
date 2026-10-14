@@ -923,6 +923,10 @@ async function main() {
     await wait(() => document.getElementById("study-hint").textContent.startsWith("Done: 600 instances"));
     const draws = await page.evaluate(() => window.__draws);
     check(draws < 100, `the study tables were drawn ${draws} times for 600 instances`);
+    // A render that does not change the study does not draw its tables again.
+    await page.evaluate(() => { window.__draws = 0; });
+    for (let k = 0; k < 3; k++) await page.click("#view-study");
+    check(await page.evaluate(() => window.__draws) === 0, "the study tables were drawn again without a change of the study");
     await page.click("#view-reduce");
 
     // The licenses and the data sources are in the file.
