@@ -87,6 +87,8 @@ function instrument() {
   window.__workers = [];
   window.__held = [];
   window.__hold = false;
+  window.__heldBefore = [];
+  window.__holdBefore = false;
   window.__alter = null;
   window.Worker = class extends Native {
     constructor(...args) {
@@ -103,6 +105,7 @@ function instrument() {
       this.deliver = (data) => fn.call(this, new MessageEvent("message", { data }));
       super.onmessage = (e) => {
         if (window.__hold && ["start", "result", "done"].includes(e.data?.type)) { window.__held.push(e.data); return; }
+        if (window.__holdBefore && e.data?.type === "before") { window.__heldBefore.push([this, e.data]); return; }
         if (window.__alter && e.data?.type === "result") { this.deliver(window.__alter(structuredClone(e.data))); return; }
         fn.call(this, e);
       };
@@ -524,6 +527,27 @@ async function main() {
           cs.stats.assignmentsAfter > sigma.stats.assignmentsAfter && sc.stats.numLettersAfter > c.stats.numLettersAfter,
           `Table II results: ${JSON.stringify(saved.results.map((r) => r.stats))}`);
     check(saved.before.letters === 7 && saved.before.assignments === 26 && state.matrices.length === 2, "Table II before and matrices");
+    // A second stage that does not keep the minimum of its first stage is not shown. Here an extra
+    // letter copies the column of A: the display stays valid but has one letter too many.
+    await page.click('button.example:has-text("Simple example")');
+    await page.evaluate(() => {
+      window.__alter = (reply) => {
+        if (reply.method !== "letter_then_assignment") return reply;
+        const r = reply.reduction;
+        for (const row of r.rows) {
+          if (row.assignments.split(" ").includes("A")) { row.assignments += " D"; row.letters += "D"; }
+        }
+        r.stats.numLettersAfter += 1;
+        r.stats.assignmentsAfter = r.rows.reduce((t, row) => t + row.assignments.split(" ").length, 0);
+        r.stats.objective = r.stats.assignmentsAfter;
+        return reply;
+      };
+    });
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > p")?.textContent === "The second stage does not keep the minimum of the first stage.");
+    noResult(await read(), "second stage without the minimum");
+    await page.evaluate(() => { window.__alter = null; });
+    await ready();
 
     // A simulated experiment as input. Generate moves the seed on by one.
     await page.fill("#sim-n", "12");
@@ -542,6 +566,32 @@ async function main() {
     json = await save("Download JSON");
     check(json.name === "cld-simulated-12-treatments-seed-4.json" &&
           JSON.parse(json.text).input.source === "Simulated, 12 treatments, seed 4", `simulated file: ${json.name}`);
+    // After the largest seed, the next one is 1 again.
+    await page.fill("#sim-seed", "2147483647");
+    await page.click("#sim-generate");
+    check(await page.$eval("#sim-seed", (e) => e.value) === "1", "the seed does not start again at 1");
+
+    // A late display before reduction for an earlier input is not shown for a later input.
+    await page.evaluate(() => { window.__holdBefore = true; });
+    await page.fill("#means", "");
+    await page.fill("#pairs", "group1,group2,significant\nA,B,false\n");
+    await wait(() => window.__heldBefore.length === 1);
+    await page.fill("#pairs", "x,y\n1,2\n");
+    await wait(() => document.querySelector(".empty .hint")?.textContent.startsWith("The display before reduction is not available"));
+    await page.evaluate(() => {
+      window.__holdBefore = false;
+      for (const [w, reply] of window.__heldBefore) w.deliver(reply);
+    });
+    await page.waitForTimeout(200);
+    state = await read();
+    check(state.title === null && state.letters === null, `a late display before reduction is shown: ${state.title}`);
+    // A simulated input again, for the study and the narrow layout below.
+    await page.fill("#sim-n", "12");
+    await page.fill("#sim-seed", "4");
+    await page.click("#sim-generate");
+    await wait(() => document.querySelector(".headline-title")?.textContent.startsWith("Before reduction"));
+    await page.click("#run");
+    await solved();
 
     // The simulation study, its tables and file, and Cancel.
     await page.click("#view-study");

@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { studyCsv, summarize } from "../src/study.js";
 import type { Instance } from "../src/worker.js";
 
-const solve = (letters: number | null, assignments: number | null, milliseconds: number) => ({ letters, assignments, milliseconds });
+const solve = (letters: number | null, assignments: number | null, milliseconds: number | null) =>
+  ({ letters, assignments, milliseconds });
 const instance = (n: number, seed: number, cs: number | null, sigma: number | null): Instance => ({
   n, seed, lettersBefore: 5, assignmentsBefore: 20, edges: 10,
   solves: {
@@ -24,6 +25,29 @@ describe("summarize", () => {
   it("keeps one row for each number of treatments, in the order of the study", () => {
     expect(summarize([instance(20, 1, 1, 1), instance(10, 1, 1, 1), instance(20, 2, 1, 1)]).map((r) => [r.n, r.instances]))
       .toEqual([[20, 2], [10, 1]]);
+  });
+});
+
+describe("summarize with solves that did not finish or did not run", () => {
+  it("leaves a second stage that did not run out of the times, and gives no time when none ran", () => {
+    const ran = instance(10, 1, 16, 15);
+    ran.solves.assignment_then_letter.milliseconds = 1000;
+    const skipped = instance(10, 2, 16, null);
+    skipped.solves.assignment_then_letter = solve(null, null, null);
+    const [row] = summarize([ran, skipped]);
+    expect(row.mean.assignment_then_letter).toBe(1000);
+    expect(row.max.assignment_then_letter).toBe(1000);
+    const [none] = summarize([skipped]);
+    expect([none.mean.assignment_then_letter, none.max.assignment_then_letter]).toEqual([null, null]);
+  });
+
+  it("computes the share removed over the instances in which CLD-sigma finished", () => {
+    const finished = instance(10, 1, 20, 20);
+    const unfinished = instance(10, 2, 20, null);
+    unfinished.assignmentsBefore = 100;
+    const [row] = summarize([finished, unfinished]);
+    expect(row.assignmentsRemoved).toBe(0);
+    expect(summarize([unfinished])[0].assignmentsRemoved).toBeNull();
   });
 });
 

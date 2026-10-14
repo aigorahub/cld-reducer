@@ -230,6 +230,10 @@ describe("worker", () => {
       const unfinished = Object.values(i.solves).filter((x) => x.letters === null);
       expect(unfinished.length).toBeGreaterThan(0);
       expect(unfinished.every((x) => x.assignments === null)).toBe(true);
+      // A second stage whose first stage did not finish does not run, and it has no time.
+      expect(i.solves.assignment_minimum.letters).toBeNull();
+      expect(i.solves.assignment_then_letter.milliseconds).toBeNull();
+      expect(i.solves.assignment_minimum.milliseconds).toBeGreaterThanOrEqual(0);
     } finally {
       hooks.run = run;
     }

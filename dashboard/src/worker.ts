@@ -13,11 +13,15 @@ export interface Input {
   means: MeanRow[] | null;
 }
 
-/** One timed solve of a simulated instance; null values mean that it did not finish within the time limit. */
+/**
+ * One timed solve of a simulated instance. Null counts mean that it did not
+ * finish within the time limit. A null time means that it did not run, because
+ * its first stage did not finish.
+ */
 export interface Solve {
   letters: number | null;
   assignments: number | null;
-  milliseconds: number;
+  milliseconds: number | null;
 }
 
 /** All solves of one simulated experiment. */
@@ -81,7 +85,7 @@ export async function studyInstance(n: number, seed: number, timeLimit: number):
   const options = { means, timeLimit };
   const c = await timed(() => reduceLetters(pairs, { ...options, method: "letter_minimum" }));
   const sigma = await timed(() => reduceLetters(pairs, { ...options, method: "assignment_minimum" }));
-  const missing = { result: null, solve: { letters: null, assignments: null, milliseconds: 0 } };
+  const missing = { result: null, solve: { letters: null, assignments: null, milliseconds: null } };
   const cs = c.result ? await timed(() => stagedSolve(pairs, means, "letter_then_assignment", c.result!.stats.objective, timeLimit)) : missing;
   const sc = sigma.result ? await timed(() => stagedSolve(pairs, means, "assignment_then_letter", sigma.result!.stats.objective, timeLimit)) : missing;
   const any = c.result ?? sigma.result;

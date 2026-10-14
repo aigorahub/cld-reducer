@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { CldReduction } from "../../js/src/index.js";
 import { parseMeans, parsePairs } from "../src/csv.js";
-import { EXAMPLES, METHODS, SECOND_STAGE, STAGES, TABLE_X, checkReduction, count, displayOf, duration, explain,
+import { EXAMPLES, METHODS, SECOND_STAGE, STAGES, TABLE_X, checkReduction, checkStage, count, displayOf, duration, explain,
          meanText, methodInfo, resultsCsv, resultsJson, sharedTokens, tokensOf, type MethodResult } from "../src/data.js";
 
 const repo = (path: string): string => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
@@ -121,6 +121,20 @@ describe("checkReduction", () => {
     expect(checkReduction({ ...chain(), method: "assignment_then_letter" }, "assignment_then_letter")).toBeNull();
     expect(checkReduction({ ...objective, method: "assignment_then_letter" }, "assignment_then_letter"))
       .toBe("The objective value of the reply does not match its letters.");
+  });
+});
+
+describe("checkStage", () => {
+  const withStats = (letters: number, assignments: number): CldReduction =>
+    ({ ...chain(), stats: { ...chain().stats, numLettersAfter: letters, assignmentsAfter: assignments } });
+  it("requires the second stage to keep the minimum of the first and not to be worse in the other quantity", () => {
+    expect(checkStage(withStats(3, 9), withStats(3, 8), "letter_then_assignment")).toBeNull();
+    expect(checkStage(withStats(3, 9), withStats(4, 8), "letter_then_assignment"))
+      .toBe("The second stage does not keep the minimum of the first stage.");
+    expect(checkStage(withStats(3, 9), withStats(3, 10), "letter_then_assignment")).not.toBeNull();
+    expect(checkStage(withStats(4, 8), withStats(3, 8), "assignment_then_letter")).toBeNull();
+    expect(checkStage(withStats(4, 8), withStats(3, 9), "assignment_then_letter")).not.toBeNull();
+    expect(checkStage(withStats(4, 8), withStats(5, 8), "assignment_then_letter")).not.toBeNull();
   });
 });
 

@@ -8,7 +8,7 @@ import { DataError, MAX_CHARS, TEMPLATE_MEANS, TEMPLATE_PAIRS, parseMeans, parse
 import {
   EXAMPLES, METHODS, SECOND_STAGE, TABLE_X, TABLE_XI, checkReduction, count, displayOf, duration, explain,
   meanText, methodInfo, resultsCsv, resultsJson, sharedTokens, tokensOf,
-  type BeforeRows, type Example, type Method, type MethodResult, type ResultMethod,
+  checkStage, type BeforeRows, type Example, type Method, type MethodResult, type ResultMethod, type StagedOrder,
 } from "./data.js";
 import { experimentCsv, simulate } from "./simulate.js";
 import { summarize, studyCsv, ALL_METHODS } from "./study.js";
@@ -134,7 +134,9 @@ const state = {
 };
 
 let nextId = 1;
-let beforeId = 0;
+/** The before request in flight, with the input version that it belongs to. */
+let beforeRequest: { id: number; version: number } | null = null;
+/** The last input version for which the page asked for the display before reduction. */
 let beforeVersion = -1;
 let beforeTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -178,6 +180,7 @@ function startWorker(): void {
   state.solver = "loading";
   // A request to the old worker is lost; ask the new one again.
   beforeVersion = -1;
+  beforeRequest = null;
   let w: Worker;
   try {
     w = new Worker(workerUrl, { name: "cld-reducer-solver" });
@@ -251,9 +254,11 @@ function problemOf(kind: string, message: string): Problem {
 
 function onReply(r: Reply): void {
   if (r.type === "ready") return;
-  if (r.id === beforeId && (r.type === "before" || r.type === "error")) {
+  if (beforeRequest && r.id === beforeRequest.id && (r.type === "before" || r.type === "error")) {
+    const { version } = beforeRequest;
+    beforeRequest = null;
     if (r.type === "before") {
-      state.before = { ...r.before, milliseconds: r.milliseconds, version: beforeVersion };
+      state.before = { ...r.before, milliseconds: r.milliseconds, version };
       state.beforeNote = null;
     } else {
       state.before = null;
@@ -277,8 +282,10 @@ function onReply(r: Reply): void {
     const expected = run.expected[run.results.length];
     const groups = run.results[0]?.reduction.groups;
     const stage = METHODS.some((m) => m.id === r.method) ? 1 : 2;
+    const previous = run.results[run.results.length - 1];
     const defect = r.method !== expected || r.stage !== stage ? "The reply is for another method."
       : checkReduction(r.reduction, r.method)
+      ?? (r.stage === 2 ? checkStage(previous.reduction, r.reduction, r.method as StagedOrder) : null)
       ?? (groups && JSON.stringify(groups) !== JSON.stringify(r.reduction.groups)
         ? "The methods returned different groups." : null);
     if (defect) {
@@ -345,6 +352,8 @@ function requestBefore(): void {
   clearTimeout(beforeTimer);
   if (state.solver !== "ready" || !worker || beforeVersion === state.inputVersion) return;
   beforeVersion = state.inputVersion;
+  // A reply to an earlier request belongs to an earlier input.
+  beforeRequest = null;
   let input: Input;
   try {
     input = readInput();
@@ -354,8 +363,8 @@ function requestBefore(): void {
     render();
     return;
   }
-  beforeId = nextId++;
-  worker.postMessage({ type: "before", id: beforeId, input } satisfies Request);
+  beforeRequest = { id: nextId++, version: state.inputVersion };
+  worker.postMessage({ type: "before", id: beforeRequest.id, input } satisfies Request);
 }
 
 function setInput(pairs: string, means: string, source: string, example: Example | null, note: string | null): void {
@@ -386,9 +395,11 @@ function generate(): void {
   const n = wholeNumber(ui.simN, 2, 80, 20);
   const seed = wholeNumber(ui.simSeed, 1, 2 ** 31 - 1, 1);
   const files = experimentCsv(simulate(n, seed));
+  // After the largest seed, the next one is 1 again.
+  const next = seed >= 2 ** 31 - 1 ? 1 : seed + 1;
   setInput(files.pairs, files.means, `Simulated, ${n} treatments, seed ${seed}`, null,
-           `Simulated experiment with ${n} treatments and seed ${seed}. The next Generate uses seed ${seed + 1}.`);
-  ui.simSeed.value = String(seed + 1);
+           `Simulated experiment with ${n} treatments and seed ${seed}. The next Generate uses seed ${next}.`);
+  ui.simSeed.value = String(next);
 }
 
 async function loadFile(file: File, target: HTMLTextAreaElement): Promise<void> {
@@ -817,7 +828,10 @@ function renderStudy(): void {
   if (!done) return;
 
   const rows = summarize(run.instances);
-  const allTimes = run.instances.flatMap((i) => ALL_METHODS.map((m) => i.solves[m].milliseconds));
+  const allTimes = run.instances.flatMap((i) => ALL_METHODS.flatMap((m) => {
+    const t = i.solves[m].milliseconds;
+    return t === null ? [] : [t];
+  }));
   const finished = rows.reduce((t, r) => t + r.finished, 0);
   const head = el("section", "headline", undefined, host);
   el("p", "headline-text",
@@ -847,13 +861,14 @@ function renderStudy(): void {
          "Letter minimum not assignment minimum"],
         rows.map((r) => [String(r.n), String(r.instances), fixed(r.lettersBefore), fixed(r.assignmentsBefore),
           fixed(r.value.letter_minimum), fixed(r.value.assignment_minimum),
-          r.value.assignment_minimum === null ? "" : `${(100 * (1 - r.value.assignment_minimum / r.assignmentsBefore)).toFixed(1)}%`,
+          r.assignmentsRemoved === null ? "" : `${(100 * r.assignmentsRemoved).toFixed(1)}%`,
           fixed(r.value.letter_then_assignment), fixed(r.value.assignment_then_letter), String(r.tradeOff)]));
-  table("Time in this browser", "Mean and maximum time of each solve. A stage 2 time covers the second solve only.",
+  table("Time in this browser", "Mean and maximum time of each solve. A stage 2 time covers the second solve only. " +
+        "A second stage does not run when its first stage does not finish, and it is not in these times.",
         ["Treatments", "CLD-C mean", "CLD-C max", "CLD-sigma mean", "CLD-sigma max", "Stage 2 after CLD-C mean",
          "Stage 2 after CLD-C max", "Stage 2 after CLD-sigma mean", "Stage 2 after CLD-sigma max",
          "All four solves within the limit"],
-        rows.map((r) => [String(r.n), ...ALL_METHODS.flatMap((m) => [duration(r.mean[m]), duration(r.max[m])]),
+        rows.map((r) => [String(r.n), ...ALL_METHODS.flatMap((m) => [r.mean[m], r.max[m]].map((t) => (t === null ? "" : duration(t)))),
                          `${r.finished} of ${r.instances}`]));
   const published = rows.flatMap((r) => {
     const x = TABLE_X.find((t) => t.n === r.n);

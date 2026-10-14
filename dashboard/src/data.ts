@@ -168,6 +168,18 @@ export function checkReduction(value: unknown, method: ResultMethod): string | n
   return null;
 }
 
+/**
+ * Check a second stage against its first stage: it keeps the minimum of the
+ * first stage, and the other quantity is not larger. Returns the problem, or null.
+ */
+export function checkStage(first: CldReduction, second: CldReduction, order: StagedOrder): string | null {
+  const a = first.stats, b = second.stats;
+  const kept = order === "letter_then_assignment"
+    ? b.numLettersAfter === a.numLettersAfter && b.assignmentsAfter <= a.assignmentsAfter
+    : b.assignmentsAfter === a.assignmentsAfter && b.numLettersAfter <= a.numLettersAfter;
+  return kept ? null : "The second stage does not keep the minimum of the first stage.";
+}
+
 // One sentence in plain words for a message of the package, found by its
 // stable prefix (docs/algorithm.md section 10).
 const EXPLANATIONS: readonly [string, string][] = [
