@@ -28,8 +28,10 @@ of `main`; the documents describe 0.3.2 as this change.
 
 Section 8 of Ennis, Fayle, and Ennis (2012) generates graphs with the method of
 Gramm et al. Section 3.2 of Gramm, Guo, Hüffner, Niedermeier, Piepho, and Schmid
-(2007), Computational Statistics and Data Analysis 52, 725-736, which the 2012
-paper cites as Gramm et al. [2006], gives the model:
+(2007), Computational Statistics and Data Analysis 52, 725-736, gives the model.
+Footnote 7 of the 2012 paper names Gramm et al. [2006], but its reference list
+gives 2006 to another paper, on clique cover; the plan reads the footnote as the
+2007 paper, whose Section 3.2 is this model:
 
 - n treatment means from a normal distribution with mean 42.6 and variance 12.7;
 - variances of the sample means from a gamma distribution with shape 4.12 and
@@ -49,8 +51,9 @@ displays than Table X of the 2012 paper reports. The mean assignment count of th
 18.0, 60.3, and 126.9 for n = 10, 20, and 30, against 14.38, 42.87, and 80.03 in
 Table X. Table X averages over the searches that finished: all of them at
 n = 10, so that comparison is direct. None of the eight readings of the
-parameters that we tried as alternatives to the published text (variance or standard deviation, gamma scale
-or rate, gamma value as variance or standard deviation) matches.
+parameters (the published one and seven alternatives: variance or standard
+deviation, gamma scale or rate, gamma value as variance or standard deviation)
+matches.
 The page keeps the published model and states the difference. It does not fit
 parameters to Table X.
 
@@ -100,7 +103,7 @@ staged solve.
 
 ### Simulation study
 
-A second view repeats the experiment of Section 8 of the 2012 paper in the
+A second view follows the design of the experiment of Section 8 of the 2012 paper in the
 browser: a range of n, a count of instances for each n, and a time limit of 30
 seconds for each solve. For each n it shows the mean assignments before and after,
 the letters before and after, the share solved within the limit, and the mean
@@ -112,7 +115,7 @@ speed factor.
 
 - Unit tests: the generator (reproducible seeds, the normal and gamma moments,
   the eigenvalue repair, the order of the groups), the staged solve against an
-  exhaustive search on small graphs (the exhaustive inputs of the conformance
+  search over all displays (every set of cliques of any size) on small graphs (the exhaustive inputs of the conformance
   suite), the before display against the package statistics, and the extended
   reply check.
 - Browser test of the built file: the new examples, the before and after

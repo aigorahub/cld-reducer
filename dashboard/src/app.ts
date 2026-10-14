@@ -905,7 +905,7 @@ function renderShown(host: HTMLElement, shown: Shown): void {
   line("Relationships preserved", "", (r) => (r.reduction.relationshipPreserved ? "Yes" : "No"));
   line("Time in this browser", before ? duration(before.milliseconds) : "", (r) => duration(r.milliseconds));
   el("p", "hint",
-     "Stage 2 starts from the minimum of stage 1 and keeps it. Its time covers the second solve only. " +
+     "Stage 2 starts from the minimum of stage 1 and keeps it. Its time covers the whole second stage, not stage 1. " +
      "The relationship check gives back every input decision from the letters.", summary);
 }
 
@@ -1031,7 +1031,7 @@ function renderStudy(): void {
           r.assignmentsRemoved === null ? "" : `${(100 * r.assignmentsRemoved).toFixed(1)}%`,
           fixed(r.value.letter_then_assignment), fixed(r.value.assignment_then_letter), `${r.tradeOff} of ${r.tradeOffKnown}`]));
   table("Time in this browser", "Mean and maximum time of each solve that ran, also of a solve that reached the limit. " +
-        "A time covers the whole call, with the enumeration of the maximal cliques. A stage 2 time covers the second solve only. " +
+        "A time covers the whole call, with the enumeration of the maximal cliques. A stage 2 time covers the whole second stage, not stage 1. " +
         "A second stage does not run when its first stage does not finish, and it is not in these times.",
         ["Treatments", "CLD-C mean", "CLD-C max", "CLD-sigma mean", "CLD-sigma max", "Stage 2 after CLD-C mean",
          "Stage 2 after CLD-C max", "Stage 2 after CLD-sigma mean", "Stage 2 after CLD-sigma max",

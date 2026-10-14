@@ -1,6 +1,7 @@
 // Simulated multiple comparisons with the model of Gramm, Guo, Hüffner,
-// Niedermeier, Piepho, and Schmid (2007), Section 3.2, which Ennis, Fayle, and
-// Ennis (2012), Section 8, cite as Gramm et al. [2006] for their test graphs.
+// Niedermeier, Piepho, and Schmid (2007), Section 3.2. Ennis, Fayle, and Ennis
+// (2012), Section 8, use it for their test graphs; their footnote 7 names
+// Gramm et al. [2006], whose reference is another paper, on clique cover.
 
 /** Parameters of Section 3.2, fitted there to oilseed rape trials. */
 export const MODEL = {

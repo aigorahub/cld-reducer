@@ -29,28 +29,40 @@ function pairsOf(n: number, edges: number[][]): PairRow[] {
   return rows;
 }
 
-/** Lexicographic minima over every subset of the memberships of the maximal cliques. */
+/**
+ * Lexicographic minima over every display: every set of cliques, of any size and not only maximal
+ * ones, that covers each group and each joined pair. It shares no rule with the model: it searches
+ * all cliques, and branches on the first group or pair that the chosen cliques do not cover yet.
+ */
 function exhaustive(n: number, edges: number[][]): { lettersFirst: [number, number]; assignmentsFirst: [number, number] } {
-  const adjacency = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => i === j));
-  for (const [i, j] of edges) adjacency[i][j] = adjacency[j][i] = true;
-  const cliques = maximalCliques(adjacency, null);
-  const members = cliques.flatMap((q, c) => q.map((g) => [c, g] as const));
+  const joined = (i: number, j: number): boolean => edges.some(([a, b]) => (a === i && b === j) || (a === j && b === i));
+  const bits = (mask: number): number[] => Array.from({ length: n }, (_, i) => i).filter((i) => mask & (1 << i));
+  const cliques: number[] = [];
+  for (let mask = 1; mask < 1 << n; mask++) {
+    const g = bits(mask);
+    if (g.every((i, k) => g.slice(k + 1).every((j) => joined(i, j)))) cliques.push(mask);
+  }
+  const elements: number[] = [];
+  for (let i = 0; i < n; i++) elements.push(1 << i);
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (joined(i, j)) elements.push((1 << i) | (1 << j));
   let lettersFirst: [number, number] = [Infinity, Infinity];
   let assignmentsFirst: [number, number] = [Infinity, Infinity];
-  for (let mask = 1; mask < 1 << members.length; mask++) {
-    const sets = cliques.map(() => new Set<number>());
-    let count = 0;
-    members.forEach(([c, g], k) => { if (mask & (1 << k)) { sets[c].add(g); count++; } });
-    const covered = (i: number, j: number): boolean => sets.some((s) => s.has(i) && s.has(j));
-    let ok = true;
-    for (let i = 0; i < n && ok; i++) for (let j = i; j < n && ok; j++) if (adjacency[i][j] && !covered(i, j)) ok = false;
-    if (!ok) continue;
-    const letters = sets.filter((s) => s.size > 0).length;
-    if (letters < lettersFirst[0] || (letters === lettersFirst[0] && count < lettersFirst[1])) lettersFirst = [letters, count];
-    if (count < assignmentsFirst[0] || (count === assignmentsFirst[0] && letters < assignmentsFirst[1])) {
-      assignmentsFirst = [count, letters];
+  const search = (chosen: number[], letters: number, assignments: number): void => {
+    // Both counts only grow, so stop when neither order can improve.
+    const noLetters = letters > lettersFirst[0] || (letters === lettersFirst[0] && assignments >= lettersFirst[1]);
+    const noAssignments = assignments > assignmentsFirst[0] || (assignments === assignmentsFirst[0] && letters >= assignmentsFirst[1]);
+    if (noLetters && noAssignments) return;
+    const open = elements.find((e) => !chosen.some((q) => (q & e) === e));
+    if (open === undefined) {
+      if (!noLetters) lettersFirst = [letters, assignments];
+      if (!noAssignments) assignmentsFirst = [assignments, letters];
+      return;
     }
-  }
+    for (const q of cliques) {
+      if ((q & open) === open && !chosen.includes(q)) search([...chosen, q], letters + 1, assignments + bits(q).length);
+    }
+  };
+  search([], 0, 0);
   return { lettersFirst, assignmentsFirst };
 }
 
@@ -80,7 +92,7 @@ describe("before display", () => {
 });
 
 describe("staged solve", () => {
-  it("equals an exhaustive search on every graph of up to 5 vertices and on small random graphs", async () => {
+  it("equals a search over all displays on every graph of up to 5 vertices and on small random graphs", async () => {
     const graphs = ["exhaustive-n3", "exhaustive-n4", "exhaustive-n5", "random-n06", "random-n07"]
       .flatMap((name) => JSON.parse(repo(`conformance/inputs/${name}.json`)).graphs as { n: number; edges: number[][] }[]);
     let checked = 0;

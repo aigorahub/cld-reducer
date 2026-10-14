@@ -2,7 +2,7 @@
 
 A page that reduces a compact letter display in the browser. It is one self-contained HTML file: the page, the cld-reducer JavaScript package from [`../js`](../js), the HiGHS WebAssembly solver, and two example data sets are all inside it. Open the file in a browser. It needs no server and no network connection, and the data does not leave the computer.
 
-The page shows the letters before reduction, one letter for each maximal clique. Run puts the reduced letters next to them, with the time of each solve. A second view repeats the simulation study of Ennis, Fayle, and Ennis (2012) in the browser.
+The page shows the letters before reduction, one letter for each maximal clique. Run puts the reduced letters next to them, with the time of each solve. A second view follows the design of the simulation study of Ennis, Fayle, and Ennis (2012) in the browser.
 
 The page reads significance decisions. It does not run significance tests on measurements. Give it the decisions of your own analysis.
 
@@ -69,13 +69,13 @@ Each package method minimizes one quantity. Neither optimizes the other quantity
 - **CLD-C then CLD-sigma** gives the fewest assignments among the displays with the minimum letter count of CLD-C.
 - **CLD-sigma then CLD-C** gives the fewest letters among the displays with the minimum assignment count of CLD-sigma.
 
-The second stage keeps the minimum of the first stage exactly. It uses the CLD-sigma model of the package with one more binary column for each maximal clique, the canonical solve engine of the package, and the same HiGHS solver. [`../docs/plans/dashboard-staged-solve/plan.md`](../docs/plans/dashboard-staged-solve/plan.md) states the model and why it is exact. The tests compare it with an exhaustive search on more than 1,000 small graphs. Like stage 1, it accepts at most 10,000 maximal cliques. The second stage exists in this page only. It is not part of the specification or of the R, Python, and npm packages.
+The second stage keeps the minimum of the first stage exactly. It uses the CLD-sigma model of the package with one more binary column for each maximal clique, the canonical solve engine of the package, and the same HiGHS solver. [`../docs/plans/dashboard-staged-solve/plan.md`](../docs/plans/dashboard-staged-solve/plan.md) states the model and why it is exact. The tests compare it on more than 1,000 small graphs with a search over all displays, every set of cliques of any size, which does not use the restriction of the model to one letter for each maximal clique. Like stage 1, it accepts at most 10,000 maximal cliques. The second stage exists in this page only. It is not part of the specification or of the R, Python, and npm packages.
 
 On the graph of Table II of the 2012 paper the two orders differ: no display with the fewest letters has the fewest assignments.
 
 ### What the page shows
 
-For each result, the page shows the distinct letters, the assignments, the assignments and letters removed, the relationship check of the package, and the time in this browser. For the letters before reduction, it shows the distinct letters, the assignments, and the time. The time of a second stage covers the second solve only. A table gives the letters of each group before and after reduction. A matrix gives the letters that each pair of groups shares in each final result, for up to 30 groups: two groups share a letter exactly when the input says that they are not significantly different.
+For each result, the page shows the distinct letters, the assignments, the assignments and letters removed, the relationship check of the package, and the time in this browser. For the letters before reduction, it shows the distinct letters, the assignments, and the time. The time of a second stage covers its whole call: its own preparation and solve, and for CLD-sigma then CLD-C the third solve too, but not stage 1. A table gives the letters of each group before and after reduction. A matrix gives the letters that each pair of groups shares in each final result, for up to 30 groups: two groups share a letter exactly when the input says that they are not significantly different.
 
 The page checks that the counts of the letters before reduction equal the statistics of the package. A result does not say whether the essential cover proof or HiGHS produced it. The package does not report that.
 
@@ -118,7 +118,7 @@ The triticale data of Table VI of the 2012 paper is not in the page. The data re
 
 ### Simulated experiments
 
-"Generate" makes a new input from a number of treatments and a seed. The same pair gives the same experiment. Each click uses the seed shown and then adds 1; after 2,147,483,647 the next seed is 1. A study uses the same rule for the seeds of its instances; for each number of treatments, the seeds start again at the first seed, so each size gets the same seeds. Section 8 of the 2012 paper generates its graphs with the method of Section 3.2 of Gramm, Guo, Hüffner, Niedermeier, Piepho, and Schmid (2007), Computational Statistics and Data Analysis 52, 725-736, which the 2012 paper cites as Gramm et al. [2006]. The page uses that model:
+"Generate" makes a new input from a number of treatments and a seed. The same pair gives the same experiment. Each click uses the seed shown and then adds 1; after 2,147,483,647 the next seed is 1. A study uses the same rule for the seeds of its instances; for each number of treatments, the seeds start again at the first seed, so each size gets the same seeds. Section 8 of the 2012 paper generates its graphs with the method of Section 3.2 of Gramm, Guo, Hüffner, Niedermeier, Piepho, and Schmid (2007), Computational Statistics and Data Analysis 52, 725-736. Footnote 7 of the 2012 paper names "Section 3.2 of Gramm et al. [2006]", but its reference list gives 2006 to another paper (Gramm, Guo, Hüffner, and Niedermeier, on clique cover); Section 3.2 of the 2007 paper gives this model, so the page reads the footnote as that paper. The page uses that model:
 
 - treatment means from a normal distribution with mean 42.6 and variance 12.7;
 - variances of the sample means from a gamma distribution with shape 4.12 and scale 0.429;
@@ -132,7 +132,7 @@ These graphs have larger maximal displays than the graphs of Table X of the 2012
 
 ## Simulation study
 
-The second view repeats the experiment of Section 8 of the 2012 paper. It takes a range of treatment counts, a count of instances for each, a first seed, and a time limit for each solve (30 seconds by default, as in 2012). Each instance runs CLD-C, CLD-sigma, and both second stages with the `timeLimit` option of the package. That option covers the essential scan, the certificate check, and the solves; the enumeration of the maximal cliques and the construction of the model come before it. As in Table X, a solve counts as finished only when its whole time is under the limit. The view shows, for each number of treatments:
+The second view follows the design of the experiment of Section 8 of the 2012 paper. It takes a range of treatment counts, a count of instances for each, a first seed, and a time limit for each solve (30 seconds by default, as in 2012). Each instance runs CLD-C, CLD-sigma, and both second stages with the `timeLimit` option of the package. That option covers the essential scan, the certificate check, and the solves; the enumeration of the maximal cliques and the construction of the model come before it. As in Table X, a solve counts as finished only when its whole time is under the limit. The view shows, for each number of treatments:
 
 - the mean letters and assignments before reduction;
 - the mean of the quantity that each solve minimizes: letters for CLD-C and for the second stage after CLD-sigma, assignments for CLD-sigma and for the second stage after CLD-C, and the share of the assignments that CLD-sigma removes;

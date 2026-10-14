@@ -56,8 +56,8 @@ See [the dashboard README](../dashboard/README.md).
 
 The page also shows the letters before reduction next to the reduced letters,
 with the time of each solve. It has simulated experiments with the model of
-Gramm et al. (2007), which Section 8 of the 2012 paper uses (cited there as
-Gramm et al. [2006]), and a simulation
+Gramm et al. (2007), which Section 8 of the 2012 paper uses (its footnote 7
+names Gramm et al. [2006], whose reference is another paper), and a simulation
 study view. That model gives larger maximal displays than Table X of the 2012
 paper reports; the dashboard README gives the figures. An experimental second
 stage minimizes the other quantity at the minimum of the first method. It is
