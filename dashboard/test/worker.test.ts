@@ -262,6 +262,10 @@ describe("study errors", () => {
       await expect(timed(() => { throw new SolverError("staged solve failed: Solve error"); }, 30, method))
         .rejects.toThrow(`${name}: staged solve failed: Solve error`);
       await expect(timed(() => { throw "Solve error"; }, 30, method)).rejects.toThrow(`${name}: Solve error`);
+      // A time limit of a second stage, with its own prefix, is a solve that did not finish, not an error.
+      const limited = await timed(() => { throw new SolverError("staged solve failed: Time limit reached"); }, 30, method);
+      expect(limited.result).toBeNull();
+      expect(limited.solve.letters).toBeNull();
       await expect(timed(() => { throw { toString: null }; }, 30, method)).rejects.toThrow(`${name}: a failure without a message`);
     }
   });

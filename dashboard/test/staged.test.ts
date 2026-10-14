@@ -30,9 +30,11 @@ function pairsOf(n: number, edges: number[][]): PairRow[] {
 }
 
 /**
- * Lexicographic minima over every display: every set of cliques, of any size and not only maximal
- * ones, that covers each group and each joined pair. It shares no rule with the model: it searches
- * all cliques, and branches on the first group or pair that the chosen cliques do not cover yet.
+ * Lexicographic minima over displays made of cliques of any size, not only maximal ones, that cover
+ * each group and each joined pair. It shares no rule with the model: it searches all cliques, and
+ * branches on the first group or pair that the chosen cliques do not cover yet. It does not visit a
+ * display with a letter that covers nothing new, but such a letter only adds a letter and
+ * assignments, so the minima are those over every display.
  */
 function exhaustive(n: number, edges: number[][]): { lettersFirst: [number, number]; assignmentsFirst: [number, number] } {
   const joined = (i: number, j: number): boolean => edges.some(([a, b]) => (a === i && b === j) || (a === j && b === i));
@@ -92,7 +94,7 @@ describe("before display", () => {
 });
 
 describe("staged solve", () => {
-  it("equals a search over all displays on every graph of up to 5 vertices and on small random graphs", async () => {
+  it("equals a search over displays of cliques of any size on every graph of up to 5 vertices and on small random graphs", async () => {
     const graphs = ["exhaustive-n3", "exhaustive-n4", "exhaustive-n5", "random-n06", "random-n07"]
       .flatMap((name) => JSON.parse(repo(`conformance/inputs/${name}.json`)).graphs as { n: number; edges: number[][] }[]);
     let checked = 0;

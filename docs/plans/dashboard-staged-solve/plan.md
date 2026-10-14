@@ -115,7 +115,7 @@ speed factor.
 
 - Unit tests: the generator (reproducible seeds, the normal and gamma moments,
   the eigenvalue repair, the order of the groups), the staged solve against an
-  search over all displays (every set of cliques of any size) on small graphs (the exhaustive inputs of the conformance
+  search over displays made of cliques of any size, which adds a clique only to cover something still open, on small graphs (the exhaustive inputs of the conformance
   suite), the before display against the package statistics, and the extended
   reply check.
 - Browser test of the built file: the new examples, the before and after

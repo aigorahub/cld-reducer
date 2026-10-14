@@ -765,12 +765,14 @@ async function main() {
     for (const [type, message] of [["ready", "The worker sent a reply that a run does not have."],
                                    ["before", "The worker sent a reply that a run does not have."],
                                    ["second ready", "The worker sent a second ready reply."],
+                                   ["ready with id null", "The worker sent a second ready reply."],
                                    ["null", "The worker sent a reply that is not a record."],
                                    ["array", "The worker sent a reply that is not a record."],
                                    ["date", "The worker sent a reply that is not a record."]]) {
       await page.evaluate((type) => {
         window.__alter = (reply) => (type === "null" ? null : type === "array" ? [] : type === "date" ? new Date(0)
-          : type === "second ready" ? { type: "ready" } : { type, id: reply.id });
+          : type === "second ready" ? { type: "ready" } : type === "ready with id null" ? { type: "ready", id: null }
+          : { type, id: reply.id });
       }, type);
       await ready();
       const workersBefore = await page.evaluate(() => window.__workers.length);
@@ -794,6 +796,9 @@ async function main() {
     await wait(() => document.querySelector(".empty .hint")?.textContent === "The display before reduction is not available: " +
       "The reply failed the check of the page. The worker sent a reply that the display before reduction does not have.");
     await page.evaluate(() => { window.__alterBefore = null; });
+    // That request ended: a run on the same input does not wait for it.
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > h2")?.textContent === "The page cannot check the result");
     // A reply that is not a record while only the display before reduction is pending ends that
     // request: a later run says that it cannot check its result, and does not wait.
     await page.evaluate(() => { window.__alterBefore = () => null; });

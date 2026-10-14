@@ -295,7 +295,7 @@ function onReply(value: unknown): void {
   const reply = value as Reply;
   // A worker sends ready once, when it has loaded (startWorker). A second ready without an id stops
   // the work in progress; a ready that names a run or a study goes on to the checks below.
-  if (reply.type === "ready" && reply.id === undefined) {
+  if (reply.type === "ready" && typeof (reply as { id?: unknown }).id !== "number") {
     protocolError("The worker sent a second ready reply.");
     return;
   }
