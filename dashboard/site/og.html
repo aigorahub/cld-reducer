@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>cld-reducer link preview card</title>
+<style>
+/* The light colors and fonts of ../src/styles.css. */
+@font-face { font-family: "Manrope"; src: url("../src/brand/Manrope-Regular.woff2") format("woff2"); font-weight: 100 800; }
+@font-face { font-family: "Instrument Serif"; src: url("../src/brand/InstrumentSerif-Italic.woff2") format("woff2"); font-style: italic; }
+:root {
+  --bg: #f7f6f2;
+  --surface: #ffffff;
+  --ink: #1a2721;
+  --ink-2: #566660;
+  --line: rgba(26, 39, 33, 0.12);
+  --line-strong: rgba(26, 39, 33, 0.24);
+  --grid: rgba(26, 39, 33, 0.08);
+  --accent: #c05a45;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  width: 1200px;
+  height: 630px;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Manrope", system-ui, sans-serif;
+  display: grid;
+  grid-template-columns: 1fr 500px;
+  gap: 56px;
+  padding: 64px;
+}
+.text { display: flex; flex-direction: column; }
+.brand { display: flex; align-items: center; gap: 14px; }
+.brand img { width: 56px; height: 54px; }
+.brand .wordmark { font: italic 400 48px/1 "Instrument Serif", Georgia, serif; letter-spacing: -0.02em; padding-bottom: 4px; }
+.brand .product { margin-left: 14px; padding-left: 24px; border-left: 2px solid var(--line-strong); font-size: 40px; font-weight: 600; letter-spacing: -0.01em; }
+h1 { margin: 60px 0 0; font-size: 68px; line-height: 1.08; font-weight: 600; letter-spacing: -0.03em; text-wrap: balance; }
+p { margin: 28px 0 0; font-size: 29px; line-height: 1.4; color: var(--ink-2); }
+.url { margin-top: auto; font-size: 28px; font-weight: 600; color: var(--ink); }
+.panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 30px 34px 26px;
+}
+.panel h2 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+.panel .note { margin: 8px 0 0; font-size: 21px; color: var(--ink-2); }
+table { margin-top: 22px; border-collapse: collapse; font-size: 27px; font-variant-numeric: tabular-nums; }
+th { padding: 0 18px 12px 0; text-align: left; font-size: 20px; font-weight: 500; color: var(--ink-2); border-bottom: 1.5px solid var(--line); }
+td { padding: 11px 18px 11px 0; border-bottom: 1.5px solid var(--line); }
+tr:last-child td { border-bottom: 0; }
+.num { text-align: right; padding-right: 34px; }
+.before { color: var(--ink-2); letter-spacing: 0.05em; }
+.after { font-weight: 700; letter-spacing: 0.05em; }
+.gone { color: var(--accent); text-decoration: line-through; text-decoration-thickness: 2.5px; }
+</style>
+</head>
+<body>
+<div class="text">
+  <div class="brand"><img src="../src/brand/aigora-mark.svg" alt=""><span class="wordmark">aigora</span><span class="product">cld-reducer</span></div>
+  <h1>Simpler letter displays</h1>
+  <p>The fewest letters for the same significance decisions, in your browser.<br>Your data stays on your computer.</p>
+  <div class="url">cld.aigora.ai</div>
+</div>
+<div class="panel">
+  <h2>Letters before and after</h2>
+  <p class="note">From 9 to 8 assignments. Every pair keeps its decision.</p>
+  <table>
+    <thead><tr><th>Group</th><th class="num">Mean</th><th>Before</th><th>After</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td class="num">3.73</td><td class="before">A</td><td class="after">A</td></tr>
+      <tr><td>2</td><td class="num">3.57</td><td class="before">AB</td><td class="after">AB</td></tr>
+      <tr><td>3</td><td class="num">3.46</td><td class="before">A<span class="gone">B</span>C</td><td class="after">AC</td></tr>
+      <tr><td>4</td><td class="num">3.33</td><td class="before">BC</td><td class="after">BC</td></tr>
+      <tr><td>5</td><td class="num">3.3</td><td class="before">C</td><td class="after">C</td></tr>
+    </tbody>
+  </table>
+</div>
+</body>
+</html>

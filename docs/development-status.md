@@ -56,9 +56,10 @@ It does not implement FIND-AM backtracking. The exact contracts are in
 page runs the JavaScript package and the HiGHS WebAssembly solver in a worker.
 It reads pairwise decisions, solves with CLD-C or CLD-sigma, and shows both
 quantities for each result. It changes no package solver code and adds no
-public API. It is not part of the R, Python, or npm archives. The page of
-version 0.3.2 is hosted at <https://cld.aigora.ai>, the Vercel project
-`cld-reducer` of the Aigora AI team.
+public API. It is not part of the R, Python, or npm archives. The page is
+hosted at <https://cld.aigora.ai>, the Vercel project `cld-reducer` of the
+Aigora AI team. Each push to `main` deploys it. Since 0.3.3 it uses the Aigora
+design of the turfLP dashboard.
 See [the dashboard README](../dashboard/README.md).
 
 The page also shows the letters before reduction next to the reduced letters,

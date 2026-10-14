@@ -11,7 +11,8 @@
     "build": "node build.mjs",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
-    "test:browser": "node test-browser/run.mjs"
+    "test:browser": "node test-browser/run.mjs",
+    "images": "node site/make-images.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

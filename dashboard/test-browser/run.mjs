@@ -197,6 +197,23 @@ async function main() {
                                ["4", "3.33", "BC"], ["5", "3.3", "C"]]), `before letters: ${JSON.stringify(state.letters)}`);
     noResult(state, "start");
     check(await page.evaluate(() => window.__workers.length) === 1, "the page did not start one worker");
+    // The start says what the page is for, and the Aigora fonts and mark are inside the file.
+    check(await page.$eval("#results .intro-title", (e) => e.textContent) === "Simpler letter displays, with the same conclusions",
+          "the start has no intro");
+    check(await page.evaluate(async () => { await document.fonts.ready;
+      return document.fonts.check("15px Manrope") && document.fonts.check("italic 24px 'Instrument Serif'") &&
+        [...document.fonts].filter((f) => f.status === "loaded").length === 2; }), "the Aigora fonts did not load");
+    check(await page.$eval(".brand-mark", (e) => e.src.startsWith("data:image/svg+xml,") && e.complete && e.naturalWidth > 0),
+          "the Aigora mark is not in the file");
+    // Tab from the decisions reaches "Choose a file", and the side panel shows it above the sticky Run bar.
+    await page.focus("#pairs");
+    await page.keyboard.press("Tab");
+    await page.waitForTimeout(100);
+    const tabbed = await page.evaluate(() => ({ id: document.activeElement.id,
+      bottom: document.activeElement.getBoundingClientRect().bottom,
+      bar: document.querySelector("#reduce-view .run-bar").getBoundingClientRect().top }));
+    check(tabbed.id === "pairs-choose" && tabbed.bottom <= tabbed.bar, `focus behind the Run bar: ${JSON.stringify(tabbed)}`);
+    await page.evaluate(() => { document.activeElement.blur(); document.querySelector("#reduce-view .side").scrollTop = 0; });
     if (shots) await page.screenshot({ path: join(shots, "wide-start.png") });
 
     // CLD-C is the default. The simple example with it is an essential cover result. First without the second stage.
@@ -552,6 +569,10 @@ async function main() {
     await solved();
     state = await read();
     check(state.title === "CLD-C then CLD-sigma: 3 letters and 8 assignments", `staged title: ${state.title}`);
+    const stats = await page.$$eval(".stats .stat", (list) => list.map((s) => [...s.children].map((c) => c.textContent)));
+    check(same(stats, [["Distinct letters", "3", "3 before"], ["Assignments", "8", "9 before"],
+                       ["Removed", "11.1%", "1 assignment, 0 letters"]]), `staged stats: ${JSON.stringify(stats)}`);
+    check(await page.$("#results .intro") === null, "the intro stays with a result");
     check(same(state.summary[0], ["", "Before", "CLD-C", "CLD-C then CLD-sigma"]), "staged summary head");
     const stagedText = await page.$eval(".headline", (e) => e.textContent);
     check(/Stage 1, CLD-C, took (<1|\d+) ms\. Stage 2 took (<1|\d+) ms\./.test(stagedText), `stage times: ${stagedText}`);

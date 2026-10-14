@@ -1,6 +1,6 @@
 # cld-reducer browser page
 
-A page that reduces a compact letter display in the browser. It is one self-contained HTML file: the page, the cld-reducer JavaScript package from [`../js`](../js), the HiGHS WebAssembly solver, and two example data sets are all inside it. Open the file in a browser. It needs no server and no network connection, and the data does not leave the computer.
+A page that reduces a compact letter display in the browser. It finds the display with the fewest distinct letters (CLD-C) or the fewest letters in the table (CLD-sigma) for the same significance decisions. It is one self-contained HTML file: the page, the cld-reducer JavaScript package from [`../js`](../js), the HiGHS WebAssembly solver, the example data sets, and the fonts are all inside it. Open the file in a browser. It needs no server and no network connection, and the data does not leave the computer.
 
 The page shows the letters before reduction, one letter for each maximal clique. Run puts the reduced letters next to them, with the time of each solve. A second view follows the design of the simulation study of Ennis, Fayle, and Ennis (2012) in the browser.
 
@@ -18,7 +18,15 @@ cd ../dashboard && npm ci && npm run build
 open dist/cld-reducer-dashboard.html     # or double-click the file
 ```
 
-`npm run build` writes `dist/cld-reducer-dashboard.html` (about 1.7 MB). The file can be copied or sent as it is. The build also writes the same page as `dist/site/index.html`, for a static web host. The page is hosted at <https://cld.aigora.ai>, the Vercel project `cld-reducer` of the Aigora AI team. To deploy a new build, go to `dist/site`. If it has no `.vercel` directory (a new checkout or a removed `dist` has none), run `vercel link --scope aigora-ai --project cld-reducer` there. Then run `vercel deploy --prod --scope aigora-ai` there. Vercel does not build the page: the build needs `../js`. The CI workflow `js.yaml` builds the page and keeps it as the `cld-reducer-dashboard` artifact of each run.
+`npm run build` writes `dist/cld-reducer-dashboard.html` (about 1.8 MB). The file can be copied or sent as it is. The build also writes `dist/site`, the directory for a web host ("Hosting" below). The CI workflow `js.yaml` builds the page and keeps it as the `cld-reducer-dashboard` artifact of each run.
+
+## Hosting
+
+The page is at <https://cld.aigora.ai>. It is the Vercel project `cld-reducer` of the Aigora AI team, connected to this GitHub repository. Each push to `main` builds and deploys the page there, and each pull request gets a preview deployment. The project settings give the build: root directory `dashboard`, install `cd ../js && npm ci && cd ../dashboard && npm ci`, build `npm run build`, and output `dist/site`. The build reads `../js` and `../conformance`, so the project includes the files outside its root directory.
+
+`dist/site` holds what the host serves: the page as `index.html`, `favicon.ico`, `apple-touch-icon.png`, and `og.png`, the image that a chat or social app shows with a link to the page. The page keeps its icon inside the file, so the one file still shows an icon without the others. The link preview tags in `src/index.html` name `https://cld.aigora.ai`, because those apps need full addresses.
+
+The images are in `site/`, with their sources: `favicon.svg` and `og.html`. After a change to a source, `npm run images` makes the images again. It needs Chrome, as `test:browser` does. The images are committed, because Chrome draws the text of `og.png` with the fonts of the computer.
 
 ## Input format
 
@@ -104,7 +112,7 @@ The page checks every reply of the worker before it uses it. A check that cannot
 
 These are consistency checks against the input, the seeded graph, and the first stage. They do not prove that a count is minimal, and the bounds on the study counts are necessary conditions, not a proof that a display with those counts exists. The page does the clique enumeration and the generation of the seeded graphs for these checks itself, within the limit of 10,000 maximal cliques. These checks run in the page, not in the worker. On the development machine, the check of a display before reduction with 8,192 maximal cliques blocked the page for at most 75 ms in Chrome, and the graph of a study instance with 80 treatments took at most 24 ms in Node.js.
 
-A content security policy in the page refuses every network request of its code, so the page works offline. The links to the repository and to the sources open only when the user follows them. The page needs a browser with WebAssembly, `DecompressionStream`, and module scripts.
+A content security policy in the page refuses every network request of its code, so the page works offline. The fonts, the Aigora mark, and the icon are data URLs in the file. On the host, the browser can also load `favicon.ico` and `apple-touch-icon.png` from the same address. The links to the repository and to the sources open only when the user follows them. The page needs a browser with WebAssembly, `DecompressionStream`, and module scripts.
 
 ## Example data
 
@@ -152,8 +160,10 @@ npm run test:browser   # the built file in headless Chrome, opened as a file, wi
 
 `test:browser` needs Chrome. It looks in the usual places; set `CHROME_PATH` otherwise. Set `SCREENSHOT_DIR` to keep pictures of the page at a wide and a narrow width.
 
-The sources are in `src/`: `app.ts` (the page), `worker.ts` (the solver side), `staged.ts` (the letters before reduction and the second stage), `simulate.ts` (simulated experiments), `study.ts` (study summaries), `csv.ts` (reading the input), `data.ts` (methods, examples, the published tables, the result check, and the result files), and `index.html` and `styles.css`. `build.mjs` bundles them with esbuild and inlines `highs.wasm`, compressed with gzip.
+The sources are in `src/`: `app.ts` (the page), `worker.ts` (the solver side), `staged.ts` (the letters before reduction and the second stage), `simulate.ts` (simulated experiments), `study.ts` (study summaries), `csv.ts` (reading the input), `data.ts` (methods, examples, the published tables, the result check, and the result files), and `index.html` and `styles.css`. `build.mjs` bundles them with esbuild and inlines `highs.wasm`, compressed with gzip, the icon from `site/favicon.svg`, and the Aigora fonts and mark from `src/brand/`.
+
+The look follows the Aigora product design system, as the turfLP dashboard does: its colors, the Manrope and Instrument Serif fonts, and the ink app bar. The page copies the values it uses into `styles.css`.
 
 ## License
 
-MIT, as the rest of the repository. The built page holds the license of this repository, the license of the npm package `highs`, and the data source record of [`../js/NOTICE`](../js/NOTICE), under "Licenses and data sources".
+MIT, as the rest of the repository. The built page holds the license of this repository, the license of the npm package `highs`, the data source record of [`../js/NOTICE`](../js/NOTICE), and the licenses of the fonts, under "Methods and sources". The fonts in `src/brand/` are under the SIL Open Font License 1.1 (`Manrope-OFL.txt`, `InstrumentSerif-OFL.txt`). The Aigora name and mark are trademarks of Aigora and are not covered by the MIT License.
