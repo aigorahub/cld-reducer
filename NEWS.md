@@ -1,3 +1,8 @@
+# cldreducer 0.3.2
+
+- Unreleased development version after the 0.3.1 merge.
+  No algorithm or public API changes.
+
 # cldreducer 0.3.1
 
 - Add a browser page in `dashboard/` that runs the JavaScript package in one

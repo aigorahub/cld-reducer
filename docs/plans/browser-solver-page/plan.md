@@ -1,6 +1,6 @@
 # Browser page for the JavaScript solver
 
-Status: implemented on branch `feat/browser-solver-page`. The pull request holds the verification record.
+Status: implemented in PR #13, merged as `b12423098d288496d4364ceeb6e094ada984a613`. The pull request holds the verification record.
 
 Workspace: `/Users/john/aigora/dev/cld-reducer-pre-model-certificate`.
 Branch: `feat/browser-solver-page`.

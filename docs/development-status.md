@@ -12,9 +12,14 @@ Its source tree matches reviewed head
 `2fe4f9a5c7f679f4c05b8b1b18d4a9e98dde3c4b`.
 
 Version 0.3.1 follows that candidate. It adds the browser page in `dashboard/`
-and no algorithm or public API change. After its merge, the next development
-version is 0.3.2. Neither merge nor a version update publishes a package. Tags
-and registry uploads remain separate. Keep the 0.3.0 candidate commit when
+and no algorithm or public API change. PR #13 merged it as commit
+`b12423098d288496d4364ceeb6e094ada984a613`.
+Its source tree matches reviewed head
+`4d362e82a6bdddb8cdb4eec1537eb00724ed5314`.
+
+The next development version is 0.3.2. This metadata update adds no algorithm
+or public API changes. Neither merge nor a version update publishes a package.
+Tags and registry uploads remain separate. Keep the 0.3.0 candidate commit when
 preparing a later authorized release.
 
 ## Implemented behavior
@@ -47,6 +52,14 @@ It reads pairwise decisions, solves with CLD-C or CLD-sigma, and shows both
 quantities for each result. It adds no solver code and no public API. It is not
 part of the R, Python, or npm archives, and it is not hosted or published.
 See [the dashboard README](../dashboard/README.md).
+
+The first review of the page found four defects: a late file read could
+replace newer input, the reply check did not cover the display string, a long
+file name widened the narrow page, and one sentence on group order was inexact.
+Commit `4d362e82a6bdddb8cdb4eec1537eb00724ed5314` fixes them. Two independent
+reviews report no remaining findings at that commit. All 49 GitHub checks pass
+there. [PR #13](https://github.com/aigorahub/cld-reducer/pull/13) contains the
+local test record.
 
 ## Review and verification
 
