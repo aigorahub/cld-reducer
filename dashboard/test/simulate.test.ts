@@ -50,9 +50,8 @@ describe("repairEigenvalues", () => {
     for (let i = 0; i < 3; i++) {
       for (let j = 0; j < 3; j++) expect(r[i][j]).toBeCloseTo(i === j ? 1.9 : 0, 10);
     }
-    // A matrix with positive eigenvalues stays as it is.
-    const ok = [[1, 0.2], [0.2, 1]];
-    expect(repairEigenvalues(ok).flat().map((v) => Number(v.toFixed(12)))).toEqual(ok.flat());
+    // A matrix with positive eigenvalues stays exactly as it is, also with a very small correlation.
+    for (const ok of [[[1, 0.2], [0.2, 1]], [[1, 1e-12], [1e-12, 1]]]) expect(repairEigenvalues(ok)).toEqual(ok);
   });
 });
 

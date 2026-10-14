@@ -111,6 +111,8 @@ export interface Experiment {
 export function repairEigenvalues(r: number[][]): number[][] {
   const n = r.length;
   const { values, vectors } = symmetricEigen(r);
+  // Nothing to repair: keep R as it is, not a copy rebuilt from its eigenvalues.
+  if (values.every((d) => d > 0)) return r.map((row) => [...row]);
   const smallest = Math.min(...values.filter((d) => d > 0));
   const repaired = values.map((d) => (d > 0 ? d : smallest));
   return Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => {

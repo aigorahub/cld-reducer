@@ -1060,9 +1060,9 @@ function renderStudy(): void {
   } else if (published.length) {
     table("Compared with 2012",
           "Here: CLD-sigma on the instances above. 2012: FIND-AM in Table X and Table XI of Ennis, Fayle, and Ennis (2012), " +
-          "1,000 other instances for each size on 2012 hardware. Both columns of a pair count an exact solve as finished when its " +
-          "whole time, with the enumeration of the maximal cliques, is under 30 seconds, and both average the assignments and the " +
-          "time over the finished solves only. The instances here follow the published model text and have larger maximal displays " +
+          "1,000 other instances for each size on 2012 hardware. Both columns of a pair average the assignments and the time over " +
+          "the exact solves that finished in under 30 seconds. Here a solve finishes when its whole time, with the enumeration of " +
+          "the maximal cliques, is under 30 seconds; the paper does not say whether its limit includes the enumeration. The instances here follow the published model text and have larger maximal displays " +
           "than Table X reports, so read the two as separate studies.",
           ["Treatments", "Finished, here", "Finished, 2012", "Assignments before, here", "MA, 2012",
            "Exact assignments, here", "EA, 2012", "Mean time, here", "ET, 2012",
