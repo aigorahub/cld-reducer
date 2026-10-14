@@ -839,6 +839,18 @@ async function main() {
       check(problem[1] === text, `second stage error: ${problem}`);
       await page.evaluate(() => { window.__alter = null; });
     }
+    // An error that arrives before the start reply of the second stage is still a second stage error.
+    await page.evaluate(() => {
+      window.__alterStart = (reply) => (reply.stage === 2
+        ? { type: "error", id: reply.id, kind: "input", message: "post_hoc_results must not contain self-comparisons" } : reply);
+    });
+    await ready();
+    const workersBeforeEarly = await page.evaluate(() => window.__workers.length);
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > h2")?.textContent === "The second stage stopped with an error");
+    check(await page.evaluate((n) => window.__workers.length === n + 1, workersBeforeEarly),
+          "the worker runs on after an early second stage error");
+    await page.evaluate(() => { window.__alterStart = null; });
     // A known kind with a message that is not text is a solver error too, and the page starts a new
     // worker. So is an input error in a second stage, whose first stage accepted the same input.
     for (const [stage, message] of [[1, 42], [2, 42], [2, "post_hoc_results must not contain self-comparisons"]]) {

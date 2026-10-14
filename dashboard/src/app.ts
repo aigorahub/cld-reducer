@@ -374,8 +374,10 @@ function onReply(value: unknown): void {
   } else if (r.type === "error") {
     const problem = problemOf(r.kind, r.message);
     // The first stage finished and passed its checks; the error is in the experimental second stage,
-    // whatever kind it names: the first stage accepted the same input.
-    const second = run.stage === 2;
+    // whatever kind it names: the first stage accepted the same input. The stage is the one of the
+    // next result, not of the last start reply, which can arrive later.
+    const pending = run.expected[run.results.length];
+    const second = pending !== undefined && !METHODS.some((m) => m.id === pending);
     fail(second
       ? { ...problem, title: "The second stage stopped with an error",
           detail: "The first stage finished. Clear \"Then minimize the other quantity\" to see its result." }
