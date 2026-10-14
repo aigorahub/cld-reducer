@@ -4,7 +4,8 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { beforeAll, describe, expect, it } from "vitest";
-import { loadSolver, reduceLetters } from "../../js/src/index.js";
+import { SolverError, loadSolver, reduceLetters } from "../../js/src/index.js";
+import { clock } from "../../js/src/canonical.js";
 import { maximalCliques } from "../../js/src/cliques.js";
 import { parseMeans, parsePairs, type PairRow } from "../src/csv.js";
 import { checkReduction } from "../src/data.js";
@@ -117,6 +118,39 @@ describe("staged solve", () => {
       expect(cThenSigma.stats.assignmentsAfter).toBeLessThanOrEqual(c.stats.assignmentsAfter);
       expect(sigmaThenC.stats.assignmentsAfter).toBe(sigma.stats.assignmentsAfter);
       expect(sigmaThenC.stats.numLettersAfter).toBeLessThanOrEqual(sigma.stats.numLettersAfter);
+    }
+  });
+});
+
+describe("staged solve time limit", () => {
+  const pairs = parsePairs(TABLE_II);
+
+  it("rejects a limit that the package rejects", () => {
+    for (const limit of [NaN, Infinity, -1, 0]) {
+      expect(() => stagedSolve(pairs, null, "letter_then_assignment", 5, limit)).toThrow(SolverError);
+      expect(() => stagedSolve(pairs, null, "assignment_then_letter", 18, limit))
+        .toThrow("time_limit must be positive when provided");
+    }
+  });
+
+  it("counts only the solves, as the package does, and not the preparation before them", () => {
+    // A clock that jumps by 10 seconds after its first reading: with a limit of 1 second, a
+    // budget that started before the preparation has nothing left for the first solve.
+    const real = clock.now;
+    let reads = 0;
+    clock.now = () => (reads++ === 0 ? 0 : 10 + reads * 1e-6);
+    try {
+      expect(stagedSolve(pairs, null, "letter_then_assignment", 5, 1).stats.assignmentsAfter).toBe(19);
+    } finally {
+      clock.now = real;
+    }
+    // A clock that moves 0.6 seconds at each reading: the solves spend more than the limit.
+    reads = 0;
+    clock.now = () => reads++ * 0.6;
+    try {
+      expect(() => stagedSolve(pairs, null, "assignment_then_letter", 18, 1)).toThrow("Time limit reached");
+    } finally {
+      clock.now = real;
     }
   });
 });

@@ -6,10 +6,10 @@
 
 import type { CldReduction } from "../../js/src/index.js";
 import { maximalCliques } from "../../js/src/cliques.js";
-import { solveCanonical } from "../../js/src/canonical.js";
+import { clock, solveCanonical } from "../../js/src/canonical.js";
 import { assignLetters, formatTokens } from "../../js/src/display.js";
 import { SolverError } from "../../js/src/errors.js";
-import { DEFAULT_MAX_CLIQUES, pairsToGraph } from "../../js/src/input.js";
+import { DEFAULT_MAX_CLIQUES, checkControls, pairsToGraph } from "../../js/src/input.js";
 import {
   assignmentCoverage, assignmentEssentialDecisions, buildAssignmentPlan, compileAssignmentPlan, graphContext,
   methods, selectedColumns, type Model, type Strategy,
@@ -47,12 +47,19 @@ const FAILED = "staged solve failed: ";
  */
 export function stagedSolve(pairs: PairRow[], means: MeanRow[] | null, order: StagedOrder, bound: number,
                             timeLimit: number | null = null): CldReduction {
-  const started = performance.now();
-  const remaining = (): number | null => {
-    if (timeLimit === null) return null;
-    const left = timeLimit - (performance.now() - started) / 1000;
-    if (left <= 0) throw new SolverError(FAILED + "Time limit reached");
-    return left;
+  const limit = checkControls({ timeLimit }).timeLimit;
+  // One budget for the solves, as in the package (docs/algorithm.md): input checks, vertex
+  // reduction, clique enumeration, and model construction are not part of it.
+  let spent = 0;
+  const timed = <T>(solve: (left: number | null) => T): T => {
+    const left = limit === null ? null : limit - spent;
+    if (left !== null && left <= 0) throw new SolverError(FAILED + "Time limit reached");
+    const t0 = clock.now();
+    try {
+      return solve(left);
+    } finally {
+      spent += clock.now() - t0;
+    }
   };
   const graph = pairsToGraph(pairs, { means });
   const { groups, adjacency } = graph;
@@ -102,7 +109,7 @@ export function stagedSolve(pairs: PairRow[], means: MeanRow[] | null, order: St
       essentialDecisions: assignmentEssentialDecisions,
     };
     // The decisions are the memberships, with positive weights, so the essential cover proof applies.
-    const { selected } = solveCanonical(model, remaining(), strategy);
+    const { selected } = timed((left) => solveCanonical(model, left, strategy));
     columns = selectedColumns(cliques, plan, selected);
   } else {
     // A vertex or edge that one clique alone covers forces that clique.
@@ -115,11 +122,11 @@ export function stagedSolve(pairs: PairRow[], means: MeanRow[] | null, order: St
       essentialDecisions: () => forced,
     };
     // A cover by the chosen cliques does not prove a membership set within the bound, so no proof here.
-    const chosen = solveCanonical(model, remaining(), strategy, false).selected;
+    const chosen = timed((left) => solveCanonical(model, left, strategy, false)).selected;
     // Canonical memberships inside the chosen cliques. Their minimum must be the bound.
     const subset = cliques.filter((_, c) => chosen[c]);
     const subPlan = ASSIGNMENTS.planner(graphContext(small, subset, reduced.weights, true));
-    const inner = solveCanonical(subPlan, remaining(), ASSIGNMENTS);
+    const inner = timed((left) => solveCanonical(subPlan, left, ASSIGNMENTS));
     if (inner.minimum !== bound) throw new SolverError("HiGHS returned an invalid solution");
     columns = ASSIGNMENTS.decoder(subset, subPlan, inner.selected);
     if (columns.length !== subset.length) throw new SolverError("HiGHS returned an invalid solution");

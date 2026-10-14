@@ -43,8 +43,8 @@ Gramm et al. Section 3.2 of Gramm, Guo, Hüffner, Niedermeier, Piepho, and Schmi
 The page generates such an experiment for a chosen n and seed. A seeded
 generator makes each example reproducible.
 
-Result of the implementation: the graphs of this model are denser than Table X
-of the 2012 paper reports. The mean assignment count of the maximal display is
+Result of the implementation: the graphs of this model have larger maximal
+displays than Table X of the 2012 paper reports. The mean assignment count of the maximal display is
 18.0, 60.3, and 126.9 for n = 10, 20, and 30, against 14.38, 42.87, and 80.03 in
 Table X. Table X averages over the searches that finished: all of them at
 n = 10, so that comparison is direct. None of the eight readings of the
@@ -108,7 +108,8 @@ speed factor.
 
 ## Verification
 
-- Unit tests: the generator against Table X, the staged solve against an
+- Unit tests: the generator (reproducible seeds, the normal and gamma moments,
+  the eigenvalue repair, the order of the groups), the staged solve against an
   exhaustive search on small graphs (the exhaustive inputs of the conformance
   suite), the before display against the package statistics, and the extended
   reply check.

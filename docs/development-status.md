@@ -49,17 +49,19 @@ It does not implement FIND-AM backtracking. The exact contracts are in
 `dashboard/` holds a private package that builds one offline HTML file. The
 page runs the JavaScript package and the HiGHS WebAssembly solver in a worker.
 It reads pairwise decisions, solves with CLD-C or CLD-sigma, and shows both
-quantities for each result. It adds no solver code and no public API. It is not
-part of the R, Python, or npm archives, and it is not hosted or published.
+quantities for each result. It changes no package solver code and adds no
+public API. It is not part of the R, Python, or npm archives, and it is not
+hosted or published.
 See [the dashboard README](../dashboard/README.md).
 
 The page also shows the letters before reduction next to the reduced letters,
 with the time of each solve. It has simulated experiments with the model of
 Gramm et al. (2007), which Section 8 of the 2012 paper uses, and a simulation
-study view. That model gives denser graphs than Table X of the 2012 paper
-reports; the dashboard README gives the figures. An experimental second stage
-minimizes the other quantity at the minimum of the first method. It reuses the
-package model and solver and exists in the page only. A change of the
+study view. That model gives larger maximal displays than Table X of the 2012
+paper reports; the dashboard README gives the figures. An experimental second
+stage minimizes the other quantity at the minimum of the first method. It is
+solver code of the page: it builds on the package model, canonical engine, and
+HiGHS, and it exists in the page only. A change of the
 specification or of the R and Python packages for it is a separate decision.
 
 The first review of the page found four defects: a late file read could

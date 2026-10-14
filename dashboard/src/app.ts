@@ -896,7 +896,7 @@ function renderStudy(): void {
         rows.map((r) => [String(r.n), String(r.instances), fixed(r.lettersBefore), fixed(r.assignmentsBefore),
           fixed(r.value.letter_minimum), fixed(r.value.assignment_minimum),
           r.assignmentsRemoved === null ? "" : `${(100 * r.assignmentsRemoved).toFixed(1)}%`,
-          fixed(r.value.letter_then_assignment), fixed(r.value.assignment_then_letter), String(r.tradeOff)]));
+          fixed(r.value.letter_then_assignment), fixed(r.value.assignment_then_letter), `${r.tradeOff} of ${r.tradeOffKnown}`]));
   table("Time in this browser", "Mean and maximum time of each solve. A stage 2 time covers the second solve only. " +
         "A second stage does not run when its first stage does not finish, and it is not in these times.",
         ["Treatments", "CLD-C mean", "CLD-C max", "CLD-sigma mean", "CLD-sigma max", "Stage 2 after CLD-C mean",
@@ -913,7 +913,7 @@ function renderStudy(): void {
     table("Published in 2012",
           "Table X and Table XI of Ennis, Fayle, and Ennis (2012): 1,000 other instances for each size, solved by " +
           "FIND-AM on 2012 hardware. MA and EA are means over the searches that finished. The instances above follow " +
-          "the published model text and are denser than Table X reports, so read the two tables as separate studies.",
+          "the published model text and have larger maximal displays than Table X reports, so read the two tables as separate studies.",
           ["Treatments", "MA: assignments before", "EA: exact assignments", "Finished within 30 s",
            "Mean time of finished searches", "Letter minimum not assignment minimum, per 1,000"], published);
   }

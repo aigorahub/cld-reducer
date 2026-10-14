@@ -91,6 +91,8 @@ export interface Summary {
   max: Record<ResultMethod, number | null>;
   /** Instances in which the second stage after CLD-C still has more assignments than CLD-sigma. */
   tradeOff: number;
+  /** Instances in which both of those solves finished, so that the comparison is known. */
+  tradeOffKnown: number;
 }
 
 const average = (values: number[]): number | null =>
@@ -131,6 +133,8 @@ export function summarize(instances: readonly Instance[]): Summary[] {
         const sigma = i.solves.assignment_minimum.assignments;
         return cs !== null && sigma !== null && cs > sigma;
       }).length,
+      tradeOffKnown: group.filter((i) => i.solves.letter_then_assignment.assignments !== null &&
+                                         i.solves.assignment_minimum.assignments !== null).length,
     };
   });
 }

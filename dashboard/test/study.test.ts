@@ -15,7 +15,8 @@ const instance = (n: number, seed: number, cs: number | null, sigma: number | nu
 describe("summarize", () => {
   it("averages finished solves, counts the trade-offs, and keeps the slowest time", () => {
     const [row] = summarize([instance(10, 1, 16, 15), instance(10, 2, 15, 15), instance(10, 3, 17, null)]);
-    expect(row).toMatchObject({ n: 10, instances: 3, finished: 2, lettersBefore: 5, assignmentsBefore: 20, tradeOff: 1 });
+    expect(row).toMatchObject({ n: 10, instances: 3, finished: 2, lettersBefore: 5, assignmentsBefore: 20, tradeOff: 1,
+                                tradeOffKnown: 2 });
     expect(row.value.assignment_minimum).toBe(15);
     expect(row.value.letter_then_assignment).toBe(16);
     expect(row.max.assignment_minimum).toBe(10);

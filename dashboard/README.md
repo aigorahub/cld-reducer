@@ -116,17 +116,18 @@ The triticale data of Table VI of the 2012 paper is not in the page. The data re
 
 The groups are T1 to Tn, from the highest mean down. The means go into the means field with three decimals.
 
-These graphs are denser than the graphs of Table X of the 2012 paper. The mean assignment count of the maximal display is 18.0, 60.3, and 126.9 for 10, 20, and 30 treatments (seeds 1 to 300, 1 to 150, and 1 to 60). Table X reports 14.38, 42.87, and 80.03. Table X averages over the searches that finished: all of them at 10 treatments, 99.9% at 20, and 70.4% at 30. At 10 treatments the two figures compare directly. None of the eight readings of the published parameters that we tried (variance or standard deviation, gamma scale or rate) gives the Table X values. The 2012 program can differ from the published text in a detail that the text does not state. The page keeps the published model and says so next to the published figures.
+These graphs have larger maximal displays than the graphs of Table X of the 2012 paper. The mean assignment count of the maximal display is 18.0, 60.3, and 126.9 for 10, 20, and 30 treatments (seeds 1 to 300, 1 to 150, and 1 to 60). Table X reports 14.38, 42.87, and 80.03. Table X averages over the searches that finished: all of them at 10 treatments, 99.9% at 20, and 70.4% at 30. At 10 treatments the two figures compare directly. None of the eight readings of the published parameters that we tried (variance or standard deviation, gamma scale or rate) gives the Table X values. The 2012 program can differ from the published text in a detail that the text does not state. The page keeps the published model and says so next to the published figures.
 
 ## Simulation study
 
 The second view repeats the experiment of Section 8 of the 2012 paper. It takes a range of treatment counts, a count of instances for each, a first seed, and a time limit for each solve (30 seconds by default, as in 2012). Each instance runs CLD-C, CLD-sigma, and both second stages with the `timeLimit` option of the package. The view shows, for each number of treatments:
 
-- the mean letters and assignments before reduction, after each method, and after each second stage;
-- the number of instances in which no display with the fewest letters has the fewest assignments;
+- the mean letters and assignments before reduction;
+- the mean of the quantity that each solve minimizes: letters for CLD-C and for the second stage after CLD-sigma, assignments for CLD-sigma and for the second stage after CLD-C, and the share of the assignments that CLD-sigma removes;
+- the number of instances in which no display with the fewest letters has the fewest assignments, out of the instances in which both solves that decide it finished;
 - the mean and maximum time of each solve, and the number of instances in which all four solves finished.
 
-Next to these are the published MA, EA, PC, and ET values of Table X and the counts of Table XI. The 2012 study used 1,000 other instances for each size and FIND-AM on 2012 hardware, and its MA and EA cover only the searches that finished. The page computes no speed factor. "Download instances (CSV)" gives every instance with its counts and times. Cancel stops the study and keeps the finished instances.
+Next to these are the published MA, EA, PC, and ET values of Table X and the counts of Table XI. The 2012 study used 1,000 other instances for each size and FIND-AM on 2012 hardware, and its MA and EA cover only the searches that finished. The page computes no speed factor. "Download instances (CSV)" gives every instance with both counts and the time of each solve. Cancel stops the study and keeps the finished instances.
 
 ## Development
 
