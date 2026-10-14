@@ -48,7 +48,7 @@ High dose,5.9
 ```
 
 - The first row holds the column names `group` and `mean`.
-- The means set the order of the groups and of the letters: the group with the highest mean takes the first letter. They do not change a decision. Without means, the groups keep their order of first appearance.
+- The means set the order of the groups and of the letters: the group with the highest mean takes the first letter. They do not change a decision. Without means, the group order is the order of first appearance in the `group1` column, followed by the labels that appear in the `group2` column only.
 - With means, every group of the decisions needs a mean. With semicolons or tabs, a decimal comma is read as a decimal point.
 
 The page gives the rows to `reduceLetters` of the package as text, and the package checks them with the rules of [`docs/algorithm.md`](../docs/algorithm.md), section 1. The page shows the message of the package when it rejects the input. "Download a template" on the page gives the two files above. The page does not read a matrix of non-significant pairs.

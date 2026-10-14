@@ -63,6 +63,11 @@ export function tokensOf(assignments: string): string[] {
   return assignments === "" ? [] : assignments.split(" ");
 }
 
+/** The display string of letter tokens, as the package writes it (docs/algorithm.md section 7). */
+export function displayOf(tokens: readonly string[]): string {
+  return tokens.every((t) => t.length === 1) ? tokens.join("") : tokens.join(" ");
+}
+
 /** The letters that groups i and j share, in the order of group i. */
 export function sharedTokens(tokens: readonly string[][], i: number, j: number): string[] {
   return tokens[i].filter((t) => tokens[j].includes(t));
@@ -105,6 +110,14 @@ export function checkReduction(value: unknown, method: Method): string | null {
   if (!counts.every(isCount)) return "A statistic of the reply is not a whole number.";
 
   const tokens = rows.map((row) => tokensOf(row.assignments));
+  for (let i = 0; i < n; i++) {
+    const own = tokens[i];
+    if (own.length === 0 || own.includes("") || new Set(own).size !== own.length) {
+      return `The letter tokens of ${groups[i]} are not a list of distinct letters.`;
+    }
+    // The page shows and exports the display string, so it must be the one of the tokens.
+    if (rows[i].letters !== displayOf(own)) return `The display of ${groups[i]} does not match its letter tokens.`;
+  }
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
       const share = i === j || sharedTokens(tokens, i, j).length > 0;

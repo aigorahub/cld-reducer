@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { CldReduction } from "../../js/src/index.js";
 import { parseMeans, parsePairs } from "../src/csv.js";
-import { EXAMPLES, METHODS, checkReduction, count, duration, explain, meanText, resultsCsv, resultsJson,
+import { EXAMPLES, METHODS, checkReduction, count, displayOf, duration, explain, meanText, resultsCsv, resultsJson,
          sharedTokens, tokensOf, type MethodResult } from "../src/data.js";
 
 const repo = (path: string): string => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
@@ -90,6 +90,21 @@ describe("checkReduction", () => {
     expect(checkReduction(split, "letter_minimum")).toBe("The letters of mid and high do not match the input decision.");
   });
 
+  it("rejects a display string or a token list that does not match the letters", () => {
+    const display = chain();
+    display.rows[0] = { group: "low", letters: "WRONG", assignments: "A" };
+    expect(checkReduction(display, "letter_minimum")).toBe("The display of low does not match its letter tokens.");
+    const spaced = chain();
+    spaced.rows[1] = { group: "mid", letters: "A B", assignments: "A B" };
+    expect(checkReduction(spaced, "letter_minimum")).toBe("The display of mid does not match its letter tokens.");
+    const twice = chain();
+    twice.rows[1] = { group: "mid", letters: "AAB", assignments: "A A B" };
+    expect(checkReduction(twice, "letter_minimum")).toBe("The letter tokens of mid are not a list of distinct letters.");
+    const none = chain();
+    none.rows[2] = { group: "high", letters: "", assignments: "" };
+    expect(checkReduction(none, "letter_minimum")).toBe("The letter tokens of high are not a list of distinct letters.");
+  });
+
   it("rejects statistics that do not match the letters", () => {
     const more = { ...chain(), stats: { ...chain().stats, assignmentsAfter: 5 } };
     expect(checkReduction(more, "letter_minimum")).toBe("The statistics of the reply do not match its letters.");
@@ -107,6 +122,12 @@ describe("shared letters", () => {
     expect(sharedTokens(tokens, 0, 1)).toEqual(["B"]);
     expect(sharedTokens(tokens, 1, 3)).toEqual(["AA"]);
     expect(sharedTokens(tokens, 0, 3)).toEqual([]);
+  });
+
+  it("display without a separator when every token has one character, else with spaces", () => {
+    expect(displayOf(["A", "B", "C"])).toBe("ABC");
+    expect(displayOf(["Z", "AA"])).toBe("Z AA");
+    expect(displayOf([])).toBe("");
   });
 });
 

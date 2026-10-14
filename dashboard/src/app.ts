@@ -4,7 +4,7 @@ import wasmGzipBase64 from "virtual:highs-wasm";
 import repository from "virtual:repository";
 import workerSource from "virtual:worker-source";
 import { DataError, MAX_CHARS, TEMPLATE_MEANS, TEMPLATE_PAIRS, parseMeans, parsePairs } from "./csv.js";
-import { EXAMPLES, METHODS, checkReduction, count, duration, explain, meanText, methodInfo, resultsCsv,
+import { EXAMPLES, METHODS, checkReduction, count, displayOf, duration, explain, meanText, methodInfo, resultsCsv,
          resultsJson, sharedTokens, tokensOf, type Example, type Method, type MethodResult } from "./data.js";
 import type { Input, Reply, Request } from "./worker.js";
 
@@ -86,6 +86,13 @@ const state = {
 };
 
 let nextId = 1;
+
+// Each change of a field gets a new number. A file read that ends after a
+// later change of its field is then out of date, and the page drops it.
+const fieldChange = new Map<HTMLTextAreaElement, number>();
+function changed(...areas: HTMLTextAreaElement[]): void {
+  for (const area of areas) fieldChange.set(area, (fieldChange.get(area) ?? 0) + 1);
+}
 
 function selectedMethod(): Method {
   const checked = document.querySelector<HTMLInputElement>('input[name="method"]:checked');
@@ -229,6 +236,7 @@ function invalidate(): void {
 }
 
 function loadExample(example: Example): void {
+  changed(ui.pairs, ui.means);
   ui.pairs.value = repository.examples[example.pairsFile];
   ui.means.value = example.meansFile ? repository.examples[example.meansFile] : "";
   state.example = example;
@@ -240,6 +248,8 @@ function loadExample(example: Example): void {
 
 async function loadFile(file: File, target: HTMLTextAreaElement): Promise<void> {
   const what = target === ui.pairs ? "decisions" : "means";
+  changed(target);
+  const change = fieldChange.get(target);
   if (file.size > MAX_CHARS) {
     state.problem = { title: `The ${what} could not be read`, detail: null,
                       message: `${file.name} is larger than the page reads (${MAX_CHARS.toLocaleString("en-US")} characters).` };
@@ -250,10 +260,13 @@ async function loadFile(file: File, target: HTMLTextAreaElement): Promise<void> 
   try {
     text = await file.text();
   } catch {
+    if (fieldChange.get(target) !== change) return;
     state.problem = { title: `The ${what} could not be read`, message: `${file.name} could not be read.`, detail: null };
     render();
     return;
   }
+  // The field changed during the read: an example, an edit, Reset, or a later file.
+  if (fieldChange.get(target) !== change) return;
   target.value = text;
   state.example = null;
   if (target === ui.pairs) state.source = file.name;
@@ -502,9 +515,7 @@ function renderShown(host: HTMLElement, shown: Shown): void {
       label(g, tr, "row");
       groups.forEach((_, j) => {
         const shared = sharedTokens(tokens, i, j);
-        const single = shared.every((t) => t.length === 1);
-        const td = el("td", i === j ? "is-self" : shared.length ? undefined : "is-different",
-                      shared.join(single ? "" : " "), tr);
+        const td = el("td", i === j ? "is-self" : shared.length ? undefined : "is-different", displayOf(shared), tr);
         if (shared.length === 0) el("span", "visually-hidden", "different", td);
       });
     });
@@ -535,6 +546,7 @@ ui.reset.addEventListener("click", reset);
 
 for (const area of [ui.pairs, ui.means]) {
   area.addEventListener("input", () => {
+    changed(area);
     state.example = null;
     if (area === ui.pairs) state.source = "Pasted text";
     invalidate();

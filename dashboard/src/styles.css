@@ -262,7 +262,8 @@ textarea.input:focus-visible { outline: 2px solid var(--accent); outline-offset:
 .problem h2 { font-size: 1rem; font-weight: 650; color: var(--danger); }
 .problem-message { overflow-wrap: anywhere; white-space: pre-wrap; }
 
-.headline { display: flex; flex-direction: column; gap: 6px; }
+/* The source line can hold a long file name. */
+.headline { display: flex; flex-direction: column; gap: 6px; overflow-wrap: anywhere; }
 .headline-title { font-size: 1.5rem; line-height: 1.25; font-weight: 650; letter-spacing: -0.012em; text-wrap: balance; }
 .headline-text { max-width: 70ch; }
 .headline .muted { font-size: 0.875rem; font-variant-numeric: tabular-nums; }

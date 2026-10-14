@@ -287,6 +287,29 @@ async function main() {
     json = await save("Download JSON");
     check(json.name === "cld-trial-1.json" && JSON.parse(json.text).input.source === "trial 1.tsv", `file source: ${json.name}`);
 
+    // A file read that ends after a later change of the field does not replace the newer input.
+    await page.evaluate(() => {
+      const read = Blob.prototype.text;
+      window.__release = null;
+      Blob.prototype.text = function () {
+        return new Promise((resolve) => {
+          window.__release = () => { Blob.prototype.text = read; resolve(read.call(this)); };
+        });
+      };
+    });
+    await page.setInputFiles("#pairs-file", { name: "slow.csv", mimeType: "text/csv",
+      buffer: Buffer.from("group1,group2,significant\nold,file,false\n") });
+    await wait(() => typeof window.__release === "function");
+    await page.click('button.example:has-text("Wheat yield")');
+    await page.evaluate(() => window.__release());
+    await page.waitForTimeout(200);
+    state = await read();
+    check(state.pairs === WHEAT_PAIRS && same(state.pressed, ["Wheat yield"]), "a late file read replaced the newer input");
+    // The next file is read as usual.
+    await page.setInputFiles("#pairs-file", { name: "trial 1.tsv", mimeType: "text/tab-separated-values",
+      buffer: Buffer.from("group1\tgroup2\tsignificant\nlow\tmid\tFALSE\nlow\thigh\tTRUE\nmid\thigh\tFALSE\n") });
+    await wait(() => document.getElementById("pairs").value.includes("low\tmid"));
+
     // A file dropped on a field goes into that field, and the tab does not open it.
     const taken = await page.evaluate(() => {
       const data = new DataTransfer();
@@ -437,6 +460,11 @@ async function main() {
     noResult(state, "altered reply");
     check(state.problem[0] === "The solver returned an invalid result" &&
           /^The letters of \d+ and \d+ do not match the input decision\.$/.test(state.problem[1]), `altered reply: ${state.problem}`);
+    await page.evaluate(() => { window.__alter = (reply) => { reply.reduction.rows[0].letters = "WRONG"; return reply; }; });
+    await ready();
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > p")?.textContent === "The display of 1 does not match its letter tokens.");
+    noResult(await read(), "reply with an altered display string");
     await page.evaluate(() => { window.__alter = (reply) => { reply.reduction.relationshipPreserved = false; return reply; }; });
     await ready();
     await page.click("#run");
@@ -470,6 +498,22 @@ async function main() {
       await page.evaluate(() => document.querySelector(".headline").scrollIntoView());
       await page.screenshot({ path: join(shots, "narrow-wheat.png") });
     }
+
+    // A long file name wraps in the result and does not widen the page.
+    const longName = `${"x".repeat(200)}.csv`;
+    await page.setInputFiles("#pairs-file", { name: longName, mimeType: "text/csv",
+      buffer: Buffer.from("group1,group2,significant\nB,C,true\nA,B,true\nA,C,true\n") });
+    await wait(() => document.getElementById("pairs").value.startsWith("group1,group2,significant\nB,C"));
+    await page.click("#run");
+    await solved();
+    state = await read();
+    const long = await page.evaluate(() => ({
+      page: document.documentElement.scrollWidth, screen: innerWidth,
+      source: document.querySelector(".headline .muted").textContent,
+    }));
+    check(long.source.startsWith(longName) && long.page <= long.screen, `long file name: ${long.page} > ${long.screen}`);
+    // Without means, the groups keep the order of the group1 column, then new labels of group2.
+    check(same(state.letters.slice(1).map((row) => row[0]), ["B", "A", "C"]), `group order: ${JSON.stringify(state.letters)}`);
 
     check(errors.length === 0, `console messages: ${errors.join(" | ")}`);
     check(requests.length === 0, `requests to the network: ${requests.join(" | ")}`);
