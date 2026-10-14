@@ -16,6 +16,7 @@
 ^\.elves-session\.json$
 ^scripts$
 ^benchmarks$
+^dashboard$
 ^\.ruff_cache$
 ^\.pytest_cache$
 ^\.mypy_cache$

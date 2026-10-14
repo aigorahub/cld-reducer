@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; worker-src blob:; img-src data:; base-uri 'none'; form-action 'none'">
+<title>cld-reducer in the browser</title>
+<meta name="description" content="Reduce a compact letter display in your browser. The data stays on your computer.">
+<link rel="icon" href="data:,">
+<style>/* styles */</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1 class="brand-name">cld-reducer</h1>
+    <span class="brand-version">{{version}}</span>
+    <span class="brand-note">Compact letter displays in your browser</span>
+  </div>
+  <p id="solver-status" class="status" role="status">Loading the solver…</p>
+  <a class="top-link" href="https://github.com/aigorahub/cld-reducer" target="_blank" rel="noopener">GitHub</a>
+</header>
+
+<main class="layout">
+  <div class="side">
+    <section class="side-block" aria-labelledby="input-heading">
+      <h2 id="input-heading">Input</h2>
+      <p class="lead">This page reads significance decisions. It does not run significance tests. A group is one item or treatment.</p>
+
+      <div class="field">
+        <p class="field-label" id="examples-label">Examples</p>
+        <div id="examples" class="examples" role="group" aria-labelledby="examples-label"></div>
+        <p id="example-note" class="hint" hidden></p>
+      </div>
+
+      <div id="pairs-field" class="field drop">
+        <label class="field-label" for="pairs">Pairwise decisions (CSV)</label>
+        <textarea id="pairs" class="input" rows="8" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="pairs-hint"></textarea>
+        <p id="pairs-hint" class="hint">One row for each pair of groups, with the columns group1, group2, and significant. The decision is true when the two groups differ significantly. Every pair needs a row.</p>
+        <p class="hint"><button id="pairs-choose" type="button" class="link">Choose a file</button> or <button id="pairs-template" type="button" class="link">download a template</button>.</p>
+        <input id="pairs-file" type="file" hidden tabindex="-1" accept=".csv,.tsv,.txt,text/csv,text/plain,text/tab-separated-values">
+      </div>
+
+      <div id="means-field" class="field drop">
+        <label class="field-label" for="means">Means (CSV, optional)</label>
+        <textarea id="means" class="input" rows="4" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="means-hint"></textarea>
+        <p id="means-hint" class="hint">Columns group and mean. The means set the order of the groups and of the letters. They do not change a decision.</p>
+        <p class="hint"><button id="means-choose" type="button" class="link">Choose a file</button> or <button id="means-template" type="button" class="link">download a template</button>.</p>
+        <input id="means-file" type="file" hidden tabindex="-1" accept=".csv,.tsv,.txt,text/csv,text/plain,text/tab-separated-values">
+      </div>
+    </section>
+
+    <div class="run-bar">
+      <div class="methods" role="radiogroup" aria-labelledby="method-label" aria-describedby="method-hint">
+        <span id="method-label" class="field-label">Method</span>
+        <label class="choice"><input type="radio" name="method" value="letter_minimum" checked> CLD-C</label>
+        <label class="choice"><input type="radio" name="method" value="assignment_minimum"> CLD-sigma</label>
+      </div>
+      <p id="method-hint" class="hint">CLD-C gives the fewest distinct letters. CLD-sigma gives the fewest assignments of a letter to a group. Neither method optimizes the other quantity as a second objective.</p>
+      <button id="run" type="button" class="button-primary" disabled>Run</button>
+      <div class="run-more">
+        <button id="compare" type="button" class="button-secondary" disabled>Compare both methods</button>
+        <button id="reset" type="button" class="button-secondary">Reset</button>
+      </div>
+      <p id="run-hint" class="hint" aria-live="polite"></p>
+    </div>
+  </div>
+
+  <div class="results-pane">
+    <section id="results" class="results" aria-label="Results"></section>
+    <footer class="foot">
+      <details>
+        <summary>Licenses and data sources</summary>
+        <p>The page holds the cld-reducer JavaScript package, the HiGHS solver from the npm package highs, and both example data sets.</p>
+        <h3>cld-reducer</h3>
+        <pre>{{license}}</pre>
+        <h3>highs</h3>
+        <pre>{{highs-license}}</pre>
+        <h3>Example data</h3>
+        <pre>{{notice}}</pre>
+      </details>
+    </footer>
+  </div>
+</main>
+<noscript><p class="noscript">This page needs JavaScript.</p></noscript>
+<script type="module">/* script */</script>
+</body>
+</html>

@@ -38,6 +38,15 @@ The code uses the structural results of Ennis, Fayle, and Ennis (2012).
 It does not implement FIND-AM backtracking. The exact contracts are in
 [the algorithm specification](algorithm.md).
 
+## Browser page
+
+`dashboard/` holds a private package that builds one offline HTML file. The
+page runs the JavaScript package and the HiGHS WebAssembly solver in a worker.
+It reads pairwise decisions, solves with CLD-C or CLD-sigma, and shows both
+quantities for each result. It adds no solver code and no public API. It is not
+part of the R, Python, or npm archives, and it is not hosted or published.
+See [the dashboard README](../dashboard/README.md).
+
 ## Review and verification
 
 The review at `3bfe66683612085e7fe73855aefc03686db20583` found no runtime defect.

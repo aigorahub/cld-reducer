@@ -2,6 +2,8 @@
 
 - Unreleased development version after the 0.3.0 candidate merge.
   No algorithm or public API changes.
+- Add a browser page in `dashboard/` that runs the JavaScript package in one
+  offline HTML file. It is not part of the R, Python, or npm archives.
 
 # cldreducer 0.3.0
 
