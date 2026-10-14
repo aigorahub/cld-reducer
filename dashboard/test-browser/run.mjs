@@ -716,6 +716,22 @@ async function main() {
     noResult(await read(), "run after a start reply for another method");
     await page.evaluate(() => { window.__alterStart = null; });
     await ready();
+    // 26 groups in 13 significant pairs have 8,192 maximal cliques. The check of that display before
+    // reduction must not block the page.
+    await page.evaluate(() => {
+      window.__longest = 0;
+      new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) window.__longest = Math.max(window.__longest, e.duration);
+      }).observe({ type: "longtask" });
+    });
+    const pairsOf26 = ["group1,group2,significant"];
+    for (let i = 0; i < 26; i++) for (let j = i + 1; j < 26; j++) pairsOf26.push(`g${i},g${j},${j === i + 1 && i % 2 === 0}`);
+    await page.fill("#means", "");
+    await page.fill("#pairs", pairsOf26.join("\n") + "\n");
+    await wait(() => document.querySelector(".headline-title")?.textContent === "Before reduction: 8,192 letters and 106,496 assignments");
+    await page.waitForTimeout(300);
+    const longest = await page.evaluate(() => window.__longest);
+    check(longest < 1500, `the display before reduction with 8,192 letters blocked the page for ${Math.round(longest)} ms`);
     // A simulated input again, for the study and the narrow layout below.
     await page.fill("#sim-n", "12");
     await page.fill("#sim-seed", "4");

@@ -75,7 +75,7 @@ On the graph of Table II of the 2012 paper the two orders differ: no display wit
 
 ### What the page shows
 
-For the letters before reduction and for each result, the page shows the distinct letters, the assignments, the assignments and letters removed, the relationship check of the package, and the time in this browser. The time of a second stage covers the second solve only. A table gives the letters of each group before and after reduction. A matrix gives the letters that each pair of groups shares in each final result, for up to 30 groups: two groups share a letter exactly when the input says that they are not significantly different.
+For each result, the page shows the distinct letters, the assignments, the assignments and letters removed, the relationship check of the package, and the time in this browser. For the letters before reduction, it shows the distinct letters, the assignments, and the time. The time of a second stage covers the second solve only. A table gives the letters of each group before and after reduction. A matrix gives the letters that each pair of groups shares in each final result, for up to 30 groups: two groups share a letter exactly when the input says that they are not significantly different.
 
 The page checks that the counts of the letters before reduction equal the statistics of the package. A result does not say whether the essential cover proof or HiGHS produced it. The package does not report that.
 
@@ -101,7 +101,7 @@ The page checks every reply of the worker before it uses it. A reply with the id
 - The display before reduction belongs to the input that the page sent for it. It has one row for each group of the input, letters that match the decisions as above, counts that match its letters, and a time that is a number that is not negative. Its letters are exactly the maximal cliques of the input, each one once; the page finds those cliques itself. Each result must have its counts before reduction, also when the display arrives after the run.
 - A study instance has the treatment count and seed of its place in the study. The page generates its graph again from the seed: the edge count and the counts before reduction must be those of that graph. A solve that ran has a time that is a number that is not negative. A solve that finished has at least n assignments, at least one assignment for each letter, at most n for each letter, at most as many for each letter as the largest maximal clique has groups, and enough letters to cover the edges. A second stage runs exactly when its first stage finished. The finished solves keep the order of the minimums: CLD-C has the fewest letters and CLD-sigma the fewest assignments, each second stage keeps the minimum of its first stage and is not worse in the other count, and the second stage after CLD-C reaches the assignment minimum exactly when the second stage after CLD-sigma reaches the letter minimum. The study ends only when every instance has arrived.
 
-These are consistency checks against the input, the seeded graph, and the first stage. They do not prove that a count is minimal, and the bounds on the study counts are necessary conditions, not a proof that a display with those counts exists. The page does the clique enumeration and the generation of the seeded graphs for these checks itself, within the limit of 10,000 maximal cliques.
+These are consistency checks against the input, the seeded graph, and the first stage. They do not prove that a count is minimal, and the bounds on the study counts are necessary conditions, not a proof that a display with those counts exists. The page does the clique enumeration and the generation of the seeded graphs for these checks itself, within the limit of 10,000 maximal cliques. These checks run in the page, not in the worker. On the development machine, the check of a display before reduction with 8,192 maximal cliques blocked the page for at most 75 ms in Chrome, and the graph of a study instance with 80 treatments took at most 24 ms in Node.js.
 
 A content security policy in the page refuses every network connection. The page needs a browser with WebAssembly, `DecompressionStream`, and module scripts.
 
@@ -117,7 +117,7 @@ The triticale data of Table VI of the 2012 paper is not in the page. The data re
 
 ### Simulated experiments
 
-"Generate" makes a new input from a number of treatments and a seed. The same pair gives the same experiment. Each click uses the seed shown and then adds 1. Section 8 of the 2012 paper generates its graphs with the method of Section 3.2 of Gramm, Guo, Hüffner, Niedermeier, Piepho, and Schmid (2007), Computational Statistics and Data Analysis 52, 725-736. The page uses that model:
+"Generate" makes a new input from a number of treatments and a seed. The same pair gives the same experiment. Each click uses the seed shown and then adds 1; after 2,147,483,647 the next seed is 1. A study uses the same rule for the seeds of its instances. Section 8 of the 2012 paper generates its graphs with the method of Section 3.2 of Gramm, Guo, Hüffner, Niedermeier, Piepho, and Schmid (2007), Computational Statistics and Data Analysis 52, 725-736. The page uses that model:
 
 - treatment means from a normal distribution with mean 42.6 and variance 12.7;
 - variances of the sample means from a gamma distribution with shape 4.12 and scale 0.429;

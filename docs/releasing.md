@@ -4,7 +4,7 @@ The repository follows the turfLP layout: R at the root, Python in `python/`,
 and JavaScript in `js/`. Version 0.2.0 is tagged and published on PyPI and npm.
 The merged candidate for the method changes is 0.3.0. Version 0.3.1 adds the
 browser page in `dashboard/`. Version 0.3.2 adds a second stage, simulated examples, and the letters before reduction
-to that page. Neither changes an algorithm or the public API.
+to that page. Neither changes a package algorithm or the public API.
 The recorded CRAN submission is still 0.2.0;
 the package was absent from the public CRAN index on 2026-10-13.
 See [submission status](submission-status.md) for the current evidence.

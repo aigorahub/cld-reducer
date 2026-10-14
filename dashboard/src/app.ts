@@ -11,7 +11,7 @@ import {
   meanText, methodInfo, resultsCsv, resultsJson, sharedTokens, tokensOf,
   checkBefore, checkInput, checkStage, isTime, type BeforeRows, type Example, type Method, type MethodResult, type ResultMethod, type StagedOrder,
 } from "./data.js";
-import { experimentCsv, simulate } from "./simulate.js";
+import { MAX_SEED, experimentCsv, seedAfter, simulate } from "./simulate.js";
 import { summarize, studyCsv, ALL_METHODS, checkInstance, instanceFacts, planned, slowest } from "./study.js";
 import type { Input, Instance, Reply, Request, Study } from "./worker.js";
 
@@ -438,10 +438,9 @@ function wholeNumber(input: HTMLInputElement, min: number, max: number, fallback
 
 function generate(): void {
   const n = wholeNumber(ui.simN, 2, 80, 20);
-  const seed = wholeNumber(ui.simSeed, 1, 2 ** 31 - 1, 1);
+  const seed = wholeNumber(ui.simSeed, 1, MAX_SEED, 1);
   const files = experimentCsv(simulate(n, seed));
-  // After the largest seed, the next one is 1 again.
-  const next = seed >= 2 ** 31 - 1 ? 1 : seed + 1;
+  const next = seedAfter(seed, 1);
   setInput(files.pairs, files.means, `Simulated, ${n} treatments, seed ${seed}`, null,
            `Simulated experiment with ${n} treatments and seed ${seed}. The next Generate uses seed ${next}.`);
   ui.simSeed.value = String(next);
@@ -544,7 +543,7 @@ function studyPlan(): Study | string {
   const to = wholeNumber(ui.studyTo, 2, 80, 45);
   const step = wholeNumber(ui.studyStep, 1, 40, 5);
   const countEach = wholeNumber(ui.studyCount, 1, 1000, 10);
-  const firstSeed = wholeNumber(ui.studySeed, 1, 2 ** 31 - 1, 1);
+  const firstSeed = wholeNumber(ui.studySeed, 1, MAX_SEED, 1);
   const timeLimit = wholeNumber(ui.studyLimit, 1, 600, 30);
   if (from > to) return "The first number of treatments must not be larger than the last.";
   const sizes: number[] = [];

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { CldReduction } from "../../js/src/index.js";
 import { parseMeans, parsePairs } from "../src/csv.js";
+import { beforeDisplay } from "../src/staged.js";
 import { EXAMPLES, METHODS, SECOND_STAGE, STAGES, TABLE_X, checkBefore, checkInput, checkReduction, checkStage, count,
          displayOf, duration, explain, isTime, meanText, methodInfo, resultsCsv, resultsJson, sharedTokens, tokensOf,
          type MethodResult } from "../src/data.js";
@@ -192,6 +193,18 @@ describe("checkBefore", () => {
     expect(checkBefore({ ...before(), rows: before().rows.slice(1) }, pairs, null))
       .toBe("The display before reduction does not have one row for each group of the input.");
     expect(checkBefore(null, pairs, null)).toBe("The reply holds no display before reduction.");
+  });
+
+  it("checks a display with 8,192 letters fast enough for the page", () => {
+    const pairs = [];
+    for (let i = 0; i < 26; i++) {
+      for (let j = i + 1; j < 26; j++) pairs.push({ group1: `g${i}`, group2: `g${j}`, significant: String(j === i + 1 && i % 2 === 0) });
+    }
+    const before = beforeDisplay(pairs, null);
+    expect(before.letters).toBe(8192);
+    const t0 = performance.now();
+    expect(checkBefore(before, pairs, null)).toBeNull();
+    expect(performance.now() - t0).toBeLessThan(2000);
   });
 
   it("rejects a letter that is not a maximal clique, and two letters with the same groups", () => {

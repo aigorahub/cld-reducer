@@ -5,7 +5,7 @@
   Table II of the 2012 paper, simulated experiments, a simulation study, and an
   experimental second stage that minimizes the other quantity. The second stage
   exists in the page only.
-- No algorithm or public API changes since 0.3.1.
+- No package algorithm or public API changes since 0.3.1. The second stage is solver code of the page only.
 
 # cldreducer 0.3.1
 

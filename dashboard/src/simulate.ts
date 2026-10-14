@@ -101,6 +101,12 @@ export interface Experiment {
   significant: boolean[][];
 }
 
+/** The largest seed of Generate and of the study. After it, the next seed is 1. */
+export const MAX_SEED = 2 ** 31 - 1;
+
+/** The seed k places after a seed, with the same wrap for Generate and for the study. */
+export const seedAfter = (seed: number, k: number): number => ((seed - 1 + k) % MAX_SEED) + 1;
+
 /** One simulated experiment with n treatments. The same n and seed give the same experiment. */
 export function simulate(n: number, seed: number, model: { readonly [K in keyof typeof MODEL]: number } = MODEL): Experiment {
   if (!Number.isInteger(n) || n < 2) throw new RangeError("n must be a whole number of at least 2");

@@ -5,7 +5,7 @@ import { InvalidInputError, SolverError, loadSolver, reduceLetters,
          type CldReduction } from "../../js/src/index.js";
 import type { MeanRow, PairRow } from "./csv.js";
 import { SECOND_STAGE, type Method, type ResultMethod } from "./data.js";
-import { simulate } from "./simulate.js";
+import { seedAfter, simulate } from "./simulate.js";
 import { beforeDisplay, stagedSolve, type Before } from "./staged.js";
 
 export interface Input {
@@ -138,7 +138,7 @@ export async function handle(msg: Request, post: (reply: Reply) => void): Promis
       const { sizes, count, firstSeed, timeLimit } = msg.study;
       for (const n of sizes) {
         for (let k = 0; k < count; k++) {
-          post({ type: "instance", id: msg.id, instance: await studyInstance(n, firstSeed + k, timeLimit) });
+          post({ type: "instance", id: msg.id, instance: await studyInstance(n, seedAfter(firstSeed, k), timeLimit) });
         }
       }
       post({ type: "done", id: msg.id });

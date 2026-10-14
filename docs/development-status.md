@@ -18,7 +18,7 @@ Its source tree matches reviewed head
 `4d362e82a6bdddb8cdb4eec1537eb00724ed5314`.
 
 Version 0.3.2 adds a second stage, simulated examples, and the letters before reduction
-to the browser page, and no algorithm or public API change. Neither merge nor a version update publishes a package.
+to the browser page, and no package algorithm or public API change. Neither merge nor a version update publishes a package.
 Tags and registry uploads remain separate. Keep the 0.3.0 candidate commit when
 preparing a later authorized release.
 

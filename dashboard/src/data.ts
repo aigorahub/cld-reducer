@@ -194,10 +194,15 @@ function checkLetters(groups: readonly string[], rows: readonly LetterRow[],
     // The page shows and exports the display string, so it must be the one of the tokens.
     if (rows[i].letters !== displayOf(own)) return `The display of ${groups[i]} does not match its letter tokens.`;
   }
+  // A display before reduction can have thousands of letters, so look them up in sets.
+  const sets = tokens.map((own) => new Set(own));
+  const shares = (i: number, j: number): boolean => {
+    const [few, many] = tokens[i].length <= tokens[j].length ? [tokens[i], sets[j]] : [tokens[j], sets[i]];
+    return few.some((t) => many.has(t));
+  };
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
-      const share = i === j || sharedTokens(tokens, i, j).length > 0;
-      if (share !== adjacency[i][j]) {
+      if ((i === j || shares(i, j)) !== adjacency[i][j]) {
         return `The letters of ${groups[i]} and ${groups[j]} do not match the input decision.`;
       }
     }

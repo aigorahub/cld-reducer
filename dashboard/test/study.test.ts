@@ -166,6 +166,9 @@ describe("planned and largest", () => {
     const study = { sizes: [10, 15], count: 2, firstSeed: 5, timeLimit: 30 };
     expect([0, 1, 2, 3, 4].map((k) => planned(study, k)))
       .toEqual([{ n: 10, seed: 5 }, { n: 10, seed: 6 }, { n: 15, seed: 5 }, { n: 15, seed: 6 }, null]);
+    // After the largest seed, the next one is 1, as for Generate.
+    const last = { ...study, firstSeed: 2 ** 31 - 1 };
+    expect([0, 1].map((k) => planned(last, k))).toEqual([{ n: 10, seed: 2 ** 31 - 1 }, { n: 10, seed: 1 }]);
   });
 
   it("give the slowest solve of the largest study that the page allows", () => {

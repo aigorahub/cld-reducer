@@ -3,7 +3,7 @@
 import { maximalCliques } from "../../js/src/cliques.js";
 import { DEFAULT_MAX_CLIQUES } from "../../js/src/input.js";
 import { isTime, type ResultMethod } from "./data.js";
-import { simulate } from "./simulate.js";
+import { seedAfter, simulate } from "./simulate.js";
 import type { Instance, Solve, Study } from "./worker.js";
 
 export const ALL_METHODS: readonly ResultMethod[] = ["letter_minimum", "assignment_minimum",
@@ -24,7 +24,7 @@ export function slowest(instances: readonly Instance[]): number | null {
 /** The treatment count and seed of the instance at a position of a study, or null after its last instance. */
 export function planned(study: Study, index: number): { n: number; seed: number } | null {
   const size = Math.floor(index / study.count);
-  return size < study.sizes.length ? { n: study.sizes[size], seed: study.firstSeed + (index % study.count) } : null;
+  return size < study.sizes.length ? { n: study.sizes[size], seed: seedAfter(study.firstSeed, index % study.count) } : null;
 }
 
 /** What the page knows of an instance without a solve. It finds them from the seeded generator. */
