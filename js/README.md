@@ -6,8 +6,8 @@ The solver is HiGHS compiled to WebAssembly (the npm package [`highs`](https://w
 
 ## Installation
 
-The examples describe version 0.3.0 and later. As checked on 2026-10-13, npm
-provides 0.2.0. That release minimizes assignments and does not offer CLD-C.
+The examples need version 0.3.0 or later. Version 0.2.0 minimizes assignments
+and does not offer CLD-C. Check the installed version before using the examples.
 Install the published release with:
 
 ```sh

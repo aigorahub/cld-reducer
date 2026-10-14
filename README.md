@@ -136,7 +136,7 @@ Both methods use the same pipeline.
 1. Build the non-significance graph from the pairwise results.
 2. Merge identical closed neighborhoods with their original vertex counts as weights, then find all maximal cliques. At least one assignment-minimum covering is a subcovering of the maximal covering, which is the starting point used by the 2012 paper.
 3. Build ordered coverage data. C decisions select full maximal cliques. Sigma decisions select individual memberships, with the original class sizes as costs.
-4. Find essential decisions from unique vertex or edge coverage. If those decisions cover the graph, positive costs prove that they form the unique optimum. Return it without building a BIP or calling HiGHS.
+4. Find essential decisions from unique vertex or edge coverage. If those decisions cover the graph, positive costs prove that they form the unique optimum. Use it without building a BIP or calling HiGHS, then continue to step 6.
 5. Otherwise, compile the BIP once. Fix the essential decisions to 1 and let HiGHS choose the remaining decisions. Resolve equal optima with the canonical binary selection order.
 6. Expand the selected columns to the original vertices. Name the letters and rebuild the pairwise relationship matrix. Return the result only if every original relationship is preserved.
 
