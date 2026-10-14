@@ -909,7 +909,7 @@ function renderStudy(): void {
   const finished = rows.reduce((t, r) => t + r.finished, 0);
   const head = el("section", "headline", undefined, host);
   el("p", "headline-text",
-     `${finished} of ${count(done, "instance", "instances")} finished all four solves within the limit of ` +
+     `${finished} of ${count(done, "instance", "instances")} finished all four solves under the limit of ` +
      `${run.study.timeLimit} s. The slowest solve took ${duration(slowestTime ?? 0)}.`, head);
   const actions = el("div", "actions", undefined, head);
   button("button-secondary", "Download instances (CSV)", actions,
@@ -929,7 +929,7 @@ function renderStudy(): void {
       row.forEach((cell, k) => { if (k === 0) el("th", undefined, cell, r).scope = "row"; else el("td", "num", cell, r); });
     }
   };
-  table("Letters and assignments", "Means over the instances of each size. A solve that did not finish within the limit is left out of its mean.",
+  table("Letters and assignments", "Means over the instances of each size. A solve that did not finish under the limit is left out of its mean.",
         ["Treatments", "Instances", "Letters before", "Assignments before", "CLD-C letters", "CLD-sigma assignments",
          "Assignments removed by CLD-sigma", "CLD-C then CLD-sigma assignments", "CLD-sigma then CLD-C letters",
          "Letter minimum not assignment minimum"],
@@ -942,7 +942,7 @@ function renderStudy(): void {
         "A second stage does not run when its first stage does not finish, and it is not in these times.",
         ["Treatments", "CLD-C mean", "CLD-C max", "CLD-sigma mean", "CLD-sigma max", "Stage 2 after CLD-C mean",
          "Stage 2 after CLD-C max", "Stage 2 after CLD-sigma mean", "Stage 2 after CLD-sigma max",
-         "All four solves within the limit"],
+         "All four solves under the limit"],
         rows.map((r) => [String(r.n), ...ALL_METHODS.flatMap((m) => [r.mean[m], r.max[m]].map((t) => (t === null ? "" : duration(t)))),
                          `${r.finished} of ${r.instances}`]));
   const published = rows.flatMap((r) => {
@@ -952,7 +952,7 @@ function renderStudy(): void {
                  r.sigmaTime === null ? "" : duration(r.sigmaTime), `${x.et.toFixed(3)} s`,
                  `${r.tradeOff} of ${r.tradeOffKnown}`, `${TABLE_XI[r.n] ?? 0} of 1,000`]] : [];
   });
-  // Table X counts a search as finished within 30 seconds. Another limit gives other finished sets.
+  // Table X counts a search as finished in under 30 seconds. Another limit gives other finished sets.
   if (published.length && run.study.timeLimit !== 30) {
     el("p", "hint", "The comparison with Table X of the 2012 paper needs a time limit of 30 seconds, as in 2012.",
        el("section", "panel-block", undefined, host));
@@ -960,7 +960,7 @@ function renderStudy(): void {
     table("Compared with 2012",
           "Here: CLD-sigma on the instances above. 2012: FIND-AM in Table X and Table XI of Ennis, Fayle, and Ennis (2012), " +
           "1,000 other instances for each size on 2012 hardware. Both columns of a pair count an exact solve as finished when its " +
-          "whole time, with the enumeration of the maximal cliques, is within 30 seconds, and both average the assignments and the " +
+          "whole time, with the enumeration of the maximal cliques, is under 30 seconds, and both average the assignments and the " +
           "time over the finished solves only. The instances here follow the published model text and have larger maximal displays " +
           "than Table X reports, so read the two as separate studies.",
           ["Treatments", "Finished, here", "Finished, 2012", "Assignments before, here", "MA, 2012",

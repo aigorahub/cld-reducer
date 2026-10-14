@@ -114,8 +114,8 @@ describe("checkInstance", () => {
     expect(check(altered((i) => { i.solves.assignment_then_letter.milliseconds = null; })))
       .toBe("The assignment_then_letter solve has a result but did not run.");
     expect(check("instance")).toBe("The reply holds no instance.");
-    // CLD-sigma takes 10 ms in this instance; with a limit of 0.005 s it cannot have finished.
-    expect(checkInstance(valid(), 10, 3, facts, 0.005)).toBe("The assignment_minimum solve finished after the time limit.");
+    // CLD-sigma takes 10 ms in this instance; with a limit of 0.01 s it did not finish under the limit.
+    expect(checkInstance(valid(), 10, 3, facts, 0.01)).toBe("The assignment_minimum solve did not finish under the time limit.");
     // Each letter has at least one assignment, and each group at most one assignment for each letter.
     expect(check(altered((i) => { i.solves.letter_minimum = solve(19, 18, 2); })))
       .toBe("The counts of the letter_minimum solve are not possible.");

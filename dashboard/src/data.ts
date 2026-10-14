@@ -414,7 +414,7 @@ export function resultsJson(results: readonly MethodResult[], input: { source: s
 
 /**
  * Table X: for each number of means N, the percentage of FIND-AM searches that
- * finished within 30 seconds (PC), their mean time in seconds (ET), and the mean
+ * finished in under 30 seconds (PC), their mean time in seconds (ET), and the mean
  * assignments of the maximal covering (MA) and of the exact solution (EA), over
  * the searches that finished. 1,000 simulations for each N.
  */

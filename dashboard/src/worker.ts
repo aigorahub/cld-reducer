@@ -65,7 +65,7 @@ const isTimeout = (e: unknown): boolean => e instanceof SolverError && e.message
 /**
  * One solve of the study with its whole time. The timeLimit option covers the solves; clique
  * enumeration and model construction come before it. Table X counts the whole time, so a solve
- * whose whole time passes the limit counts as not finished.
+ * whose whole time reaches the limit counts as not finished.
  */
 export async function timed(solve: () => Promise<CldReduction> | CldReduction,
                             timeLimit: number): Promise<{ result: CldReduction | null; solve: Solve }> {
@@ -73,7 +73,8 @@ export async function timed(solve: () => Promise<CldReduction> | CldReduction,
   try {
     const result = await solve();
     const milliseconds = performance.now() - t0;
-    if (milliseconds > timeLimit * 1000) return { result: null, solve: { letters: null, assignments: null, milliseconds } };
+    // Table X counts the searches that completed in under 30 seconds.
+    if (milliseconds >= timeLimit * 1000) return { result: null, solve: { letters: null, assignments: null, milliseconds } };
     const s = result.stats;
     return { result, solve: { letters: s.numLettersAfter, assignments: s.assignmentsAfter, milliseconds } };
   } catch (e) {
