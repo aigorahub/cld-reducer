@@ -2,7 +2,8 @@
 
 The repository follows the turfLP layout: R at the root, Python in `python/`,
 and JavaScript in `js/`. Version 0.2.0 is tagged and published on PyPI and npm.
-The next candidate is 0.3.0. The recorded CRAN submission is still 0.2.0;
+The merged candidate is 0.3.0. The current development version is 0.3.1.
+The recorded CRAN submission is still 0.2.0;
 the package was absent from the public CRAN index on 2026-10-13.
 See [submission status](submission-status.md) for the current evidence.
 These instructions describe future releases. Checks do not grant permission
@@ -47,7 +48,10 @@ See the Python section of `NEWS.md` for all API and input changes.
 
 Version 0.2.0 is already used. Version 0.3.0 is the candidate for CLD-C and
 the essential-cover changes. Registry checks on 2026-10-13 found no 0.3.0
-publication on PyPI or npm. Check again before publishing. Keep the candidate version in `DESCRIPTION`,
+publication on PyPI or npm. Check again before publishing. The retained 0.3.0
+candidate commit is `7d9b923ed1e5c867e97f485071e1d1f742a0aeaa`. Use a clean
+checkout of that commit for candidate checks. The development checkout uses
+0.3.1. Keep the selected version in `DESCRIPTION`,
 `CITATION.cff`, `NEWS.md`, both package manifests and locks, and Python's
 `__version__`. `scripts/release.py version` checks agreement. Never replace an
 uploaded version.

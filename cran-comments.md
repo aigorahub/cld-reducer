@@ -3,7 +3,10 @@
 The maintainer submitted and confirmed cldreducer 0.2.0 on 2026-10-10.
 That archive remains frozen. The 0.3.0 source candidate adds CLD-C as the default,
 weighted vertex reduction, essential decisions, and a certificate that can avoid
-BIP construction. It has not been submitted to CRAN.
+BIP construction. Its merged source commit is
+`7d9b923ed1e5c867e97f485071e1d1f742a0aeaa`. It has not been submitted to CRAN.
+The current checkout is development version 0.3.1. Use the retained candidate
+commit for new 0.3.0 submission checks.
 
 John Ennis is the sole package author and maintainer. The package code is MIT
 licensed. See `docs/submission-status.md` for the registry and email records.

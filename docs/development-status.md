@@ -5,11 +5,16 @@ Status on 2026-10-13. Registry publication is recorded separately in
 
 ## Version and delivery
 
-The implementation stack changes the common package version from 0.2.0 to
-0.3.0. The stack contains PRs #7 through #11, in that order. The user approved
-merging after the checks and independent reviews pass. After the final merge,
-the next development version will be 0.3.1. Neither merge nor the development
-version bump publishes a package. Tags and registry uploads remain separate.
+PRs #7 through #11 are merged into `main`. They raise the common package
+version from 0.2.0 to 0.3.0. The final 0.3.0 candidate is merge commit
+`7d9b923ed1e5c867e97f485071e1d1f742a0aeaa`.
+Its source tree matches reviewed head
+`2fe4f9a5c7f679f4c05b8b1b18d4a9e98dde3c4b`.
+
+The next development version is 0.3.1. This metadata update adds no algorithm
+or public API changes. Neither merge nor the development version bump publishes
+a package. Tags and registry uploads remain separate. Keep the 0.3.0 candidate
+commit when preparing a later authorized release.
 
 ## Implemented behavior
 
@@ -55,8 +60,13 @@ reproduction confirmed that the built-in compilers retain zero auxiliary costs.
 The legacy compiled-model path still rejects that false certificate. The failed
 provider run does not count as a completed review.
 
-PR #11 contains the local test records and current check results. Later metadata
-changes require checks and reviews on their own exact commit before merging.
+The final documentation review at
+`2fe4f9a5c7f679f4c05b8b1b18d4a9e98dde3c4b` has no remaining findings from the
+three reviewers. All 47 GitHub checks pass. Fresh local tests pass the same
+14,110 Python cases, 194 JavaScript cases, and 631 R assertions.
+[PR #11](https://github.com/aigorahub/cld-reducer/pull/11) contains the exact
+local test record and check results. Later metadata changes require checks and
+reviews on their own exact commit before merging.
 
 ## Timing study
 

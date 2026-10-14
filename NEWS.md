@@ -1,3 +1,8 @@
+# cldreducer 0.3.1
+
+- Unreleased development version after the 0.3.0 candidate merge.
+  No algorithm or public API changes.
+
 # cldreducer 0.3.0
 
 - Prove essential covers before BIP construction in Python, R, and JavaScript.
