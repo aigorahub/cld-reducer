@@ -1,7 +1,8 @@
 // Methods, examples, the check of a solver reply, and the result files.
 
 import type { CldReduction } from "../../js/src/index.js";
-import type { MeanRow } from "./csv.js";
+import { pairsToGraph, type Graph } from "../../js/src/input.js";
+import type { MeanRow, PairRow } from "./csv.js";
 import { TABLE_II } from "./simulate.js";
 
 export type Method = "letter_minimum" | "assignment_minimum";
@@ -140,6 +141,34 @@ export function checkReduction(value: unknown, method: ResultMethod): string | n
                   stats.numLettersAfter, stats.numGroups, stats.numEdges, stats.objective];
   if (!counts.every(isCount)) return "A statistic of the reply is not a whole number.";
 
+  const problem = checkLetters(groups, rows, adjacency);
+  if (problem) return problem;
+  const tokens = rows.map((row) => tokensOf(row.assignments));
+  const assignments = tokens.reduce((sum, t) => sum + t.length, 0);
+  const letters = new Set(tokens.flat()).size;
+  if (stats.numGroups !== n || stats.assignmentsAfter !== assignments || stats.numLettersAfter !== letters) {
+    return "The statistics of the reply do not match its letters.";
+  }
+  if (stats.objective !== (COUNTS_LETTERS.includes(method) ? letters : assignments)) {
+    return "The objective value of the reply does not match its letters.";
+  }
+  return null;
+}
+
+interface LetterRow {
+  group: string;
+  letters: string;
+  assignments: string;
+}
+
+/**
+ * Check letter rows against a relationship matrix: each row has distinct
+ * letters and their display string, and two groups share a letter exactly when
+ * the matrix joins them. Returns the first problem, or null.
+ */
+function checkLetters(groups: readonly string[], rows: readonly LetterRow[],
+                      adjacency: readonly (readonly boolean[])[]): string | null {
+  const n = groups.length;
   const tokens = rows.map((row) => tokensOf(row.assignments));
   for (let i = 0; i < n; i++) {
     const own = tokens[i];
@@ -157,13 +186,62 @@ export function checkReduction(value: unknown, method: ResultMethod): string | n
       }
     }
   }
-  const assignments = tokens.reduce((sum, t) => sum + t.length, 0);
-  const letters = new Set(tokens.flat()).size;
-  if (stats.numGroups !== n || stats.assignmentsAfter !== assignments || stats.numLettersAfter !== letters) {
-    return "The statistics of the reply do not match its letters.";
+  return null;
+}
+
+/** The groups and decisions of the input, as the package reads them, or null. */
+function inputGraph(pairs: readonly PairRow[], means: readonly MeanRow[] | null): Graph | null {
+  try {
+    return pairsToGraph(pairs, { means: means as MeanRow[] | null });
+  } catch {
+    return null;
   }
-  if (stats.objective !== (COUNTS_LETTERS.includes(method) ? letters : assignments)) {
-    return "The objective value of the reply does not match its letters.";
+}
+
+/**
+ * Check that a result that passed checkReduction is for the input of its run:
+ * the same groups in the same order, and the same decision for each pair.
+ */
+export function checkInput(result: CldReduction, pairs: readonly PairRow[],
+                           means: readonly MeanRow[] | null): string | null {
+  const graph = inputGraph(pairs, means);
+  if (!graph) return "The page cannot read the decisions of the input.";
+  if (JSON.stringify(graph.groups) !== JSON.stringify(result.groups)) return "The reply has other groups than the input.";
+  const n = graph.groups.length;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (graph.adjacency[i][j] !== result.adjacency[i][j]) {
+        return `The reply changes the decision for ${graph.groups[i]} and ${graph.groups[j]}.`;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Check a display before reduction against the input that the page sent for
+ * it: one row for each group, letters that match the decisions, and counts
+ * that match the letters. Returns the first problem, or null.
+ */
+export function checkBefore(value: unknown, pairs: readonly PairRow[], means: readonly MeanRow[] | null): string | null {
+  if (value === null || typeof value !== "object") return "The reply holds no display before reduction.";
+  const { rows, letters, assignments } = value as Record<string, unknown>;
+  const graph = inputGraph(pairs, means);
+  if (!graph) return "The page cannot read the decisions of the input.";
+  const { groups } = graph;
+  if (!Array.isArray(rows) || rows.length !== groups.length ||
+      !rows.every((row: unknown, i) => {
+        if (row === null || typeof row !== "object") return false;
+        const r = row as Record<string, unknown>;
+        return r.group === groups[i] && typeof r.letters === "string" && typeof r.assignments === "string";
+      })) {
+    return "The display before reduction does not have one row for each group of the input.";
+  }
+  const problem = checkLetters(groups, rows as LetterRow[], graph.adjacency);
+  if (problem) return problem;
+  const tokens = (rows as LetterRow[]).map((row) => tokensOf(row.assignments));
+  if (letters !== new Set(tokens.flat()).size || assignments !== tokens.reduce((sum, t) => sum + t.length, 0)) {
+    return "The counts of the display before reduction do not match its letters.";
   }
   return null;
 }

@@ -90,6 +90,8 @@ function instrument() {
   window.__heldBefore = [];
   window.__holdBefore = false;
   window.__alter = null;
+  window.__alterBefore = null;
+  window.__alterInstance = null;
   window.Worker = class extends Native {
     constructor(...args) {
       super(...args);
@@ -107,6 +109,11 @@ function instrument() {
         if (window.__hold && ["start", "result", "done"].includes(e.data?.type)) { window.__held.push(e.data); return; }
         if (window.__holdBefore && e.data?.type === "before") { window.__heldBefore.push([this, e.data]); return; }
         if (window.__alter && e.data?.type === "result") { this.deliver(window.__alter(structuredClone(e.data))); return; }
+        if (window.__alterBefore && e.data?.type === "before") { this.deliver(window.__alterBefore(structuredClone(e.data))); return; }
+        if (window.__alterInstance && e.data?.type === "instance") {
+          this.deliver(window.__alterInstance(structuredClone(e.data)));
+          return;
+        }
         fn.call(this, e);
       };
     }
@@ -494,6 +501,21 @@ async function main() {
     await page.click("#run");
     await wait(() => document.querySelector(".problem > p")?.textContent === "The reply does not confirm the relationship check.");
     noResult(await read(), "reply without the relationship check");
+    // A reply that is consistent in itself but has other decisions than the input: one letter for all groups.
+    await page.evaluate(() => {
+      window.__alter = (reply) => {
+        const r = reply.reduction;
+        for (const row of r.rows) row.letters = row.assignments = "a";
+        r.adjacency = r.adjacency.map((line) => line.map(() => true));
+        r.stats.numLettersAfter = r.stats.objective = 1;
+        r.stats.assignmentsAfter = r.rows.length;
+        return reply;
+      };
+    });
+    await ready();
+    await page.click("#run");
+    await wait(() => /^The reply changes the decision for \d+ and \d+\.$/.test(document.querySelector(".problem > p")?.textContent ?? ""));
+    noResult(await read(), "reply with other decisions than the input");
     await page.evaluate(() => { window.__alter = null; });
     await ready();
     await page.click("#compare");
@@ -585,6 +607,19 @@ async function main() {
     await page.waitForTimeout(200);
     state = await read();
     check(state.title === null && state.letters === null, `a late display before reduction is shown: ${state.title}`);
+    // A display before reduction that does not match the input is not shown.
+    await page.evaluate(() => {
+      window.__alterBefore = (reply) => {
+        reply.before.rows[0].letters = reply.before.rows[0].assignments = "Z";
+        return reply;
+      };
+    });
+    await page.click('button.example:has-text("Simple example")');
+    await wait(() => document.querySelector(".empty .hint")?.textContent
+      .startsWith("The display before reduction is not available: The reply failed the check of the page."));
+    state = await read();
+    check(state.title === null && state.letters === null, `an altered display before reduction is shown: ${state.title}`);
+    await page.evaluate(() => { window.__alterBefore = null; });
     // A simulated input again, for the study and the narrow layout below.
     await page.fill("#sim-n", "12");
     await page.fill("#sim-seed", "4");
@@ -610,6 +645,29 @@ async function main() {
     check(same(study[2].slice(1).map((r) => [r[0], r[1]]), [["12", "18.8"]]), "published row for 12 treatments");
     const studyFile = await save("Download instances (CSV)");
     check(studyFile.name === "cld-simulation-study.csv" && studyFile.text.trimEnd().split("\n").length === 5, "study file");
+    // A study reply that breaks the order of the minimums, or is for another seed, stops the study.
+    for (const [id, value] of [["study-from", "10"], ["study-to", "10"], ["study-count", "2"]]) await page.fill(`#${id}`, value);
+    for (const [alter, message] of [
+      ["order", "The solves of the instance do not keep the order of the minimums."],
+      ["seed", "The reply is not for the instance with 10 treatments and seed 1."],
+    ]) {
+      await page.evaluate((alter) => {
+        window.__alterInstance = (reply) => {
+          if (alter === "order") reply.instance.solves.letter_then_assignment = { letters: 999, assignments: 999, milliseconds: 1 };
+          else reply.instance.seed = 999;
+          return reply;
+        };
+      }, alter);
+      const workers = await page.evaluate(() => window.__workers.length);
+      await page.click("#study-run");
+      await wait(() => document.getElementById("study-hint").textContent.startsWith("The study stopped with an error"));
+      const hint = await page.$eval("#study-hint", (e) => e.textContent);
+      check(hint === `The study stopped with an error after 0 instances: The solver returned an invalid result. ${message}`,
+            `altered study reply (${alter}): ${hint}`);
+      check(await page.evaluate((n) => window.__workers[n - 1].terminated, workers), "the study worker runs on after an invalid reply");
+      await page.evaluate(() => { window.__alterInstance = null; });
+      await ready();
+    }
     for (const [id, value] of [["study-from", "45"], ["study-to", "45"], ["study-count", "5"]]) await page.fill(`#${id}`, value);
     const workersBefore = await page.evaluate(() => window.__workers.length);
     await page.click("#study-run");

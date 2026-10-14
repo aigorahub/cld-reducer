@@ -69,7 +69,7 @@ Each package method minimizes one quantity. Neither optimizes the other quantity
 - **CLD-C then CLD-sigma** gives the fewest assignments among the displays with the minimum letter count of CLD-C.
 - **CLD-sigma then CLD-C** gives the fewest letters among the displays with the minimum assignment count of CLD-sigma.
 
-The second stage keeps the minimum of the first stage exactly. It uses the CLD-sigma model of the package with one more binary column for each maximal clique, the canonical solve engine of the package, and the same HiGHS solver. [`../docs/plans/dashboard-staged-solve/plan.md`](../docs/plans/dashboard-staged-solve/plan.md) states the model and why it is exact. The tests compare it with an exhaustive search on more than 1,000 small graphs. The second stage exists in this page only. It is not part of the specification or of the R, Python, and npm packages.
+The second stage keeps the minimum of the first stage exactly. It uses the CLD-sigma model of the package with one more binary column for each maximal clique, the canonical solve engine of the package, and the same HiGHS solver. [`../docs/plans/dashboard-staged-solve/plan.md`](../docs/plans/dashboard-staged-solve/plan.md) states the model and why it is exact. The tests compare it with an exhaustive search on more than 1,000 small graphs. Like stage 1, it accepts at most 10,000 maximal cliques. The second stage exists in this page only. It is not part of the specification or of the R, Python, and npm packages.
 
 On the graph of Table II of the 2012 paper the two orders differ: no display with the fewest letters has the fewest assignments.
 
@@ -90,7 +90,7 @@ The solver runs in a Web Worker, so the page stays responsive during a solve. Ca
 
 The page uses the defaults of the package: at most 10,000 maximal cliques, and no time limit. A large or dense input can take long with CLD-sigma or a second stage. Use Cancel to stop it. Each input field reads up to 5,000,000 characters.
 
-The page checks each result before it shows it: the method, one row for each group, the relationship check, and the shared letters against the input decisions. A result that fails the check is not shown.
+The page checks each result before it shows it: the method, one row for each group, the relationship check, the groups and decisions against the input, and the shared letters against those decisions. A result that fails the check is not shown. The page checks the display before reduction against the input in the same way. It checks each instance of the simulation study for its treatment count and seed, possible counts and times, and the order of the minimums of the four solves; an instance that fails stops the study.
 
 A content security policy in the page refuses every network connection. The page needs a browser with WebAssembly, `DecompressionStream`, and module scripts.
 
@@ -116,7 +116,7 @@ The triticale data of Table VI of the 2012 paper is not in the page. The data re
 
 The groups are T1 to Tn, from the highest mean down. The means go into the means field with three decimals.
 
-These graphs are denser than the graphs of Table X of the 2012 paper. The mean assignment count of the maximal display is 18.0, 60.3, and 126.9 for 10, 20, and 30 treatments (seeds 1 to 300, 1 to 150, and 1 to 60). Table X reports 14.38, 42.87, and 80.03. No reading of the published parameters (variance or standard deviation, gamma scale or rate) gives the Table X values. The 2012 program can differ from the published text in a detail that the text does not state. The page keeps the published model and says so next to the published figures.
+These graphs are denser than the graphs of Table X of the 2012 paper. The mean assignment count of the maximal display is 18.0, 60.3, and 126.9 for 10, 20, and 30 treatments (seeds 1 to 300, 1 to 150, and 1 to 60). Table X reports 14.38, 42.87, and 80.03. Table X averages over the searches that finished: all of them at 10 treatments, 99.9% at 20, and 70.4% at 30. At 10 treatments the two figures compare directly. None of the eight readings of the published parameters that we tried (variance or standard deviation, gamma scale or rate) gives the Table X values. The 2012 program can differ from the published text in a detail that the text does not state. The page keeps the published model and says so next to the published figures.
 
 ## Simulation study
 

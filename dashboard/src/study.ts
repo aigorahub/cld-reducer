@@ -1,10 +1,74 @@
 // Summaries and the result file of the simulation study.
 
 import type { ResultMethod } from "./data.js";
-import type { Instance } from "./worker.js";
+import type { Instance, Solve, Study } from "./worker.js";
 
 export const ALL_METHODS: readonly ResultMethod[] = ["letter_minimum", "assignment_minimum",
                                                     "letter_then_assignment", "assignment_then_letter"];
+
+/** The largest value; Math.max(...values) fails for a very long list. */
+export const largest = (values: readonly number[]): number => values.reduce((a, b) => Math.max(a, b), -Infinity);
+
+/** The time of the slowest solve of a study, or null when no solve ran. */
+export function slowest(instances: readonly Instance[]): number | null {
+  const times = instances.flatMap((i) => ALL_METHODS.flatMap((m) => {
+    const t = i.solves[m].milliseconds;
+    return t === null ? [] : [t];
+  }));
+  return times.length ? largest(times) : null;
+}
+
+/** The treatment count and seed of the instance at a position of a study, or null after its last instance. */
+export function planned(study: Study, index: number): { n: number; seed: number } | null {
+  const size = Math.floor(index / study.count);
+  return size < study.sizes.length ? { n: study.sizes[size], seed: study.firstSeed + (index % study.count) } : null;
+}
+
+const whole = (v: unknown, min: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= min;
+
+/**
+ * Check one instance reply of a study before the page keeps it: the planned
+ * treatment count and seed, possible counts and times, a second stage exactly
+ * when its first stage finished, and the order of the minimums of the four
+ * solves. Returns the first problem, or null.
+ */
+export function checkInstance(value: unknown, n: number, seed: number): string | null {
+  if (value === null || typeof value !== "object") return "The reply holds no instance.";
+  const i = value as Record<string, unknown>;
+  if (i.n !== n || i.seed !== seed) return `The reply is not for the instance with ${n} treatments and seed ${seed}.`;
+  if (!whole(i.edges, 0) || i.edges > (n * (n - 1)) / 2) return "The edge count of the instance is not possible.";
+  if (!whole(i.lettersBefore, 1) || !whole(i.assignmentsBefore, n)) {
+    return "The counts before reduction of the instance are not possible.";
+  }
+  const solves = i.solves as Record<string, unknown> | null | undefined;
+  if (solves === null || typeof solves !== "object") return "The instance has no solves.";
+  for (const m of ALL_METHODS) {
+    const s = solves[m] as Record<string, unknown> | null | undefined;
+    if (s === null || typeof s !== "object") return `The instance has no ${m} solve.`;
+    const ran = s.milliseconds !== null;
+    if (ran && !(typeof s.milliseconds === "number" && Number.isFinite(s.milliseconds) && s.milliseconds >= 0)) {
+      return `The time of the ${m} solve is not a time.`;
+    }
+    const finished = s.letters !== null || s.assignments !== null;
+    if (finished && !(whole(s.letters, 1) && whole(s.assignments, n))) return `The counts of the ${m} solve are not possible.`;
+    if (finished && !ran) return `The ${m} solve has a result but did not run.`;
+  }
+  const { letter_minimum: c, assignment_minimum: sigma, letter_then_assignment: cs, assignment_then_letter: sc } =
+    solves as Record<ResultMethod, Solve>;
+  if (c.milliseconds === null || sigma.milliseconds === null) return "A first stage of the instance did not run.";
+  if ((cs.milliseconds !== null) !== (c.letters !== null) || (sc.milliseconds !== null) !== (sigma.letters !== null)) {
+    return "A second stage of the instance runs when its first stage did not finish, or the reverse.";
+  }
+  // Each finished solve is exact, so its counts keep this order. A null count did not finish.
+  const le = (a: number | null, b: number | null): boolean => a === null || b === null || a <= b;
+  const eq = (a: number | null, b: number | null): boolean => a === null || b === null || a === b;
+  const ordered =
+    le(c.letters, i.lettersBefore as number) && le(sigma.assignments, i.assignmentsBefore as number) &&
+    le(c.letters, sigma.letters) && le(sigma.assignments, c.assignments) &&
+    eq(cs.letters, c.letters) && le(cs.assignments, c.assignments) && le(sigma.assignments, cs.assignments) &&
+    eq(sc.assignments, sigma.assignments) && le(sc.letters, sigma.letters) && le(c.letters, sc.letters);
+  return ordered ? null : "The solves of the instance do not keep the order of the minimums.";
+}
 
 /** The figures of one number of treatments. */
 export interface Summary {
@@ -57,7 +121,7 @@ export function summarize(instances: readonly Instance[]): Summary[] {
       },
       assignmentsRemoved: before > 0 ? 1 - after / before : null,
       mean: byMethod((m) => average(times(m))),
-      max: byMethod((m) => (times(m).length ? Math.max(...times(m)) : null)),
+      max: byMethod((m) => (times(m).length ? largest(times(m)) : null)),
       tradeOff: group.filter((i) => {
         const cs = i.solves.letter_then_assignment.assignments;
         const sigma = i.solves.assignment_minimum.assignments;

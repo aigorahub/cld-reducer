@@ -2,8 +2,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { CldReduction } from "../../js/src/index.js";
 import { parseMeans, parsePairs } from "../src/csv.js";
-import { EXAMPLES, METHODS, SECOND_STAGE, STAGES, TABLE_X, checkReduction, checkStage, count, displayOf, duration, explain,
-         meanText, methodInfo, resultsCsv, resultsJson, sharedTokens, tokensOf, type MethodResult } from "../src/data.js";
+import { EXAMPLES, METHODS, SECOND_STAGE, STAGES, TABLE_X, checkBefore, checkInput, checkReduction, checkStage, count,
+         displayOf, duration, explain, meanText, methodInfo, resultsCsv, resultsJson, sharedTokens, tokensOf,
+         type MethodResult } from "../src/data.js";
 
 const repo = (path: string): string => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 
@@ -121,6 +122,48 @@ describe("checkReduction", () => {
     expect(checkReduction({ ...chain(), method: "assignment_then_letter" }, "assignment_then_letter")).toBeNull();
     expect(checkReduction({ ...objective, method: "assignment_then_letter" }, "assignment_then_letter"))
       .toBe("The objective value of the reply does not match its letters.");
+  });
+});
+
+describe("checkInput", () => {
+  const pairs = (lowHigh: string, extra = "low") => [
+    { group1: extra, group2: "mid", significant: "false" },
+    { group1: "mid", group2: "high", significant: "false" },
+    { group1: extra, group2: "high", significant: lowHigh },
+  ];
+
+  it("accepts a result for the groups and decisions of the input", () => {
+    expect(checkInput(chain(), pairs("true"), null)).toBeNull();
+  });
+
+  it("rejects a result that is consistent in itself but has another decision or other groups", () => {
+    expect(checkInput(chain(), pairs("false"), null)).toBe("The reply changes the decision for low and high.");
+    expect(checkInput(chain(), pairs("true", "other"), null)).toBe("The reply has other groups than the input.");
+    expect(checkInput(chain(), pairs("true").slice(0, 2), null)).toBe("The page cannot read the decisions of the input.");
+  });
+});
+
+describe("checkBefore", () => {
+  const pairs = [
+    { group1: "low", group2: "mid", significant: "false" },
+    { group1: "mid", group2: "high", significant: "false" },
+    { group1: "low", group2: "high", significant: "true" },
+  ];
+  const before = () => ({ rows: chain().rows.map((r) => ({ ...r })), letters: 2, assignments: 4 });
+
+  it("accepts letters that give back the input decisions, with their counts", () => {
+    expect(checkBefore(before(), pairs, null)).toBeNull();
+  });
+
+  it("rejects other letters, other counts, other groups, and no display", () => {
+    const b = before();
+    b.rows[2] = { group: "high", letters: "A", assignments: "A" };
+    expect(checkBefore(b, pairs, null)).toBe("The letters of low and high do not match the input decision.");
+    expect(checkBefore({ ...before(), assignments: 5 }, pairs, null))
+      .toBe("The counts of the display before reduction do not match its letters.");
+    expect(checkBefore({ ...before(), rows: before().rows.slice(1) }, pairs, null))
+      .toBe("The display before reduction does not have one row for each group of the input.");
+    expect(checkBefore(null, pairs, null)).toBe("The reply holds no display before reduction.");
   });
 });
 

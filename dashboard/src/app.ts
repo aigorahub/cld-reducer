@@ -8,10 +8,10 @@ import { DataError, MAX_CHARS, TEMPLATE_MEANS, TEMPLATE_PAIRS, parseMeans, parse
 import {
   EXAMPLES, METHODS, SECOND_STAGE, TABLE_X, TABLE_XI, checkReduction, count, displayOf, duration, explain,
   meanText, methodInfo, resultsCsv, resultsJson, sharedTokens, tokensOf,
-  checkStage, type BeforeRows, type Example, type Method, type MethodResult, type ResultMethod, type StagedOrder,
+  checkBefore, checkInput, checkStage, type BeforeRows, type Example, type Method, type MethodResult, type ResultMethod, type StagedOrder,
 } from "./data.js";
 import { experimentCsv, simulate } from "./simulate.js";
-import { summarize, studyCsv, ALL_METHODS } from "./study.js";
+import { summarize, studyCsv, ALL_METHODS, checkInstance, planned, slowest } from "./study.js";
 import type { Input, Instance, Reply, Request, Study } from "./worker.js";
 
 /** The matrix of shared letters has one cell for each pair, so it is shown for small inputs only. */
@@ -134,8 +134,8 @@ const state = {
 };
 
 let nextId = 1;
-/** The before request in flight, with the input version that it belongs to. */
-let beforeRequest: { id: number; version: number } | null = null;
+/** The before request in flight, with the input and the input version that it belongs to. */
+let beforeRequest: { id: number; version: number; input: Input } | null = null;
 /** The last input version for which the page asked for the display before reduction. */
 let beforeVersion = -1;
 let beforeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -255,9 +255,13 @@ function problemOf(kind: string, message: string): Problem {
 function onReply(r: Reply): void {
   if (r.type === "ready") return;
   if (beforeRequest && r.id === beforeRequest.id && (r.type === "before" || r.type === "error")) {
-    const { version } = beforeRequest;
+    const { version, input } = beforeRequest;
     beforeRequest = null;
-    if (r.type === "before") {
+    const defect = r.type === "before" ? checkBefore(r.before, input.pairs, input.means) : null;
+    if (defect) {
+      state.before = null;
+      state.beforeNote = `The reply failed the check of the page. ${defect}`;
+    } else if (r.type === "before") {
       state.before = { ...r.before, milliseconds: r.milliseconds, version };
       state.beforeNote = null;
     } else {
@@ -285,6 +289,7 @@ function onReply(r: Reply): void {
     const previous = run.results[run.results.length - 1];
     const defect = r.method !== expected || r.stage !== stage ? "The reply is for another method."
       : checkReduction(r.reduction, r.method)
+      ?? checkInput(r.reduction, run.input.pairs, run.input.means)
       ?? (r.stage === 2 ? checkStage(previous.reduction, r.reduction, r.method as StagedOrder) : null)
       ?? (groups && JSON.stringify(groups) !== JSON.stringify(r.reduction.groups)
         ? "The methods returned different groups." : null);
@@ -363,7 +368,7 @@ function requestBefore(): void {
     render();
     return;
   }
-  beforeRequest = { id: nextId++, version: state.inputVersion };
+  beforeRequest = { id: nextId++, version: state.inputVersion, input };
   worker.postMessage({ type: "before", id: beforeRequest.id, input } satisfies Request);
 }
 
@@ -528,9 +533,23 @@ function endStudy(status: StudyRun["status"], message: string | null): void {
 }
 
 function onStudyReply(r: Reply): void {
-  if (r.type === "instance") state.study!.instances.push(r.instance);
-  else if (r.type === "done") endStudy("done", null);
-  else if (r.type === "error") endStudy("error", r.message);
+  const run = state.study!;
+  let defect: string | null = null;
+  if (r.type === "instance") {
+    const next = planned(run.study, run.instances.length);
+    defect = next ? checkInstance(r.instance, next.n, next.seed) : "The worker sent more instances than the study has.";
+    if (!defect) run.instances.push(r.instance);
+  } else if (r.type === "done") {
+    if (run.instances.length === run.total) endStudy("done", null);
+    else defect = "The study ended before all its instances were solved.";
+  } else if (r.type === "error") {
+    endStudy("error", r.message);
+  }
+  if (defect) {
+    endStudy("error", `The solver returned an invalid result. ${defect}`);
+    // The worker can hold more replies of this study. Start again from a clean worker.
+    restartWorker();
+  }
   render();
 }
 
@@ -828,15 +847,12 @@ function renderStudy(): void {
   if (!done) return;
 
   const rows = summarize(run.instances);
-  const allTimes = run.instances.flatMap((i) => ALL_METHODS.flatMap((m) => {
-    const t = i.solves[m].milliseconds;
-    return t === null ? [] : [t];
-  }));
+  const slowestTime = slowest(run.instances);
   const finished = rows.reduce((t, r) => t + r.finished, 0);
   const head = el("section", "headline", undefined, host);
   el("p", "headline-text",
      `${finished} of ${count(done, "instance", "instances")} finished all four solves within the limit of ` +
-     `${run.study.timeLimit} s. The slowest solve took ${duration(Math.max(...allTimes))}.`, head);
+     `${run.study.timeLimit} s. The slowest solve took ${duration(slowestTime ?? 0)}.`, head);
   const actions = el("div", "actions", undefined, head);
   button("button-secondary", "Download instances (CSV)", actions,
          () => download("cld-simulation-study.csv", studyCsv(run.instances), "text/csv"));

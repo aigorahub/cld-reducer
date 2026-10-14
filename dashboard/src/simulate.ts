@@ -121,7 +121,8 @@ export function simulate(n: number, seed: number, model: { readonly [K in keyof 
   const { values, vectors } = symmetricEigen(r);
   const smallest = Math.min(...values.filter((d) => d > 0));
   const repaired = values.map((d) => (d > 0 ? d : smallest));
-  // R = Q diag(d) Q'. The diagonal can then be below 1; Section 3.2 keeps it.
+  // R = Q diag(d) Q'. Section 3.2 keeps the diagonal as it is. The paper says that it can fall
+  // below 1, but a larger eigenvalue adds a positive semidefinite term, so it can only rise above 1.
   const corr = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => {
     let sum = 0;
     for (let k = 0; k < n; k++) sum += vectors[i][k] * repaired[k] * vectors[j][k];
