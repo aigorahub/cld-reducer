@@ -205,6 +205,28 @@ async function main() {
         [...document.fonts].filter((f) => f.status === "loaded").length === 2; }), "the Aigora fonts did not load");
     check(await page.$eval(".brand-mark", (e) => e.src.startsWith("data:image/svg+xml,") && e.complete && e.naturalWidth > 0),
           "the Aigora mark is not in the file");
+    // The theme button switches light and dark mode, and the page keeps the choice in this browser.
+    const look = () => page.evaluate(() => ({ theme: document.documentElement.dataset.theme ?? null,
+      label: document.getElementById("theme").getAttribute("aria-label"), background: getComputedStyle(document.body).backgroundColor }));
+    const light = await look();
+    check(light.theme === null && light.label === "Switch to dark mode", `system theme: ${JSON.stringify(light)}`);
+    await page.click("#theme");
+    const dark = await look();
+    check(dark.theme === "dark" && dark.label === "Switch to light mode" && dark.background !== light.background,
+          `dark mode: ${JSON.stringify(dark)}`);
+    await page.reload();
+    await ready();
+    check((await look()).theme === "dark", "the page does not keep the theme");
+    await page.click("#theme");
+    check((await look()).theme === "light" && (await look()).background === light.background, "light mode");
+    await page.evaluate(() => { localStorage.removeItem("cld-reducer-theme"); delete document.documentElement.dataset.theme; });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.waitForTimeout(50);
+    check((await look()).label === "Switch to light mode", "the button does not follow the system theme");
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.waitForTimeout(50);
+    await wait(() => document.querySelector(".letters-table") !== null);
+
     // Tab from the decisions reaches "Choose a file", and the side panel shows it above the sticky Run bar.
     await page.focus("#pairs");
     await page.keyboard.press("Tab");
@@ -216,32 +238,60 @@ async function main() {
     await page.evaluate(() => { document.activeElement.blur(); document.querySelector("#reduce-view .side").scrollTop = 0; });
     if (shots) await page.screenshot({ path: join(shots, "wide-start.png") });
 
-    // CLD-C is the default. The simple example with it is an essential cover result. First without the second stage.
-    await page.uncheck("#staged");
+    // CLD-C is the default. It runs with its second minimization, and the page shows the result under the
+    // name CLD-C: the fewest letters, then the fewest assignments among them. The letters stay in place.
+    const lettersTop = await page.$eval(".letters-table", (e) => e.getBoundingClientRect().top);
     await page.click("#run");
     await solved();
     state = await read();
-    check(state.title === "CLD-C: 3 letters and 9 assignments", `simple CLD-C title: ${state.title}`);
+    check(state.title === "CLD-C: 3 letters and 8 assignments", `simple CLD-C title: ${state.title}`);
+    check(await page.$eval(".letters-table", (e) => e.getBoundingClientRect().top) <= lettersTop,
+          "the letters moved down when the result came");
     check(same(state.summary[0], ["", "Before", "CLD-C"]), "simple CLD-C summary head");
-    check(same(summaryRow(state, "Minimizes"), ["One letter for each maximal clique", "Distinct letters"]),
+    check(same(summaryRow(state, "Minimizes"), ["One letter for each maximal clique", "Distinct letters, then assignments"]),
           "CLD-C does not state its objective");
-    check(same(summaryRow(state, "Distinct letters"), ["3", "3"]) && same(summaryRow(state, "Assignments"), ["9", "9"]) &&
-          same(summaryRow(state, "Assignments removed"), ["", "0 (0.0%)"]) &&
+    check(same(summaryRow(state, "Distinct letters"), ["3", "3"]) && same(summaryRow(state, "Assignments"), ["9", "8"]) &&
+          same(summaryRow(state, "Assignments removed"), ["", "1 (11.1%)"]) &&
           same(summaryRow(state, "Relationships preserved"), ["", "Yes"]),
           `simple CLD-C summary: ${JSON.stringify(state.summary)}`);
     check(summaryRow(state, "Time in this browser").every((t) => /^(<1|\d+) ms$|^\d+\.\d+ s$/.test(t)), "no browser time");
     check(same(state.letters, [["Group", "Mean", "Before", "CLD-C"], ["1", "3.73", "A", "A"], ["2", "3.57", "AB", "AB"],
-                               ["3", "3.46", "ABC", "ABC"], ["4", "3.33", "BC", "BC"], ["5", "3.3", "C", "C"]]),
+                               ["3", "3.46", "ABC", "AC"], ["4", "3.33", "BC", "BC"], ["5", "3.3", "C", "C"]]),
           `simple CLD-C letters: ${JSON.stringify(state.letters)}`);
     check(state.matrices.length === 1 && same(state.matrices[0][1], ["1", "A", "A", "A", "different", "different"]) &&
-          same(state.matrices[0][3], ["3", "A", "AB", "ABC", "BC", "C"]), `simple matrix: ${JSON.stringify(state.matrices[0])}`);
+          same(state.matrices[0][3], ["3", "A", "A", "AC", "C", "C"]), `simple matrix: ${JSON.stringify(state.matrices[0])}`);
+    // The summary opens over the page from its button, and Escape closes it.
+    check(!(await page.$eval("#summary", (e) => e.matches(":popover-open"))), "the summary starts open");
+    // It is under its button from the first frame, and inside the window once it has its size.
+    const where = () => {
+      const panel = document.getElementById("summary").getBoundingClientRect();
+      const anchor = document.querySelector(".summary-button").getBoundingClientRect();
+      return { open: document.getElementById("summary").matches(":popover-open"), below: panel.top >= anchor.bottom,
+               inside: panel.left >= 0 && panel.right <= innerWidth };
+    };
+    // The page does not allow eval, so the first-frame check repeats the measure of where().
+    const first = await page.evaluate(() => new Promise((resolve) => {
+      document.querySelector(".summary-button").click();
+      requestAnimationFrame(() => {
+        const panel = document.getElementById("summary").getBoundingClientRect();
+        const anchor = document.querySelector(".summary-button").getBoundingClientRect();
+        resolve({ open: document.getElementById("summary").matches(":popover-open"), below: panel.top >= anchor.bottom });
+      });
+    }));
+    await page.waitForTimeout(100);
+    const pop = await page.evaluate(where);
+    check(first.open && first.below && pop.open && pop.below && pop.inside, `summary panel: ${JSON.stringify([first, pop])}`);
+    await page.keyboard.press("Escape");
+    check(!(await page.$eval("#summary", (e) => e.matches(":popover-open"))), "Escape does not close the summary");
     let json = await save("Download JSON");
     check(json.name === "cld-simple-example.json", `JSON name: ${json.name}`);
     let saved = JSON.parse(json.text);
     check(saved.package === "cld-reducer" && saved.version === version && saved.input.source === "Simple example" &&
-          saved.input.pairs === 10 && saved.input.means.length === 5 && saved.results.length === 1 &&
+          saved.input.pairs === 10 && saved.input.means.length === 5 && saved.results.length === 2 &&
           saved.before.letters === 3 && saved.before.assignments === 9, "JSON head");
+    // The file keeps the result of the package method and the second stage under their own names.
     checkAgainst(saved.results[0], EXPECTED.simple.letter_minimum, "simple CLD-C");
+    check(saved.results[1].method === "letter_then_assignment" && saved.results[1].stats.assignmentsAfter === 8, "JSON second stage");
 
     // A method change removes the result. Keyboard: the arrow key moves the choice.
     await page.focus('input[name="method"]:checked');
@@ -255,7 +305,7 @@ async function main() {
     await solved();
     state = await read();
     check(state.title === "CLD-sigma: 3 letters and 8 assignments", `simple CLD-sigma title: ${state.title}`);
-    check(same(summaryRow(state, "Minimizes"), ["One letter for each maximal clique", "Assignments"]) &&
+    check(same(summaryRow(state, "Minimizes"), ["One letter for each maximal clique", "Assignments, then distinct letters"]) &&
           same(summaryRow(state, "Assignments"), ["9", "8"]), "CLD-sigma does not state its objective");
     check(state.letters[3][3] === "AC", "simple CLD-sigma does not give group 3 the letters AC");
     checkAgainst(JSON.parse((await save("Download JSON")).text).results[0], EXPECTED.simple.assignment_minimum, "simple CLD-sigma");
@@ -270,17 +320,18 @@ async function main() {
     state = await read();
     check(state.title === "CLD-C and CLD-sigma", `compare title: ${state.title}`);
     check(same(state.summary[0], ["", "Before", "CLD-C", "CLD-sigma"]) &&
-          same(summaryRow(state, "Minimizes"), ["One letter for each maximal clique", "Distinct letters", "Assignments"]) &&
+          same(summaryRow(state, "Minimizes"), ["One letter for each maximal clique", "Distinct letters, then assignments",
+                                                "Assignments, then distinct letters"]) &&
           same(summaryRow(state, "Distinct letters"), ["4", "4", "4"]) &&
-          same(summaryRow(state, "Assignments"), ["56", "56", "44"]) &&
-          same(summaryRow(state, "Assignments removed"), ["", "0 (0.0%)", "12 (21.4%)"]),
+          same(summaryRow(state, "Assignments"), ["56", "44", "44"]) &&
+          same(summaryRow(state, "Assignments removed"), ["", "12 (21.4%)", "12 (21.4%)"]),
           `wheat summary: ${JSON.stringify(state.summary)}`);
     check(state.letters.length === 21 && same(state.letters[0], ["Group", "Before", "CLD-C", "CLD-sigma"]), "wheat letters table");
     json = await save("Download JSON");
     saved = JSON.parse(json.text);
     check(json.name === "cld-wheat-yield.json" && saved.input.means === null && saved.input.pairs === 190, "wheat JSON head");
     checkAgainst(saved.results[0], EXPECTED.wheat.letter_minimum, "wheat CLD-C");
-    checkAgainst(saved.results[1], EXPECTED.wheat.assignment_minimum, "wheat CLD-sigma");
+    checkAgainst(saved.results[2], EXPECTED.wheat.assignment_minimum, "wheat CLD-sigma");
     // Each matrix has letters exactly where the input says "not significant".
     const equal = new Set(WHEAT_PAIRS.trim().split("\n").slice(1).map((line) => line.split(","))
       .filter(([, , significant]) => significant === "false").flatMap(([a, b]) => [`${a},${b}`, `${b},${a}`]));
@@ -297,9 +348,10 @@ async function main() {
     }
     const csv = await save("Download CSV");
     const csvLines = csv.text.trimEnd().split("\n");
-    check(csv.name === "cld-wheat-yield.csv" && csvLines.length === 61 && csvLines[0] === "method,group,letters,assignments" &&
+    check(csv.name === "cld-wheat-yield.csv" && csvLines.length === 101 && csvLines[0] === "method,group,letters,assignments" &&
           csvLines[1] === "before,1,ABCD,A B C D" && csvLines[21] === "letter_minimum,1,ABCD,A B C D" &&
-          csvLines[60] === "assignment_minimum,20,C,C", `CSV: ${csvLines[1]}`);
+          csvLines[41].startsWith("letter_then_assignment,1,") && csvLines[80] === "assignment_minimum,20,C,C" &&
+          csvLines[100].startsWith("assignment_then_letter,20,"), `CSV: ${csvLines[1]}`);
     if (shots) await page.screenshot({ path: join(shots, "wide-wheat.png") });
 
     // Paste: semicolons, quotes, decision words, and labels that look like markup or a formula.
@@ -448,13 +500,23 @@ async function main() {
     await ready();
     await page.waitForTimeout(1000);
     noResult(await read(), "after cancel");
-    // A new run on the same input, with the method that solves it at once.
+    // CLD-C finds the letters of this input at once, but its second minimization takes long. Cancel in the
+    // second minimization keeps the checked display of the first, and says so.
     await method("letter_minimum");
     await page.click("#run");
-    await solved();
+    await wait(() => document.querySelector(".headline .muted")?.textContent.startsWith("Step 2 of 2. Second minimization."));
+    check((await read()).hint === "Cancel keeps the display of the first minimization.", "the hint of a second minimization");
+    await page.click("#run");
     state = await read();
     check(state.title === "CLD-C: 6 letters and 30 assignments" &&
           same(state.letters.slice(1).map((row) => row[2]), BUSY_C_LETTERS), `run after cancel: ${state.title}`);
+    check(state.notice === "Cancel stopped the second minimization of CLD-C. Its column shows the display of the first minimization.",
+          `notice of a cancelled second minimization: ${state.notice}`);
+    check(same(summaryRow(state, "Minimizes"), ["One letter for each maximal clique", "Distinct letters"]),
+          "a first minimization is named as the second");
+    saved = JSON.parse((await save("Download JSON")).text);
+    check(same(saved.results.map((r) => r.method), ["letter_minimum"]), "the JSON of a cancelled second minimization");
+    await ready();
 
     // A change of the method during a solve stops it too.
     await method("assignment_minimum");
@@ -463,7 +525,7 @@ async function main() {
     await method("letter_minimum");
     state = await read();
     check(state.run === "Run" && state.notice.startsWith("The input or the method changed."), "a method change did not stop the run");
-    check(same(await page.evaluate(() => window.__workers.map((w) => w.terminated)), [true, true, false]),
+    check(same(await page.evaluate(() => window.__workers.map((w) => w.terminated)), [true, true, true, false]),
           "the method change did not terminate the busy worker");
     await ready();
     await page.click("#reset");
@@ -473,7 +535,6 @@ async function main() {
     noResult(state, "reset");
 
     // Replies of a cancelled run arrive late: the page ignores them, from the old worker and with the old id.
-    await page.uncheck("#staged");
     await page.evaluate(() => { window.__hold = true; });
     await page.click("#run");
     await wait(() => window.__held.some((r) => r.type === "done"));
@@ -482,7 +543,7 @@ async function main() {
     await page.evaluate(() => { window.__hold = false; });
     await ready();
     const held = await page.evaluate(() => window.__held.map((r) => r.type));
-    check(same(held, ["start", "result", "done"]), `held replies: ${held}`);
+    check(same(held, ["start", "result", "start", "result", "done"]), `held replies: ${held}`);
     await page.evaluate(() => {
       const [old, current] = window.__workers.slice(-2);
       for (const reply of window.__held) old.deliver(reply);
@@ -498,7 +559,7 @@ async function main() {
     await wait(() => window.__held.filter((r) => r.type === "done").length === 2);
     await page.evaluate(() => {
       const [old, current] = window.__workers.slice(-2);
-      const [stale, fresh] = [window.__held.slice(0, 3), window.__held.slice(3)];
+      const [stale, fresh] = [window.__held.slice(0, 5), window.__held.slice(5)];
       window.__hold = false;
       for (const reply of stale) current.deliver(reply);
       // The old worker's replies with the id of the current run: the page takes no reply of an old worker.
@@ -509,7 +570,7 @@ async function main() {
     await solved();
     state = await read();
     check(await page.evaluate(() => window.__afterStale) === "Cancel", "a late reply ended the next run");
-    check(state.title === "CLD-C: 4 letters and 56 assignments" && state.letters.length === 21, `run after late replies: ${state.title}`);
+    check(state.title === "CLD-C: 4 letters and 44 assignments" && state.letters.length === 21, `run after late replies: ${state.title}`);
 
     // A reply that does not match the input decisions is not shown, and the old result goes away.
     await page.evaluate(() => {
@@ -563,28 +624,27 @@ async function main() {
     check((await read()).problem === null, "the error stays after a good run");
 
     // The second stage: CLD-C, then CLD-sigma at the minimum letter count, and the reverse order.
-    await page.check("#staged");
     await page.click('button.example:has-text("Simple example")');
     await page.click("#run");
     await solved();
     state = await read();
-    check(state.title === "CLD-C then CLD-sigma: 3 letters and 8 assignments", `staged title: ${state.title}`);
+    check(state.title === "CLD-C: 3 letters and 8 assignments", `staged title: ${state.title}`);
     const stats = await page.$$eval(".stats .stat", (list) => list.map((s) => [...s.children].map((c) => c.textContent)));
     check(same(stats, [["Distinct letters", "3", "3 before"], ["Assignments", "8", "9 before"],
                        ["Removed", "11.1%", "1 assignment, 0 letters"]]), `staged stats: ${JSON.stringify(stats)}`);
     check(await page.$("#results .intro") === null, "the intro stays with a result");
-    check(same(state.summary[0], ["", "Before", "CLD-C", "CLD-C then CLD-sigma"]), "staged summary head");
+    check(same(state.summary[0], ["", "Before", "CLD-C"]), "staged summary head");
     const stagedText = await page.$eval(".headline", (e) => e.textContent);
-    check(/Stage 1, CLD-C, took (<1|\d+) ms\. Stage 2 took (<1|\d+) ms\./.test(stagedText), `stage times: ${stagedText}`);
+    check(/CLD-C took (<1|\d+) ms in this browser: (<1|\d+) ms for the first minimization and (<1|\d+) ms for the second\./
+      .test(stagedText), `stage times: ${stagedText}`);
     // The graph of Table II of the 2012 paper: no letter-minimum display is assignment-minimum.
     await page.click('button.example:has-text("Table II graph")');
     await wait(() => document.querySelector(".headline-title")?.textContent === "Before reduction: 7 letters and 26 assignments");
     await page.click("#compare");
     await solved();
     state = await read();
-    check(state.title === "CLD-C and CLD-sigma, each with a second stage", `Table II title: ${state.title}`);
-    check(same(state.summary[0], ["", "Before", "CLD-C", "CLD-C then CLD-sigma", "CLD-sigma", "CLD-sigma then CLD-C"]),
-          "Table II summary head");
+    check(state.title === "CLD-C and CLD-sigma", `Table II title: ${state.title}`);
+    check(same(state.summary[0], ["", "Before", "CLD-C", "CLD-sigma"]), "Table II summary head");
     saved = JSON.parse((await save("Download JSON")).text);
     const [c, cs, sigma, sc] = saved.results;
     check(same(saved.results.map((r) => [r.method, r.stage]), [["letter_minimum", 1], ["letter_then_assignment", 2],
@@ -629,7 +689,7 @@ async function main() {
     await page.click("#run");
     await solved();
     state = await read();
-    check(state.title.startsWith("CLD-C then CLD-sigma: "), `simulated title: ${state.title}`);
+    check(state.title.startsWith("CLD-C: "), `simulated title: ${state.title}`);
     json = await save("Download JSON");
     check(json.name === "cld-simulated-12-treatments-seed-4.json" &&
           JSON.parse(json.text).input.source === "Simulated, 12 treatments, seed 4", `simulated file: ${json.name}`);
@@ -770,7 +830,7 @@ async function main() {
     await heldRun("Simple example");
     await solved();
     state = await read();
-    check(state.title.startsWith("CLD-C then CLD-sigma") && state.summary[0][1] === "Before",
+    check(state.title.startsWith("CLD-C: ") && state.summary[0][1] === "Before",
           `a run after a late display before reduction: ${state.title}`);
     // A start reply for a method that the run does not expect stops the run.
     await page.evaluate(() => {

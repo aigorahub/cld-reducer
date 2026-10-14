@@ -70,12 +70,14 @@ The page gives the rows to `reduceLetters` of the package as text, and the packa
 
 Each package method minimizes one quantity. Neither optimizes the other quantity as a second objective. "Compare both methods" runs the two methods on the same input and puts them side by side.
 
-### Second stage (experimental)
+### Second minimization (experimental)
 
-"Then minimize the other quantity" is on by default. It adds a second solve after each method:
+The page runs a second solve after each method, and shows its display under the name of the method:
 
-- **CLD-C then CLD-sigma** gives the fewest assignments among the displays with the minimum letter count of CLD-C.
-- **CLD-sigma then CLD-C** gives the fewest letters among the displays with the minimum assignment count of CLD-sigma.
+- **CLD-C** in the page is CLD-C then CLD-sigma: the fewest assignments among the displays with the minimum letter count of CLD-C.
+- **CLD-sigma** in the page is CLD-sigma then CLD-C: the fewest letters among the displays with the minimum assignment count of CLD-sigma.
+
+So the page can give fewer assignments than the CLD-C of the R, Python, and npm packages for the same input: on the simple example, 8 and not 9. The summary names what each column minimizes, and "Download JSON" and "Download CSV" keep the result of the package method and of the second stage under their own names (`letter_minimum`, `letter_then_assignment`, `assignment_minimum`, `assignment_then_letter`).
 
 The second stage keeps the minimum of the first stage exactly. It uses the CLD-sigma model of the package with one more binary column for each maximal clique, the canonical solve engine of the package, and the same HiGHS solver. [`../docs/plans/dashboard-staged-solve/plan.md`](../docs/plans/dashboard-staged-solve/plan.md) states the model and why it is exact. The tests compare it on more than 1,000 small graphs with a search over displays made of cliques of any size, which does not use the restriction of the model to one letter for each maximal clique. The search adds a clique only to cover a group or a pair that is still open; a letter that covers nothing new only adds a letter and assignments, so this loses no optimum. Like stage 1, it accepts at most 10,000 maximal cliques. The second stage exists in this page only. It is not part of the specification or of the R, Python, and npm packages.
 
@@ -83,20 +85,20 @@ On the graph of Table II of the 2012 paper the two orders differ: no display wit
 
 ### What the page shows
 
-For each result, the page shows the distinct letters, the assignments, the assignments and letters removed, the relationship check of the package, and the time in this browser. For the letters before reduction, it shows the distinct letters, the assignments, and the time. The time of a second stage covers its whole call: its own preparation and solve, and for CLD-sigma then CLD-C the third solve too, but not stage 1. A table gives the letters of each group before and after reduction. A matrix gives the letters that each pair of groups shares in each final result, for up to 30 groups: two groups share a letter exactly when the input says that they are not significantly different.
+Each result has a headline with its counts: the distinct letters, the assignments, and the share of the assignments removed, each with its count before reduction. "Summary", next to the downloads, opens a panel over the page with the distinct letters, the assignments, the assignments and letters removed, the relationship check of the package, and the time in this browser of each method and of the letters before reduction; Escape or Close closes it. The time of a method covers both minimizations: for the second, its whole call, with its own preparation and solve, and for CLD-sigma the third solve too. A table gives the letters of each group before and after reduction. A matrix gives the letters that each pair of groups shares in each final result, for up to 30 groups: two groups share a letter exactly when the input says that they are not significantly different.
 
 The page checks that the counts of the letters before reduction equal the statistics of the package. A result does not say whether the essential cover proof or HiGHS produced it. The package does not report that.
 
 ## Result files
 
-- "Download JSON" gives the exact labels, the letter tokens, and all statistics of the letters before reduction and of each result, with its stage and time.
-- "Download CSV" gives one row for each group before reduction, then one row for each result and group. It puts an apostrophe before a label that starts with `=`, `+`, `-`, or `@`, so that a spreadsheet does not read the label as a formula.
+- "Download JSON" gives the exact labels, the letter tokens, and all statistics of the letters before reduction and of each result, with its stage and time: the package method and its second stage are separate results.
+- "Download CSV" gives one row for each group before reduction, then one row for each result and group, with the same results as the JSON. It puts an apostrophe before a label that starts with `=`, `+`, `-`, or `@`, so that a spreadsheet does not read the label as a formula.
 
 ## Run, cancel, and limits
 
 The solver runs in a Web Worker, so the page stays responsive during a solve. Cancel terminates the worker, and the page starts a new one. A change of the input or of the method also stops a solve, and it removes the result that the page shows. If the browser cannot start a worker, the page says so and does not solve.
 
-The page uses the defaults of the package: at most 10,000 maximal cliques, and no time limit. A large or dense input can take long with CLD-sigma or a second stage. Use Cancel to stop it. Each input field reads up to 5,000,000 characters.
+The page uses the defaults of the package: at most 10,000 maximal cliques, and no time limit. A large or dense input can take long with CLD-sigma or a second minimization; the second minimization can take long even when the first finds its display at once. Use Cancel to stop it. Cancel keeps the results that arrived, checked as a finished run is: during a second minimization, the column of that method shows the display of its first minimization, and the page says so. Cancel before the first result shows no result. Each input field reads up to 5,000,000 characters.
 
 The study fields are locked during a study. A change of a field after a study removes its results. The page draws the study tables again only when the study changes; it draws new instances at most every 250 ms.
 

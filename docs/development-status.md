@@ -59,7 +59,9 @@ quantities for each result. It changes no package solver code and adds no
 public API. It is not part of the R, Python, or npm archives. The page is
 hosted at <https://cld.aigora.ai>, the Vercel project `cld-reducer` of the
 Aigora AI team. Each push to `main` deploys it. Since 0.3.3 it uses the Aigora
-design of the turfLP dashboard.
+design of the turfLP dashboard, always runs the second stage, and shows its
+display under the name of the method, so its CLD-C can have fewer assignments
+than the CLD-C of the packages.
 See [the dashboard README](../dashboard/README.md).
 
 The page also shows the letters before reduction next to the reduced letters,

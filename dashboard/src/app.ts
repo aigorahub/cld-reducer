@@ -39,7 +39,7 @@ const ui = {
   simGenerate: $<HTMLButtonElement>("sim-generate"),
   pairs: $<HTMLTextAreaElement>("pairs"),
   means: $<HTMLTextAreaElement>("means"),
-  staged: $<HTMLInputElement>("staged"),
+  theme: $<HTMLButtonElement>("theme"),
   run: $<HTMLButtonElement>("run"),
   compare: $<HTMLButtonElement>("compare"),
   reset: $<HTMLButtonElement>("reset"),
@@ -602,8 +602,9 @@ function startRun(methods: Method[]): void {
   }
   // The display before reduction goes first, so that it is ready with the result.
   requestBefore();
-  const staged = ui.staged.checked;
-  const expected = methods.flatMap((m): ResultMethod[] => (staged ? [m, SECOND_STAGE[m]] : [m]));
+  // Each method runs with its second stage, and the page shows the second stage under the name of the method.
+  const staged = true;
+  const expected = methods.flatMap((m): ResultMethod[] => [m, SECOND_STAGE[m]]);
   state.run = { id: nextId++, methods, expected, input, inputVersion: state.inputVersion, source: state.source,
                 results: [], current: methods[0], stage: 1, currentStart: performance.now() };
   worker!.postMessage({ type: "run", id: state.run.id, input, methods, staged } satisfies Request);
@@ -611,10 +612,22 @@ function startRun(methods: Method[]): void {
 }
 
 function cancelRun(): void {
-  if (!state.run) return;
+  const run = state.run;
+  if (!run) return;
   state.run = null;
-  state.notice = "The run was cancelled.";
   restartWorker();
+  // Cancel keeps the results that arrived, as finishRun shows them: checked, and with their checked
+  // display before reduction. So a slow second minimization leaves the display of the first.
+  const before = state.before && state.before.version === run.inputVersion ? state.before : null;
+  const stats = run.results[0]?.reduction.stats;
+  if (stats && before && before.letters === stats.numLettersBefore && before.assignments === stats.assignmentsBefore) {
+    state.shown = { version: run.inputVersion, results: run.results, input: run.input, source: run.source, before };
+    state.notice = run.stage === 2
+      ? `Cancel stopped the second minimization of ${shownName(run.current)}. Its column shows the display of the first minimization.`
+      : `Cancel stopped ${shownName(run.current)}. The page shows the methods that finished.`;
+  } else {
+    state.notice = "The run was cancelled.";
+  }
   render();
 }
 
@@ -624,7 +637,6 @@ function reset(): void {
     restartWorker();
   }
   document.querySelector<HTMLInputElement>('input[name="method"][value="letter_minimum"]')!.checked = true;
-  ui.staged.checked = true;
   loadExample(EXAMPLES[0]);
 }
 
@@ -761,7 +773,9 @@ function renderControls(): void {
   for (const field of studyFields) field.disabled = studying;
   ui.runHint.textContent = state.solver === "failed" ? "The solver is not available."
     : studying ? "The simulation study is running."
-    : running ? "Cancel stops the solver." : state.solver === "loading" ? "Waiting for the solver…" : "";
+    : running ? (!state.run!.results.length ? "Cancel stops the solver."
+      : state.run!.stage === 2 ? "Cancel keeps the display of the first minimization." : "Cancel keeps the methods that finished.")
+    : state.solver === "loading" ? "Waiting for the solver…" : "";
 
   ui.studyRun.textContent = studying ? "Cancel" : "Run the study";
   ui.studyRun.classList.toggle("is-cancel", studying);
@@ -776,6 +790,7 @@ function renderResults(): void {
   if (state.run) {
     renderRunning(host, state.run);
   } else if (state.shown) {
+    if (state.notice) el("p", "notice", state.notice, host).setAttribute("role", "status");
     renderShown(host, state.shown);
   } else {
     if (state.notice) el("p", "notice", state.notice, host).setAttribute("role", "status");
@@ -795,7 +810,7 @@ function renderResults(): void {
     }
   }
   const shownBefore = state.shown ? state.shown.before : before;
-  const results = state.shown?.results ?? [];
+  const results = state.shown ? finalsOf(state.shown.results) : [];
   const means = state.shown ? state.shown.input.means : state.run ? state.run.input.means : meansForBefore();
   if (shownBefore || results.length) renderLetters(host, shownBefore, results, means);
   if (state.shown) renderMatrices(host, state.shown);
@@ -853,9 +868,9 @@ function renderRunning(host: HTMLElement, run: Run): void {
     el("p", "muted", "The page checks the result against it before it shows the result.", head);
     return;
   }
-  el("h2", "headline-title", `Solving with ${methodInfo(run.current).name}…`, head);
+  el("h2", "headline-title", `Solving with ${shownName(run.current)}…`, head);
   const step = run.expected.length > 1 ? `Step ${run.results.length + 1} of ${run.expected.length}. ` : "";
-  const p = el("p", "muted", `${step}Stage ${run.stage}. `, head);
+  const p = el("p", "muted", `${step}${run.stage === 1 ? "First" : "Second"} minimization. `, head);
   const time = el("span", "live-time", duration(performance.now() - run.currentStart), p);
   time.dataset.start = String(run.currentStart);
 }
@@ -863,6 +878,26 @@ function renderRunning(host: HTMLElement, run: Run): void {
 /** The result of each method after its last stage. */
 const finalsOf = (results: readonly MethodResult[]): MethodResult[] =>
   results.filter((r, k) => r.stage === 2 || results[k + 1]?.stage !== 2);
+
+/** The package method of a result: the method itself, or the method that a second stage follows. */
+function packageMethod(method: ResultMethod): Method {
+  return METHODS.find((m) => m.id === method || SECOND_STAGE[m.id] === method)!.id;
+}
+
+/** The page shows a second stage under the name of its method: CLD-C is CLD-C then CLD-sigma. */
+const shownName = (method: ResultMethod): string => methodInfo(packageMethod(method)).name;
+
+/** What a method of the page minimizes, with its second stage. */
+const MINIMIZES: Record<Method, string> = {
+  letter_minimum: "Distinct letters, then assignments",
+  assignment_minimum: "Assignments, then distinct letters",
+};
+
+/** The time of a final result: both stages when it is a second stage. */
+function totalTime(results: readonly MethodResult[], r: MethodResult): number {
+  const k = results.indexOf(r);
+  return r.stage === 2 && k > 0 ? results[k - 1].milliseconds + r.milliseconds : r.milliseconds;
+}
 
 function renderShown(host: HTMLElement, shown: Shown): void {
   const { results } = shown;
@@ -882,21 +917,22 @@ function renderShown(host: HTMLElement, shown: Shown): void {
   if (finals.length === 1) {
     const last = finals[0];
     const s = last.reduction.stats;
-    el("h2", "headline-title", `${methodInfo(last.method).name}: ${both(last)}`, head);
+    el("h2", "headline-title", `${shownName(last.method)}: ${both(last)}`, head);
     renderStats(head, [
       ["Distinct letters", String(s.numLettersAfter), `${s.numLettersBefore} before`],
       ["Assignments", String(s.assignmentsAfter), `${s.assignmentsBefore} before`],
       ["Removed", `${s.reductionPct.toFixed(1)}%`, removed(last)],
     ]);
-    times = results.length === 2
-      ? `Stage 1, ${methodInfo(results[0].method).name}, took ${duration(results[0].milliseconds)}. ` +
-        `Stage 2 took ${duration(results[1].milliseconds)}. Both ran in this browser.`
-      : `${methodInfo(last.method).name} took ${duration(last.milliseconds)} in this browser.`;
+    times = last.stage === 2
+      ? `${shownName(last.method)} took ${duration(totalTime(results, last))} in this browser: ` +
+        `${duration(results[results.indexOf(last) - 1].milliseconds)} for the first minimization and ` +
+        `${duration(last.milliseconds)} for the second.`
+      : `${shownName(last.method)} took ${duration(last.milliseconds)} in this browser.`;
   } else {
-    el("h2", "headline-title", results.length > 2 ? "CLD-C and CLD-sigma, each with a second stage" : "CLD-C and CLD-sigma", head);
+    el("h2", "headline-title", "CLD-C and CLD-sigma", head);
     renderStats(head, [
       ["Before reduction", count(s0.numLettersBefore, "letter", "letters"), count(s0.assignmentsBefore, "assignment", "assignments")],
-      ...finals.map((r): [string, string, string] => [methodInfo(r.method).name,
+      ...finals.map((r): [string, string, string] => [shownName(r.method),
         count(r.reduction.stats.numLettersAfter, "letter", "letters"),
         `${count(r.reduction.stats.assignmentsAfter, "assignment", "assignments")}, ${r.reduction.stats.reductionPct.toFixed(1)}% fewer`]),
     ]);
@@ -915,23 +951,44 @@ function renderShown(host: HTMLElement, shown: Shown): void {
          resultsJson(results, { source: shown.source, pairs: shown.input.pairs.length, means: shown.input.means },
                      repository.version, shown.before), "application/json"));
 
-  // Summary: one column before reduction and one for each result, so that both quantities are side by side.
-  const summary = el("section", "panel-block", undefined, host);
-  el("h3", undefined, "Summary", summary);
+  // Summary: one column before reduction and one for each method, so that both quantities are side by side.
+  // It opens over the page from its button, so that the letters stay where they are.
+  const open = button("button-secondary summary-button", "Summary", actions, () => {});
+  const summary = el("section", "summary-pop", undefined, actions);
+  summary.id = "summary";
+  summary.popover = "auto";
+  summary.setAttribute("aria-labelledby", "summary-title");
+  open.popoverTargetElement = summary;
+  // Before it opens, the panel goes under its button, so it never shows elsewhere; once it is open and
+  // has a size, it moves inside the window.
+  summary.addEventListener("beforetoggle", (e) => {
+    if ((e as ToggleEvent).newState !== "open") return;
+    const r = open.getBoundingClientRect();
+    summary.style.left = `${Math.max(16, r.left)}px`;
+    summary.style.top = `${r.bottom + 8}px`;
+    summary.style.bottom = "auto";
+  });
+  summary.addEventListener("toggle", () => placeSummary());
+  const top = el("div", "pop-head", undefined, summary);
+  el("h3", undefined, "Summary", top).id = "summary-title";
+  const close = button("button-secondary", "Close", top, () => {});
+  close.popoverTargetElement = summary;
+  close.popoverTargetAction = "hide";
   const table = el("table", "data-table summary-table", undefined, el("div", "table-wrap", undefined, summary));
   const headRow = el("tr", undefined, undefined, el("thead", undefined, undefined, table));
   el("td", undefined, undefined, headRow);
   const before = shown.before;
   if (before) el("th", "num", "Before", headRow).scope = "col";
-  for (const r of results) el("th", "num", methodInfo(r.method).name, headRow).scope = "col";
+  for (const r of finals) el("th", "num", shownName(r.method), headRow).scope = "col";
   const body = el("tbody", undefined, undefined, table);
   const line = (label: string, beforeText: string, value: (r: MethodResult) => string, cls = "num"): void => {
     const tr = el("tr", undefined, undefined, body);
     el("th", undefined, label, tr).scope = "row";
     if (before) el("td", cls, beforeText, tr);
-    for (const r of results) el("td", cls, value(r), tr);
+    for (const r of finals) el("td", cls, value(r), tr);
   };
-  line("Minimizes", "One letter for each maximal clique", (r) => methodInfo(r.method).minimizes, "num wrap");
+  line("Minimizes", "One letter for each maximal clique",
+       (r) => (r.stage === 2 ? MINIMIZES[packageMethod(r.method)] : methodInfo(r.method).minimizes), "num wrap");
   line("Distinct letters", before ? String(before.letters) : "", (r) => String(r.reduction.stats.numLettersAfter));
   line("Assignments", before ? String(before.assignments) : "", (r) => String(r.reduction.stats.assignmentsAfter));
   line("Assignments removed", "", (r) => {
@@ -940,10 +997,33 @@ function renderShown(host: HTMLElement, shown: Shown): void {
   });
   line("Letters removed", "", (r) => String(r.reduction.stats.numLettersBefore - r.reduction.stats.numLettersAfter));
   line("Relationships preserved", "", (r) => (r.reduction.relationshipPreserved ? "Yes" : "No"));
-  line("Time in this browser", before ? duration(before.milliseconds) : "", (r) => duration(r.milliseconds));
+  line("Time in this browser", before ? duration(before.milliseconds) : "", (r) => duration(totalTime(results, r)));
   el("p", "hint",
-     "Stage 2 starts from the minimum of stage 1 and keeps it. Its time covers the whole second stage, not stage 1. " +
-     "The relationship check gives back every input decision from the letters.", summary);
+     "Each method first minimizes its own quantity, then the other quantity among the displays that keep that minimum. " +
+     "The R, Python, and npm packages stop after the first minimization; Download JSON has both. " +
+     "The time covers both minimizations. The relationship check gives back every input decision from the letters.", summary);
+}
+
+/** Place the open summary under its button, inside the window. */
+function placeSummary(): void {
+  const panel = document.getElementById("summary");
+  const anchor = document.querySelector<HTMLElement>(".summary-button");
+  if (!panel || !anchor || !panel.matches(":popover-open")) return;
+  const r = anchor.getBoundingClientRect();
+  const margin = 16;
+  const width = Math.min(panel.offsetWidth, innerWidth - 2 * margin);
+  panel.style.left = `${Math.max(margin, Math.min(r.left, innerWidth - width - margin))}px`;
+  const below = innerHeight - r.bottom - margin - 8;
+  const above = r.top - margin - 8;
+  if (below >= Math.min(panel.scrollHeight, 320) || below >= above) {
+    panel.style.top = `${r.bottom + 8}px`;
+    panel.style.bottom = "auto";
+    panel.style.maxHeight = `${Math.max(below, 120)}px`;
+  } else {
+    panel.style.top = "auto";
+    panel.style.bottom = `${innerHeight - r.top + 8}px`;
+    panel.style.maxHeight = `${above}px`;
+  }
 }
 
 function renderLetters(host: HTMLElement, before: BeforeRows | null, results: readonly MethodResult[],
@@ -956,7 +1036,7 @@ function renderLetters(host: HTMLElement, before: BeforeRows | null, results: re
   const meanOf = means === null ? null : new Map(means.map((m) => [m.group, m.mean]));
   if (meanOf) el("th", "num", "Mean", headRow).scope = "col";
   if (before) el("th", undefined, "Before", headRow).scope = "col";
-  for (const r of results) el("th", undefined, methodInfo(r.method).name, headRow).scope = "col";
+  for (const r of results) el("th", undefined, shownName(r.method), headRow).scope = "col";
   const body = el("tbody", undefined, undefined, table);
   const rows = before?.rows ?? results[0].reduction.rows;
   rows.forEach((row, i) => {
@@ -971,7 +1051,7 @@ function renderLetters(host: HTMLElement, before: BeforeRows | null, results: re
 function renderMatrices(host: HTMLElement, shown: Shown): void {
   for (const r of finalsOf(shown.results)) {
     const section = el("section", "panel-block", undefined, host);
-    el("h3", undefined, `Shared letters, ${methodInfo(r.method).name}`, section);
+    el("h3", undefined, `Shared letters, ${shownName(r.method)}`, section);
     const groups = r.reduction.groups;
     if (groups.length > MAX_MATRIX_GROUPS) {
       el("p", "muted", `The page shows this matrix for up to ${MAX_MATRIX_GROUPS} groups. This input has ${groups.length}.`, section);
@@ -1112,6 +1192,37 @@ for (const bar of document.querySelectorAll<HTMLElement>(".run-bar")) {
   new ResizeObserver(() => { bar.parentElement!.style.scrollPaddingBottom = `${bar.offsetHeight + 8}px`; }).observe(bar);
 }
 
+// Light and dark mode. The page follows the system until the user picks one; the pick is kept in this browser.
+const THEME_KEY = "cld-reducer-theme";
+const systemDark = matchMedia("(prefers-color-scheme: dark)");
+const theme = (): "light" | "dark" => {
+  const set = document.documentElement.dataset.theme;
+  return set === "light" || set === "dark" ? set : systemDark.matches ? "dark" : "light";
+};
+function renderTheme(): void {
+  const dark = theme() === "dark";
+  ui.theme.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+  ui.theme.title = dark ? "Light mode" : "Dark mode";
+  ui.theme.querySelector<SVGElement>(".icon-sun")!.style.display = dark ? "" : "none";
+  ui.theme.querySelector<SVGElement>(".icon-moon")!.style.display = dark ? "none" : "";
+}
+ui.theme.addEventListener("click", () => {
+  const next = theme() === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try {
+    localStorage.setItem(THEME_KEY, next);
+  } catch {
+    // Without storage, the pick lasts until the page closes.
+  }
+  renderTheme();
+});
+systemDark.addEventListener("change", renderTheme);
+renderTheme();
+
+// The open summary follows its button when the page scrolls or the window changes size.
+for (const target of [window, ui.results.parentElement!]) target.addEventListener("scroll", placeSummary, { passive: true });
+window.addEventListener("resize", placeSummary);
+
 // Live time of the running solve and of the study.
 setInterval(() => {
   for (const cell of ui.results.querySelectorAll<HTMLElement>(".live-time")) {
@@ -1157,7 +1268,6 @@ for (const area of [ui.pairs, ui.means]) {
 for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="method"]')) {
   radio.addEventListener("change", invalidate);
 }
-ui.staged.addEventListener("change", invalidate);
 
 for (const [name, area, template] of [["pairs", ui.pairs, TEMPLATE_PAIRS], ["means", ui.means, TEMPLATE_MEANS]] as const) {
   const file = $<HTMLInputElement>(`${name}-file`);
