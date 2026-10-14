@@ -1,6 +1,6 @@
 # Development status
 
-Status on 2026-10-13. Registry publication is recorded separately in
+Status on 2026-10-14. Registry publication is recorded separately in
 [submission status](submission-status.md).
 
 ## Version and delivery
@@ -18,7 +18,13 @@ Its source tree matches reviewed head
 `4d362e82a6bdddb8cdb4eec1537eb00724ed5314`.
 
 Version 0.3.2 adds a second stage, simulated examples, and the letters before reduction
-to the browser page, and no package algorithm or public API change. Neither merge nor a version update publishes a package.
+to the browser page, and no package algorithm or public API change. PR #15 merged it as commit
+`60bb68819591d7dc35a8c3e50dd808c4b56ca3a7`.
+Its source tree matches reviewed head
+`02f29a7f206b779cc392acb6dd64ec1eafaa130f`.
+
+The next development version is 0.3.3. This metadata update adds no algorithm
+or public API changes. Neither merge nor a version update publishes a package.
 Tags and registry uploads remain separate. Keep the 0.3.0 candidate commit when
 preparing a later authorized release.
 
@@ -50,8 +56,9 @@ It does not implement FIND-AM backtracking. The exact contracts are in
 page runs the JavaScript package and the HiGHS WebAssembly solver in a worker.
 It reads pairwise decisions, solves with CLD-C or CLD-sigma, and shows both
 quantities for each result. It changes no package solver code and adds no
-public API. It is not part of the R, Python, or npm archives, and it is not
-hosted or published.
+public API. It is not part of the R, Python, or npm archives. The page of
+version 0.3.2 is hosted at <https://cld.aigora.ai>, the Vercel project
+`cld-reducer` of the Aigora AI team.
 See [the dashboard README](../dashboard/README.md).
 
 The page also shows the letters before reduction next to the reduced letters,
@@ -72,6 +79,15 @@ Commit `4d362e82a6bdddb8cdb4eec1537eb00724ed5314` fixes them. Two independent
 reviews report no remaining findings at that commit. All 49 GitHub checks pass
 there. [PR #13](https://github.com/aigorahub/cld-reducer/pull/13) contains the
 local test record.
+
+Fourteen adversarial review rounds of version 0.3.2 found no wrong letter
+display from the second stage. Their findings were in the reply checks of the
+page, the time limits, the study, the tests, and the documents. Each fix has a test that fails
+without it. At `02f29a7f206b779cc392acb6dd64ec1eafaa130f`, Astra reports no
+actionable findings and all 49 GitHub checks pass. Fugu did not review that
+head because of a provider usage limit; its findings of the round before are
+fixed there. [PR #15](https://github.com/aigorahub/cld-reducer/pull/15)
+contains the review and test record.
 
 ## Review and verification
 

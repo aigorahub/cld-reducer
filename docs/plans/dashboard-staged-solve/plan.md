@@ -1,6 +1,6 @@
 # Staged solve, simulated examples, and before and after letters in the browser page
 
-Status: implemented on branch `feat/dashboard-staged-solve`. The pull request holds the verification record.
+Status: implemented in PR #15, merged as `60bb68819591d7dc35a8c3e50dd808c4b56ca3a7`. The pull request holds the verification record.
 
 Workspace: `/Users/john/aigora/dev/cld-reducer-pre-model-certificate`.
 Branch: `feat/dashboard-staged-solve`.

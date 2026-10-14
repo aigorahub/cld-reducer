@@ -6,7 +6,7 @@ weighted vertex reduction, essential decisions, and a certificate that can avoid
 BIP construction. Its merged source commit is
 `7d9b923ed1e5c867e97f485071e1d1f742a0aeaa`. It has not been submitted to CRAN.
 Versions 0.3.1 and 0.3.2 add and extend a browser page outside the R package
-and do not change the R code. The current checkout is version 0.3.2. Use the retained
+and do not change the R code. The current checkout is development version 0.3.3. Use the retained
 candidate commit for new 0.3.0 submission checks.
 
 John Ennis is the sole package author and maintainer. The package code is MIT

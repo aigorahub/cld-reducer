@@ -6,7 +6,7 @@ message: >-
   option. You may additionally reference the related talks listed under
   `references` (CSP 2019, Sensometrics 2026).
 title: "cld-reducer"
-version: 0.3.2
+version: 0.3.3
 authors:
   - family-names: Ennis
     given-names: John

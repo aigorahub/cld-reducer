@@ -405,21 +405,22 @@ async function main() {
     await page.click("#run");
     await busy();
     await page.waitForTimeout(500);
+    // The live time changes every 200 ms: the timers run for more than two of these changes.
     const during = await page.evaluate(() => new Promise((resolve) => {
       const first = document.querySelector(".live-time").textContent;
       const start = performance.now();
       let ticks = 0;
       const tick = () => {
-        if (++ticks < 20) { setTimeout(tick, 10); return; }
+        if (++ticks < 20 || performance.now() - start < 450) { setTimeout(tick, 10); return; }
         requestAnimationFrame(() => resolve({
-          first, last: document.querySelector(".live-time").textContent, elapsed: performance.now() - start,
+          first, last: document.querySelector(".live-time").textContent, elapsed: performance.now() - start, ticks,
           title: document.querySelector(".headline-title").textContent, workers: window.__workers.length,
         }));
       };
       tick();
     }));
     check(during.title === "Solving with CLD-sigma…" && during.workers === 1, `busy state: ${JSON.stringify(during)}`);
-    check(during.elapsed < 1500, `the page was slow during the solve: ${during.elapsed} ms for 20 timers`);
+    check(during.elapsed < 1500, `the page was slow during the solve: ${during.elapsed} ms for ${during.ticks} timers`);
     check(during.first !== during.last, "the time of the solve does not advance");
     await page.click("#run");
     state = await read();
