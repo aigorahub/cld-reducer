@@ -205,6 +205,15 @@ async function main() {
         [...document.fonts].filter((f) => f.status === "loaded").length === 2; }), "the Aigora fonts did not load");
     check(await page.$eval(".brand-mark", (e) => e.src.startsWith("data:image/svg+xml,") && e.complete && e.naturalWidth > 0),
           "the Aigora mark is not in the file");
+    // Tab from the decisions reaches "Choose a file", and the side panel shows it above the sticky Run bar.
+    await page.focus("#pairs");
+    await page.keyboard.press("Tab");
+    await page.waitForTimeout(100);
+    const tabbed = await page.evaluate(() => ({ id: document.activeElement.id,
+      bottom: document.activeElement.getBoundingClientRect().bottom,
+      bar: document.querySelector("#reduce-view .run-bar").getBoundingClientRect().top }));
+    check(tabbed.id === "pairs-choose" && tabbed.bottom <= tabbed.bar, `focus behind the Run bar: ${JSON.stringify(tabbed)}`);
+    await page.evaluate(() => { document.activeElement.blur(); document.querySelector("#reduce-view .side").scrollTop = 0; });
     if (shots) await page.screenshot({ path: join(shots, "wide-start.png") });
 
     // CLD-C is the default. The simple example with it is an essential cover result. First without the second stage.

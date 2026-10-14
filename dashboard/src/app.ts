@@ -807,7 +807,7 @@ function renderIntro(host: HTMLElement): void {
   el("h2", "intro-title", "Simpler letter displays, with the same conclusions", intro);
   el("p", undefined,
      "In a compact letter display, groups that are not significantly different share a letter. " +
-     "The usual display gives one letter to each maximal clique, as in the Before column, and often shows more letters " +
+     "The Before column starts from one letter for each maximal clique, and such a display can hold more letters " +
      "than the decisions need. CLD-C finds the display with the fewest distinct letters. CLD-sigma finds the display " +
      "with the fewest letters in the table. Every pair keeps its decision.", intro);
   el("p", "intro-note", "The solve runs in this browser. Your data does not leave this computer.", intro);
@@ -1104,6 +1104,12 @@ function render(): void {
   renderControls();
   renderResults();
   renderStudy();
+}
+
+// The Run bar stays at the bottom of its side panel. The panel scrolls a focused control above the bar,
+// not behind it.
+for (const bar of document.querySelectorAll<HTMLElement>(".run-bar")) {
+  new ResizeObserver(() => { bar.parentElement!.style.scrollPaddingBottom = `${bar.offsetHeight + 8}px`; }).observe(bar);
 }
 
 // Live time of the running solve and of the study.
