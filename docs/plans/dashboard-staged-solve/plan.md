@@ -21,7 +21,8 @@ The user asked for four changes:
 ## Scope
 
 All changes are in `dashboard/` and the documents. The R, Python, and npm
-packages do not change. The version stays 0.3.2.
+packages do not change. The change is version 0.3.2, the development version
+of `main`; the documents describe 0.3.2 as this change.
 
 ### Simulated examples
 
@@ -117,4 +118,4 @@ speed factor.
 ## Out of scope
 
 A change to the specification or the R, Python, and npm packages, a public API
-for the staged solve, hosting, and a version change.
+for the staged solve, and hosting.
