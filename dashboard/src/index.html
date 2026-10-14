@@ -18,9 +18,10 @@
 <meta property="og:image" content="https://cld.aigora.ai/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="cld-reducer: simpler letter displays. A table of five groups whose letters go from 9 to 8 assignments.">
+<meta property="og:image:alt" content="cld-reducer: simpler letter displays. A table of five groups before and after reduction: 9 assignments become 8, and every pair keeps its decision.">
 <meta name="twitter:card" content="summary_large_image">
 <!-- Fonts: Manrope, Copyright 2018 The Manrope Project Authors; Instrument Serif, Copyright 2022 The Instrument Serif Project Authors. Both under the SIL Open Font License 1.1, https://openfontlicense.org -->
+<script>try { var theme = localStorage.getItem("cld-reducer-theme"); if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme; } catch (e) {}</script>
 <style>/* styles */</style>
 </head>
 <body>
@@ -38,6 +39,10 @@
   </nav>
   <p id="solver-status" class="status" role="status">Loading the solver…</p>
   <a class="top-link" href="https://github.com/aigorahub/cld-reducer" target="_blank" rel="noopener">GitHub</a>
+  <button id="theme" type="button" class="theme-toggle" aria-label="Switch to dark mode">
+    <svg class="icon-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a6.6 6.6 0 0 0 10.7 10.7Z"/></svg>
+    <svg class="icon-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style="display: none"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
+  </button>
 </header>
 
 <main class="main">
@@ -86,8 +91,7 @@
         <label class="choice"><input type="radio" name="method" value="letter_minimum" checked> CLD-C, fewest letters</label>
         <label class="choice"><input type="radio" name="method" value="assignment_minimum"> CLD-sigma, fewest assignments</label>
       </div>
-      <label class="choice staged"><input id="staged" type="checkbox" checked> Then minimize the other quantity</label>
-      <p id="method-hint" class="hint">CLD-C gives the fewest distinct letters. CLD-sigma gives the fewest assignments of a letter to a group, so the fewest letters in the table. The second stage keeps that minimum and then minimizes the other quantity. It is experimental and exists in this page only.</p>
+      <p id="method-hint" class="hint">CLD-C gives the fewest distinct letters, then the fewest assignments among those displays. CLD-sigma gives the fewest assignments of a letter to a group, so the fewest letters in the table, then the fewest distinct letters among those displays. The R, Python, and npm packages stop after the first minimization; the second is experimental and exists in this page only.</p>
     </section>
 
     <div class="run-bar">

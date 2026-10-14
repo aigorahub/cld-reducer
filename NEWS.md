@@ -7,6 +7,11 @@
   reduction gives, shows the counts of each result as a row of numbers, and
   has an icon and a link preview image. Each push to `main` deploys it to
   <https://cld.aigora.ai>.
+- The page always runs the second minimization and shows it under the name of
+  the method: CLD-C is CLD-C then CLD-sigma, and CLD-sigma is CLD-sigma then
+  CLD-C. The result files keep both stages. Cancel during a second
+  minimization keeps the display of the first. The summary opens as a panel
+  from a button, and a button switches light and dark mode.
 
 # cldreducer 0.3.2
 
