@@ -37,8 +37,8 @@ test('version loads without solving; first measure is first solve', async () => 
     assert.ok(version.solver_load_ns > 0);
     assert.equal(typeof version.dependencies.highs, 'string');
     assert.equal(version.settings.presolve, 'on');
-    assert.equal(check(await call(driver, 'measure')).iterations, 1);
-    assert.equal(solves, 1);
+    assert.equal(check(await call(driver, 'measure', multipartite(3))).iterations, 1);
+    assert.ok(solves > 0);
     assert.equal(driver.profileRuntime, null);
   } finally { solver.hooks.run = original; await driver.close(); }
 });
@@ -69,7 +69,7 @@ test('measure times only complete public calls and normalizes after the timer st
   } finally { process.hrtime.bigint = originalClock; }
 });
 
-test('capture and profile preserve complete output and restore hooks with presolve on and off', async () => {
+test('certified calls preserve complete output, avoid solves, and restore hooks with presolve on and off', async () => {
   for (const presolve of ['on', 'off']) {
     const driver = new Driver(repo, presolve);
     try {
@@ -88,8 +88,16 @@ test('capture and profile preserve complete output and restore hooks with presol
         assert.equal(profiled.metrics.essential_cover, true);
         assert.equal(profiled.metrics.essential_decisions, method === 'letter_minimum' ? 2 : 4);
         assert.equal(profiled.metrics.decision_variables, captured.canonical.selected.length);
-        assert.equal(profiled.metrics.solve_count, 1);
-        assert.ok(profiled.metrics.solver_total_ns >= profiled.phases_ns.initial_optimization);
+        assert.equal(profiled.metrics.solve_count, 0);
+        assert.equal(profiled.metrics.solver_total_ns, 0);
+        assert.equal(profiled.metrics.solver_settings.available, false);
+        assert.deepEqual(profiled.metrics.solver_settings.records, []);
+        assert.equal(profiled.metrics.solver_counters.available, false);
+        assert.match(profiled.metrics.solver_counters.reason, /No native solver run/);
+        for (const phase of ['adapter_setup', 'model_load', 'initial_optimization']) {
+          assert.equal(profiled.phases_ns[phase], null);
+        }
+        assert.equal(profiled.metrics.probe_ns, 0);
         assert.ok(profiled.metrics.solver_total_ns < profiled.phases_ns.total);
         assert.ok(profiled.metrics.probe_ns >= 0);
         assert.ok(profiled.metrics.solver_total_ns + profiled.metrics.probe_ns <= profiled.phases_ns.total);
@@ -97,7 +105,15 @@ test('capture and profile preserve complete output and restore hooks with presol
         assert.deepEqual(profiled.result.groups, ['', '__proto__', '2']);
         assert.equal(profiled.profile_notes.patch_sha256.length, 64);
         assert.equal(profiled.profile_notes.source_head.length, 40);
-        for (const value of Object.values(profiled.phases_ns)) assert.ok(Number.isSafeInteger(value) && value >= 0);
+        for (const [phase, value] of Object.entries(profiled.phases_ns)) {
+          if (!['adapter_setup', 'model_load', 'initial_optimization'].includes(phase)) {
+            assert.ok(Number.isSafeInteger(value) && value >= 0);
+          }
+        }
+        const fallback = check(await call(driver, 'profile', multipartite(3, method)));
+        assert.ok(fallback.metrics.solve_count > 0);
+        assert.ok(fallback.metrics.solver_total_ns >= fallback.phases_ns.initial_optimization);
+        for (const value of Object.values(fallback.phases_ns)) assert.ok(Number.isSafeInteger(value) && value >= 0);
         assert.equal(driver.runtime.solver.lastOptions.presolve, presolve);
       }
       const temp = driver.temp;
@@ -190,7 +206,7 @@ test('failures restore capture and profile hooks, including native model methods
       } finally { runtime.model.methods[0].decoder = decoder; }
       driver.runtime.solver.hooks.run = () => { throw new Error('adapter fault'); };
       const before = hookState(runtime);
-      const result = await call(driver, action);
+      const result = await call(driver, action, multipartite(3, 'assignment_minimum'));
       assert.equal(result.ok, false);
       assert.equal(result.error.message, 'adapter fault');
       assert.deepEqual(hookState(runtime), before);
@@ -208,7 +224,7 @@ test('failures restore capture and profile hooks, including native model methods
       run = native.run;
       return native;
     };
-    const result = await call(driver, 'profile');
+    const result = await call(driver, 'profile', multipartite(3, 'assignment_minimum'));
     assert.equal(result.ok, false);
     assert.equal(result.error.message, 'native load fault');
     assert.equal(native.passModel, pass);
@@ -311,11 +327,11 @@ test('profile observes changed native options and records input and reduced edge
     assert.equal(driver.versionInfo.settings_kind, 'declared_contract');
     let copy;
     for (let i = 0; i < 4; i++) {
-      const response = check(await call(driver, 'profile', c));
+      const response = check(await call(driver, 'profile', multipartite(3, 'assignment_minimum')));
       copy ??= driver.profileRuntime;
       assert.equal(driver.profileRuntime, copy);
-      assert.equal(response.metrics.edges, 5);
-      assert.equal(response.metrics.edges_after, 2);
+      assert.equal(response.metrics.edges, 27);
+      assert.equal(response.metrics.edges_after, 27);
       const settings = response.metrics.solver_settings;
       assert.equal(settings.available, true);
       assert.equal(settings.records.length, response.metrics.solve_count);
@@ -332,7 +348,13 @@ test('profile observes changed native options and records input and reduced edge
       assert.equal(overhead.ratio, overhead.instrumented_ns / overhead.reference_ns);
       assert.equal(driver.profileRuntime.probe.current, null);
     }
+    const twin = check(await call(driver, 'profile', c));
+    assert.equal(twin.metrics.edges, 5);
+    assert.equal(twin.metrics.edges_after, 2);
+    assert.equal(twin.metrics.solve_count, 0);
     const pre = check(await call(driver, 'preprocess', c));
+    assert.equal(pre.metrics.edges, 5);
+    assert.equal(pre.metrics.edges_after, 2);
     assert.equal(pre.metrics.solver_settings.available, false);
     assert.deepEqual(pre.metrics.solver_settings.records, []);
     assert.equal(pre.profile_notes.full_call_overhead, null);

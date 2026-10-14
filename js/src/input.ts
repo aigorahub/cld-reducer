@@ -12,7 +12,7 @@ export interface ReduceOptions {
   means?: Means | null;
   /** CLD-C "letter_minimum" (default) or CLD-sigma "assignment_minimum"; hyphenated aliases accepted. */
   method?: string;
-  /** One time budget in seconds for all solves of the call. */
+  /** One time budget in seconds for the essential scan, certificate check, and all solves of the call. */
   timeLimit?: number | null;
   /** Cap on maximal cliques (default 10000). `null` removes the cap. */
   maxCliques?: number | null;

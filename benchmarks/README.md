@@ -2,6 +2,8 @@
 
 These tools measure the Python, R, and JavaScript APIs. They keep the runtime code unchanged. See `PROTOCOL.md` for the driver interface and `../docs/plans/clique-performance/design.md` for the accepted design.
 
+For the final essential cover cloud study, follow `../docs/plans/essential-cover/contract.md`. That contract overrides the generic examples and retry instructions below. Derive three full-corpus manifests from the CLI output by changing only `languages` to one language, `processes` to 16, and `batches` to 36. Use one pilot and one calibration per lane. Keep failed evidence and stop. Do not repeat or restart a collection.
+
 Install the Python package dependencies and `benchmarks/requirements.txt` in one environment. Install the R package dependencies plus `jsonlite`, `microbenchmark`, and `digest`. The R clock requires `microbenchmark`. Run `npm ci` and `npm run build` in `js/` in each source checkout. Use clean Git worktrees. The harness binds source commits, executable JavaScript files, lock files, and dependency versions. It compares JavaScript output with a fresh temporary build. It hashes the installed solver and compiler files. Version records declare the solver settings. Profiles read the settings from actual solver calls.
 
 All output paths must be outside the harness checkout. Manifest, freeze, and audit commands require a new output file. They do not replace existing evidence. Keep the baseline checkout at its exact commit. Run each command from the same clean harness checkout. The example uses absolute paths supplied by the operator:

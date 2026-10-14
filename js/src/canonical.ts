@@ -4,17 +4,36 @@ import type { Model, Strategy } from "./model.js";
 export const clock = { now: (): number => performance.now() / 1000 };
 const INTEGRALITY_TOLERANCE = 1e-6;
 const INVALID_SOLUTION = "HiGHS returned an invalid solution";
-/** Section 5: solve once, then fix the memberships in (clique, group) order. */
-export function solveCanonical(model: Model, timeLimit: number | null, strategy: Strategy): { selected: boolean[]; minimum: number } {
+type CanonicalSolution = { selected: boolean[]; minimum: number };
+
+/** Internal proof: required decisions cover, so every other vector costs more. */
+export function essentialCoverCertificate(
+  model: Model, decisions: number[], required: number[], strategy: Strategy,
+): CanonicalSolution | null {
+  const { cost, numCols } = model.problem;
+  if (cost.length !== numCols) return null;
+  const decisionSet = new Set(decisions);
+  for (let v = 0; v < numCols; v++) {
+    // Use exact integer arithmetic; other objective contracts use the solver.
+    if (decisionSet.has(v) ? !Number.isSafeInteger(cost[v]) || cost[v] <= 0 : cost[v] !== 0) return null;
+  }
+  const requiredSet = new Set(required);
+  const selected = decisions.map(v => requiredSet.has(v));
+  const minimum = decisions.reduce((sum, v, k) => sum + (selected[k] ? cost[v] : 0), 0);
+  if (!Number.isSafeInteger(minimum) || !strategy.coverage(model, selected)) return null;
+  return { selected, minimum };
+}
+
+/** Certify the essential cover or solve and fix decisions in canonical order. */
+export function solveCanonical(model: Model, timeLimit: number | null, strategy: Strategy, certificate = true): CanonicalSolution {
   const { problem } = model;
   const decisions = problem.decisionColumns;
   const decisionSet = new Set(decisions);
-  if (decisionSet.size !== decisions.length || decisions.some(v => !Number.isInteger(v) || v < 0 || v >= problem.numCols)) {
-    throw new SolverError(INVALID_SOLUTION);
+  if (decisionSet.size !== decisions.length) throw new SolverError(INVALID_SOLUTION);
+  for (const v of decisions) {
+    if (!Number.isInteger(v) || v < 0 || v >= problem.numCols) throw new SolverError(INVALID_SOLUTION);
   }
   const deadline = timeLimit !== null ? clock.now() + timeLimit : null;
-  let colLower = new Float64Array(problem.numCols);
-  const colUpper = new Float64Array(problem.numCols).fill(1);
   const required = strategy.essentialDecisions(model);
   if (!Array.isArray(required)) throw new SolverError(INVALID_SOLUTION);
   let previous = -1;
@@ -22,6 +41,14 @@ export function solveCanonical(model: Model, timeLimit: number | null, strategy:
     if (!Number.isInteger(v) || !decisionSet.has(v) || v <= previous) throw new SolverError(INVALID_SOLUTION);
     previous = v;
   }
+  remainingTime(deadline, strategy);
+  if (certificate) {
+    const certified = essentialCoverCertificate(model, decisions, required, strategy);
+    remainingTime(deadline, strategy);
+    if (certified !== null) return certified;
+  }
+  let colLower = new Float64Array(problem.numCols);
+  const colUpper = new Float64Array(problem.numCols).fill(1);
   for (const v of required) colLower[v] = 1;
 
   let outcome = solve(model, colLower, colUpper, null, deadline, strategy);
@@ -40,15 +67,18 @@ export function solveCanonical(model: Model, timeLimit: number | null, strategy:
   return { selected, minimum };
 }
 
+function remainingTime(deadline: number | null, strategy: Strategy): number | null {
+  if (deadline === null) return null;
+  const remaining = deadline - clock.now();
+  if (remaining <= 0) throw new SolverError(strategy.failurePrefix + "Time limit reached");
+  return remaining;
+}
+
 function solve(
   model: Model, colLower: Float64Array, colUpper: Float64Array,
   sumLimit: number | null, deadline: number | null, strategy: Strategy,
 ): Outcome {
-  let remaining: number | null = null;
-  if (deadline !== null) {
-    remaining = deadline - clock.now();
-    if (remaining <= 0) throw new SolverError(strategy.failurePrefix + "Time limit reached");
-  }
+  const remaining = remainingTime(deadline, strategy);
   const outcome = hooks.run(model.problem, colLower, colUpper, sumLimit, remaining);
   if (outcome.status === "infeasible" && sumLimit !== null) return outcome;
   if (outcome.status !== "optimal") {

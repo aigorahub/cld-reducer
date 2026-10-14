@@ -137,9 +137,35 @@ one covering clique means `nrow(ends) == 1L`.
 Start the shared solver deadline before the scan. Set each essential lower bound
 to 1 before the first solve. Keep optional lower bounds at 0 and all initial
 upper bounds at 1. Preserve these bounds in canonical trials and validate them
-on every returned solution, including the first. Run HiGHS even when every
-decision is essential. The scan does not delete optional decisions or use
-FIND-AM backtracking. HiGHS chooses compatible optional decisions under the BIP.
+on every returned solver solution, including the first. Before the first solve,
+test whether the essential decisions alone certify the optimum, as described
+below. The scan does not delete optional decisions or use FIND-AM backtracking.
+HiGHS chooses compatible optional decisions when the certificate does not apply.
+
+### Essential cover certificate
+
+Select exactly the essential decisions in canonical decision order. The engine
+checks that every decision has a finite positive integer cost and every auxiliary
+column has zero cost. It also checks that the selected cost can retain the
+implementation's exact objective representation. If these assumptions fail, use
+the solver path. Otherwise, apply the existing strategy coverage predicate to
+the selected vector.
+
+If that vector covers all required vertices and edges, it is the unique optimum.
+Every feasible solution contains the essential set. Any different feasible
+decision vector adds at least one positive cost decision. The essential set thus
+attains a lower bound that no other decision vector can attain. The coverage
+predicate establishes feasible edge witnesses for sigma. Witness ties have no
+cost and do not enter the canonical order. The proof applies to C and weighted
+sigma, and also proves that the returned vector is the canonical optimum.
+
+Check the shared deadline after scan validation and after the certificate
+attempt. A certified result uses normal expansion, rendering, statistics, and
+relationship validation. It reports `Optimal` because the proof establishes
+optimality. No HiGHS solve occurs on that path. Module and dependency loading
+remain unchanged. If coverage fails, retain all essential bounds and run the
+existing BIP and canonical loop. A private engine argument disables the
+certificate for differential tests; the public API has no new option.
 
 ## 4. CLD-sigma model
 
@@ -174,7 +200,7 @@ Equivalently: visiting the `x` variables in order, each is 1 whenever some optim
 
 **Procedure** (the sequential fixing procedure). The `y` variables are never fixed; the `x` fixings are bound changes (lower bound 1 or upper bound 0), not new rows.
 
-1. Run the exact essential scan of section 3 and apply its lower bounds. Solve the model once without an objective cap. Let `z` be the rounded objective value and `S` the rounded `x` of the solution. This is the minimum.
+1. Run the exact essential scan of section 3. Return its selected vector and exact primary cost if the essential cover certificate succeeds. Otherwise, apply the essential lower bounds and solve the model once without an objective cap. Let `z` be the rounded objective value and `S` the rounded `x` of the solution. This is the minimum.
 2. Visit the `x` variables in `(c, g)` order. For variable `v`:
    1. If `S[v]` is 1, fix `v` to 1 (lower bound 1) and continue.
    2. If `S[v]` is 0, solve again with every earlier fixing, `v` fixed to 1, and the added limit `weighted_cost(x) <= z`. If the model is feasible, replace `S` with the new solution and fix `v` to 1. If it is infeasible, fix `v` to 0 (upper bound 0).
@@ -183,7 +209,7 @@ Equivalently: visiting the `x` variables in order, each is 1 whenever some optim
 
 The bound `weighted_cost(x) <= z` can be a column cost bound, an objective cutoff, or a row; the model for the re-solve may stay an optimization (minimize the weighted cost of `x`) as long as the result is a feasible solution with `weighted_cost(x) = z`. All solves share the time budget and the checks of section 6.
 
-The cost is one solve plus at most one extra solve per variable that is 0 in the current solution when visited. Vertex reduction reduces the wheat model from 56 membership decisions to 15. The solve count depends on the initial optimum and subsequent fixings.
+A certified essential cover needs no solve. The fallback uses one solve plus at most one extra solve per variable that is 0 in the current solution when visited. Vertex reduction reduces the wheat model from 56 membership decisions to 15. The fallback solve count depends on the initial optimum and subsequent fixings.
 
 ## 6. Solver settings and checks
 
@@ -207,7 +233,7 @@ R keeps presolve off because the CRAN `highs` package bundles HiGHS 1.14, where 
 
 **Failure prefix.** Solver status errors use `letter-minimum MILP failed: ` for CLD-C and `assignment-minimum MILP failed: ` for CLD-sigma.
 
-**One budget.** `time_limit` is one budget for the essential scan and all solves in a call, measured from just before that scan with a monotonic clock (R `proc.time()[["elapsed"]]`, Python `time.monotonic()`, JavaScript `performance.now() / 1000`). Each solve gets the time left as its HiGHS time limit. When no time is left before a solve starts, or HiGHS stops on the time limit, the call raises a solver error with the selected method's failure prefix and the text `Time limit reached`. Vertex reduction, clique enumeration, and model construction are not part of the budget.
+**One budget.** `time_limit` is one budget for the essential scan, certificate check, and all solves in a call, measured from just before that scan with a monotonic clock (R `proc.time()[["elapsed"]]`, Python `time.monotonic()`, JavaScript `performance.now() / 1000`). Check the deadline after scan validation and after the certificate attempt. Each solve gets the time left as its HiGHS time limit. When no time is left at a deadline check, or HiGHS stops on the time limit, the call raises a solver error with the selected method's failure prefix and the text `Time limit reached`. Vertex reduction, clique enumeration, and model construction are not part of the budget.
 
 **Checks after each solve.**
 
@@ -445,7 +471,9 @@ stable mean/index sort and formatting. The simple five-group example has C=3 and
 
 Each language has one pipeline, registry, binary-model contract, canonical engine,
 solver adapter, renderer and result checks. The two registry entries supply their
-model builder, decision coverage check, essential decision scan and column decoder. Production normalization
+model builder, decision coverage check, essential decision scan and column decoder.
+The common engine uses the same essential cover proof for both strategies.
+Production normalization
 uses this registry; the independent reference has its own allow-list. No foreign
 runtime or generator is needed.
 

@@ -2,13 +2,16 @@
 import highsImport from "highs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SolverError, loadSolver, reduceFromAdjacency, reduceLetters } from "../src/index.js";
+import * as canonical from "../src/canonical.js";
 import { clock } from "../src/canonical.js";
 import * as solver from "../src/solver.js";
-import { SIMPLE, hasConformance, wheatPairs } from "./helpers.js";
+import { SIMPLE, MULTIPARTITE, hasConformance, wheatPairs } from "./helpers.js";
 
 const realRun = solver.hooks.run;
+const realCanonical = canonical.solveCanonical;
 const realNow = clock.now;
 afterEach(() => {
+  vi.restoreAllMocks();
   solver.hooks.run = realRun;
   clock.now = realNow;
   solver.settings.presolve = "on";
@@ -23,7 +26,7 @@ describe("settings", () => {
       seen.push({ ...solver.lastOptions });
       return out;
     };
-    await reduceFromAdjacency(SIMPLE, { method: "assignment_minimum" });
+    await reduceFromAdjacency(MULTIPARTITE, { method: "assignment_minimum" });
     expect(seen.length).toBeGreaterThanOrEqual(2);
     for (const o of seen) {
       expect(o).toMatchObject({ presolve, mip_rel_gap: 0, mip_abs_gap: 0,
@@ -34,7 +37,7 @@ describe("settings", () => {
   it("passes the time limit to HiGHS", async () => {
     const seen: unknown[] = [];
     solver.hooks.run = (...args) => { const out = realRun(...args); seen.push(solver.lastOptions.time_limit); return out; };
-    await reduceFromAdjacency(SIMPLE, { method: "assignment_minimum", timeLimit: 30 });
+    await reduceFromAdjacency(MULTIPARTITE, { method: "assignment_minimum", timeLimit: 30 });
     expect(seen[0]).toBeGreaterThan(0);
     expect(seen[0]).toBeLessThanOrEqual(30);
   });
@@ -58,7 +61,7 @@ describe("failure paths", () => {
       now += 10; // every solve "takes" 10 seconds
       return out;
     };
-    await expect(reduceFromAdjacency(SIMPLE, { method: "assignment_minimum", timeLimit: 5 }))
+    await expect(reduceFromAdjacency(MULTIPARTITE, { method: "assignment_minimum", timeLimit: 5 }))
       .rejects.toThrow(/assignment-minimum MILP failed: Time limit reached/);
     // The first solve got the whole budget; the second would get -5 seconds, so it never ran.
     expect(limits).toEqual([5]);
@@ -67,7 +70,7 @@ describe("failure paths", () => {
   it("no time limit means no deadline", async () => {
     const limits: (number | null)[] = [];
     solver.hooks.run = (p, l, u, s, t) => { limits.push(t); return realRun(p, l, u, s, t); };
-    await reduceFromAdjacency(SIMPLE, { method: "assignment_minimum" });
+    await reduceFromAdjacency(MULTIPARTITE, { method: "assignment_minimum" });
     expect(limits.length).toBeGreaterThan(0);
     expect(limits.every((t) => t === null)).toBe(true);
   });
@@ -76,9 +79,9 @@ describe("failure paths", () => {
     ["failed", "Unbounded"], ["time_limit", "Time limit reached"], ["infeasible", "Infeasible"],
   ] as const)("a first solve with status %s is a solver error", async (status, text) => {
     solver.hooks.run = () => ({ status, text });
-    await expect(reduceFromAdjacency(SIMPLE, { method: "assignment_minimum" })).rejects.toThrow(
+    await expect(reduceFromAdjacency(MULTIPARTITE, { method: "assignment_minimum" })).rejects.toThrow(
       new RegExp(`assignment-minimum MILP failed: ${text}`));
-    await expect(reduceFromAdjacency(SIMPLE, { method: "assignment_minimum" })).rejects.toBeInstanceOf(SolverError);
+    await expect(reduceFromAdjacency(MULTIPARTITE, { method: "assignment_minimum" })).rejects.toBeInstanceOf(SolverError);
   });
 
   it("a non optimal later solve is a solver error", async () => {
@@ -87,7 +90,7 @@ describe("failure paths", () => {
       calls++;
       return calls === 1 ? realRun(...args) : { status: "failed", text: "Memory limit reached" };
     };
-    await expect(reduceFromAdjacency(SIMPLE, { method: "assignment_minimum" })).rejects.toThrow(/assignment-minimum MILP failed: Memory limit/);
+    await expect(reduceFromAdjacency(MULTIPARTITE, { method: "assignment_minimum" })).rejects.toThrow(/assignment-minimum MILP failed: Memory limit/);
   });
 
   const corrupt = (change: (v: Float64Array) => void): typeof solver.hooks.run =>
@@ -101,10 +104,10 @@ describe("failure paths", () => {
     ["all zero", (v: Float64Array) => v.fill(0, 0)],
     ["fractional", (v: Float64Array) => { v[0] = 0.5; }],
     ["NaN", (v: Float64Array) => { v[0] = NaN; }],
-    ["sum differs from the objective", (v: Float64Array) => v.fill(1, 0, 9)],
+    ["sum differs from the objective", (v: Float64Array) => v.fill(1)],
   ])("a scripted invalid first solution (%s) is rejected", async (_name, change) => {
     solver.hooks.run = corrupt(change);
-    await expect(reduceFromAdjacency(SIMPLE, { method: "assignment_minimum" })).rejects.toThrow(/HiGHS returned an invalid solution/);
+    await expect(reduceFromAdjacency(MULTIPARTITE, { method: "assignment_minimum" })).rejects.toThrow(/HiGHS returned an invalid solution/);
   });
 
   it("a solution that leaves an edge uncovered is rejected", async () => {
@@ -115,7 +118,7 @@ describe("failure paths", () => {
       v[problem.decisionColumns.find(k => v[k] > 0.5)!] = 0;
       return { ...out, values: v };
     };
-    await expect(reduceFromAdjacency(SIMPLE, { method: "assignment_minimum" })).rejects.toThrow(/HiGHS returned an invalid solution/);
+    await expect(reduceFromAdjacency(MULTIPARTITE, { method: "assignment_minimum" })).rejects.toThrow(/HiGHS returned an invalid solution/);
   });
 
   // The first solve of the wheat example may already return the canonical optimum, which
@@ -131,6 +134,7 @@ describe("failure paths", () => {
   };
 
   it.runIf(hasConformance)("scripted invalid later solutions are rejected (wheat has feasible re-solves)", async () => {
+    vi.spyOn(canonical, "solveCanonical").mockImplementation((m,t,s) => realCanonical(m,t,s,false));
     let later = 0;
     const first = offCanonicalFirstSolve();
     solver.hooks.run = (problem, lower, upper, sumLimit, t) => {
@@ -146,6 +150,7 @@ describe("failure paths", () => {
   });
 
   it.runIf(hasConformance)("a solution that violates a fixing is rejected", async () => {
+    vi.spyOn(canonical, "solveCanonical").mockImplementation((m,t,s) => realCanonical(m,t,s,false));
     const first = offCanonicalFirstSolve();
     solver.hooks.run = (problem, lower, upper, sumLimit, t) => {
       const out = first(problem, lower, upper, sumLimit, t);
@@ -179,13 +184,13 @@ describe("loading and disposal", () => {
       models.push(m);
       return m;
     });
-    await reduceFromAdjacency(SIMPLE, { method: "assignment_minimum" });
+    await reduceFromAdjacency(MULTIPARTITE, { method: "assignment_minimum" });
     const ok = models.length;
     solver.hooks.run = (problem, lower, upper, sumLimit, t) => {
       realRun(problem, lower, upper, sumLimit, t);
       throw new Error("boom after the solve");
     };
-    await expect(reduceFromAdjacency(SIMPLE, { method: "assignment_minimum" })).rejects.toThrow(/boom/);
+    await expect(reduceFromAdjacency(MULTIPARTITE, { method: "assignment_minimum" })).rejects.toThrow(/boom/);
     spy.mockRestore();
     expect(ok).toBeGreaterThanOrEqual(2);
     expect(models.length).toBeGreaterThan(ok);

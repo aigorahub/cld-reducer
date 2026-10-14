@@ -15,8 +15,37 @@ _INTEGRALITY_TOLERANCE = 1e-6
 _INVALID_SOLUTION = "HiGHS returned an invalid solution"
 
 
-def _solve_canonical(model: Any, time_limit: float | None, strategy: Any) -> tuple[np.ndarray, int]:
-    """Solve once, then fix decisions in the model's canonical order under one deadline."""
+def _essential_cover_certificate(
+    model: Any, decisions: list[int], required: list[int], strategy: Any
+) -> tuple[np.ndarray, int] | None:
+    """Certify the unique optimum when positive-cost essential decisions cover the graph."""
+    cost = np.asarray(model.problem.cost)
+    if cost.shape != (model.problem.num_cols,) or cost.dtype.kind not in "iuf":
+        return None
+    decision_cost = cost[decisions]
+    if (
+        not np.all(np.isfinite(cost))
+        or np.any(decision_cost <= 0)
+        or (cost.dtype.kind == "f" and np.any(decision_cost != np.floor(decision_cost)))
+    ):
+        return None
+    decision_mask = np.zeros(model.problem.num_cols, dtype=bool)
+    decision_mask[decisions] = True
+    if np.any(cost[~decision_mask] != 0):
+        return None
+    essential = set(required)
+    selected = np.asarray([column in essential for column in decisions], dtype=bool)
+    if not strategy.coverage(model, selected):
+        return None
+    # Every feasible vector contains the essentials. Any extra decision adds cost.
+    # Sum original integer costs without floating point or fixed-width accumulation.
+    return selected, sum(int(cost[column]) for column in required)
+
+
+def _solve_canonical(
+    model: Any, time_limit: float | None, strategy: Any, *, _certificate: bool = True
+) -> tuple[np.ndarray, int]:
+    """Certify or solve, then fix canonical decisions under one shared deadline."""
     problem = model.problem
     decisions = problem.decision_columns
     decision_set = set(decisions)
@@ -37,6 +66,12 @@ def _solve_canonical(model: Any, time_limit: float | None, strategy: Any) -> tup
         or any(a >= b for a, b in zip(required, required[1:], strict=False))
     ):
         raise SolverError(_INVALID_SOLUTION)
+    _remaining_time(deadline, strategy)
+    if _certificate:
+        certificate = _essential_cover_certificate(model, decisions, required, strategy)
+        _remaining_time(deadline, strategy)
+        if certificate is not None:
+            return certificate
     col_lower[required] = 1.0
 
     outcome = _solve(model, col_lower, col_upper, None, deadline, strategy)
@@ -61,6 +96,16 @@ def _solve_canonical(model: Any, time_limit: float | None, strategy: Any) -> tup
     return selected_decisions, minimum
 
 
+def _remaining_time(deadline: float | None, strategy: Any) -> float | None:
+    if deadline is not None:
+        remaining = deadline - _now()
+        if remaining <= 0:
+            msg = strategy.failure_prefix + "Time limit reached"
+            raise SolverError(msg)
+        return remaining
+    return None
+
+
 def _solve(
     model: Any,
     col_lower: np.ndarray,
@@ -69,12 +114,7 @@ def _solve(
     deadline: float | None,
     strategy: Any,
 ) -> _solver.Outcome:
-    remaining = None
-    if deadline is not None:
-        remaining = deadline - _now()
-        if remaining <= 0:
-            msg = strategy.failure_prefix + "Time limit reached"
-            raise SolverError(msg)
+    remaining = _remaining_time(deadline, strategy)
     outcome = _solver.run(
         model.problem, col_lower, col_upper, sum_limit=sum_limit, time_limit=remaining
     )

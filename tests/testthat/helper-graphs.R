@@ -30,3 +30,8 @@ simple_letters <- c("1" = "A", "2" = "AB", "3" = "AC", "4" = "BC", "5" = "C")
 
 simple_adjacency <- function() adjacency_of(5, simple_edges)
 simple_means <- function() c("1" = 3.73, "2" = 3.57, "3" = 3.46, "4" = 3.33, "5" = 3.3)
+
+# K(2,2,2) has no essential decisions for either method, so it reaches HiGHS.
+multipartite222_adjacency <- function() {
+  outer(0:5, 0:5, function(u, v) u == v | u %/% 2 != v %/% 2)
+}

@@ -44,6 +44,17 @@ def graph_case(method="assignment_minimum"):
     }
 
 
+def solver_case(method="assignment_minimum"):
+    # K(2,2,2) has multiple covers and no essential decisions.
+    return {
+        "call": "adjacency",
+        "input": {
+            "adjacency": [[int(i == j or i // 2 != j // 2) for j in range(6)] for i in range(6)]
+        },
+        "options": {"method": method},
+    }
+
+
 def originals(runtime):
     return (
         runtime.api.reduce_validated,
@@ -58,7 +69,10 @@ def originals(runtime):
 
 
 @pytest.mark.parametrize("method", ["letter_minimum", "assignment_minimum"])
-def test_capture_profile_measure_and_model_structure(runtime, method):
+def test_capture_profile_measure_and_model_structure(runtime, method, monkeypatch):
+    monkeypatch.setattr(
+        runtime.solver, "run", lambda *a, **k: pytest.fail("Certified public call used a solver")
+    )
     prepared = runtime.prepare(graph_case(method))
     before = originals(runtime)
     measured = runtime.measure(prepared, 2)
@@ -87,7 +101,11 @@ def test_capture_profile_measure_and_model_structure(runtime, method):
     assert metrics["edges_after"] == 2
     assert metrics["maximal_cliques"] == 2
     assert metrics["essential_cover"] is True
-    assert metrics["solve_count"] == 1
+    assert metrics["solve_count"] == 0
+    assert metrics["solver_total_ns"] == 0
+    assert metrics["solve_records"] == []
+    assert metrics["solver_settings"]["available"] is False
+    assert metrics["solver_settings"]["records"] == []
     assert metrics["solver_total_ns"] == sum(r["elapsed_ns"] for r in metrics["solve_records"])
     assert metrics["probe_ns"] == sum(r["probe_ns"] for r in metrics["solve_records"])
     assert metrics["solver_total_ns"] + metrics["probe_ns"] <= profile["phases_ns"]["total"]
@@ -108,6 +126,31 @@ def test_capture_profile_measure_and_model_structure(runtime, method):
         ) == (4, 2, 9, 14)
         assert capture["canonical"] == {"selected": [1, 1, 1, 1], "objective": 6}
     assert metrics["essential_decisions"] == metrics["decision_variables"]
+    assert metrics["solver_counters"]["available"] is False
+    assert metrics["solver_counters"]["per_solve"] == []
+    missing = {"adapter_setup", "model_load", "initial_optimization", "canonical_trials"}
+    assert set(profile["profile_notes"]["phase_unavailable"]) == missing
+    for name, value in profile["phases_ns"].items():
+        if name in missing:
+            assert value is None
+        else:
+            assert isinstance(value, int) and value >= 0
+
+
+@pytest.mark.parametrize("method", ["letter_minimum", "assignment_minimum"])
+def test_fallback_profile_records_native_calls_and_timings(runtime, method):
+    prepared = runtime.prepare(solver_case(method))
+    measured = runtime.measure(prepared, 1)
+    capture = runtime.capture(prepared)
+    profile = runtime.profile(prepared)
+    assert measured["result"] == capture["result"] == profile["result"]
+    assert capture["canonical"] == profile["canonical"]
+    metrics = profile["metrics"]
+    assert metrics["essential_cover"] is False
+    assert metrics["solve_count"] > 1
+    assert metrics["solver_total_ns"] == sum(r["elapsed_ns"] for r in metrics["solve_records"])
+    assert metrics["probe_ns"] == sum(r["probe_ns"] for r in metrics["solve_records"])
+    assert metrics["solver_total_ns"] + metrics["probe_ns"] <= profile["phases_ns"]["total"]
     assert metrics["solver_counters"]["available"] is True
     assert len(metrics["solver_counters"]["per_solve"]) == metrics["solve_count"]
     assert all(isinstance(value, int) and value >= 0 for value in profile["phases_ns"].values())
@@ -182,7 +225,7 @@ def test_hooks_restore_after_model_solver_and_input_errors(runtime, monkeypatch,
         monkeypatch.setattr(runtime.solver, "run", failure)
         patched = originals(runtime)
         with pytest.raises(runtime.package.SolverError, match="injected"):
-            method(runtime.prepare(graph_case()), **kwargs)
+            method(runtime.prepare(solver_case()), **kwargs)
         assert originals(runtime) == patched
         monkeypatch.undo()
     assert runtime.measure(runtime.prepare(graph_case()), 1)["result"]["stats"]["objective"] == 6
@@ -208,13 +251,7 @@ def test_preprocess_uses_real_builder_and_does_not_optimize(runtime, monkeypatch
 
 
 def test_canonical_trials_use_only_decisions_and_weighted_objective(runtime, monkeypatch):
-    # K(2,2,2) has multiple covers and no essential decisions.
-    adjacency = [[int(i == j or i // 2 != j // 2) for j in range(6)] for i in range(6)]
-    case = {
-        "call": "adjacency",
-        "input": {"adjacency": adjacency},
-        "options": {"method": "assignment_minimum"},
-    }
+    case = solver_case()
     original_run = runtime.solver.run
 
     def different_initial_incumbent(problem, lower, upper, **kwargs):
@@ -314,7 +351,7 @@ def test_presolve_reaches_native_solver(runtime, presolve):
     saved = runtime.solver.settings.presolve
     try:
         configured = driver.Runtime(REPO, presolve)
-        prepared = configured.prepare(graph_case())
+        prepared = configured.prepare(solver_case())
         measured = configured.measure(prepared, 1)
         assert configured.solver.last_options["presolve"] == presolve
         profiled = configured.profile(prepared)
@@ -366,7 +403,7 @@ def test_profile_records_actual_solver_settings_and_overhead(runtime, monkeypatc
     declared = runtime.versions()
     assert declared["settings_kind"] == "declared_contract"
     assert declared["settings"]["mip_rel_gap"] == 0
-    response = runtime.profile(runtime.prepare(graph_case()))
+    response = runtime.profile(runtime.prepare(solver_case()))
     settings = response["metrics"]["solver_settings"]
     assert settings["available"] is True
     assert len(settings["records"]) == response["metrics"]["solve_count"]

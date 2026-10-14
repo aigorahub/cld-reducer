@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from functools import partial
 from pathlib import Path
 
+import numpy as np
 import pytest
 
-from cld_reducer import _solver
+from cld_reducer import _solver, canonical, reduction
 
 CONFORMANCE = Path(__file__).resolve().parents[2] / "conformance"
 
@@ -34,3 +36,18 @@ def presolve(request: pytest.FixtureRequest):
     _solver.settings.presolve = request.param
     yield request.param
     _solver.settings.presolve = old
+
+
+@pytest.fixture
+def reference_engine(monkeypatch):
+    """Keep solver fault tests reachable on inputs that now have a certificate."""
+    monkeypatch.setattr(
+        reduction, "_solve_canonical", partial(canonical._solve_canonical, _certificate=False)
+    )
+
+
+@pytest.fixture
+def solver_graph():
+    """K(2,2,2) has no essential decisions and reaches the solver for both methods."""
+    parts = np.arange(6) // 2
+    return (parts[:, None] != parts[None, :]) | np.eye(6, dtype=bool)

@@ -20,7 +20,7 @@ test_that("a membership outside 0 and 1 is an invalid solution", {
       if (!is.null(out$values)) out$values[1L] <- value
       out
     })
-    expect_error(reduce_from_adjacency(matrix(TRUE, 1L, 1L), method = "assignment_minimum"),
+    expect_error(reduce_from_adjacency(multipartite222_adjacency(), method = "assignment_minimum"),
                  "HiGHS returned an invalid solution", class = "cldreducer_solver_error")
   }
 })

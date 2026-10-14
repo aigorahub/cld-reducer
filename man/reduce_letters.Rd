@@ -47,8 +47,8 @@ appearance in \code{group1}, then \code{group2}. Every mean must be finite.}
 assignment secondary objective. Hyphenated aliases are also accepted.
 Public result metadata uses the underscore spelling.}
 
-\item{time_limit}{One time budget in seconds for the essential scan and all
-solves of the call, or
+\item{time_limit}{One time budget in seconds for the essential scan,
+certificate checks, and all solves of the call, or
 \code{NULL} for no limit.}
 
 \item{max_cliques}{The largest number of maximal cliques to enumerate before
@@ -91,7 +91,8 @@ display (CLD) minimizing distinct letters (CLD-C, the default) or
 assignments (CLD-sigma), in which two groups share a
 letter exactly when they are not significantly different. The optional
 CLD-sigma method solves the assignment-minimum clique covering problem of
-Ennis, Fayle, and Ennis (2012). Both methods use 'HiGHS'.
+Ennis, Fayle, and Ennis (2012). Both methods certify the essential cover when
+it proves the unique optimum. 'HiGHS' solves the remaining cases.
 When several displays have the same minimum objective, the function returns
 the canonical one
 defined in the specification (\code{docs/algorithm.md} in the source repository),

@@ -27,7 +27,7 @@ def test_scan_matches_independent_boolean_deletion(case):
 
 
 @pytest.mark.parametrize("strategy", METHODS, ids=lambda s: s.name)
-def test_essential_bounds_reach_every_solve(monkeypatch, strategy, presolve):
+def test_essential_bounds_reach_every_solve(monkeypatch, strategy, presolve, reference_engine):
     calls = []
     real = _solver.run
 
@@ -74,7 +74,7 @@ def test_required_bound_violation_on_first_solve_is_rejected(monkeypatch, strate
         lambda *a, **k: _solver.Outcome(_solver.OPTIMAL, "Optimal", np.array([0.0, 1.0]), 1.0),
     )
     with pytest.raises(SolverError, match="HiGHS returned an invalid solution"):
-        canonical._solve_canonical(model, None, custom)
+        canonical._solve_canonical(model, None, custom, _certificate=False)
 
 
 @pytest.mark.parametrize(
@@ -88,6 +88,7 @@ def test_malformed_scan_stops_before_adapter(monkeypatch, required):
         pytest.fail("invalid scan reached the adapter")
 
     monkeypatch.setattr(_solver, "run", forbidden)
+    monkeypatch.setattr(canonical, "_essential_cover_certificate", forbidden)
     with pytest.raises(SolverError, match="HiGHS returned an invalid solution"):
         canonical._solve_canonical(SimpleNamespace(problem=problem), None, strategy)
 

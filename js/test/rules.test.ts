@@ -4,6 +4,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { InvalidInputError, SolverError, reduceFromAdjacency, reduceLetters } from "../src/index.js";
 import * as solver from "../src/solver.js";
+import { MULTIPARTITE } from "./helpers.js";
 
 const realRun = solver.hooks.run;
 afterEach(() => { solver.hooks.run = realRun; });
@@ -30,8 +31,8 @@ describe("binary memberships (section 6, check 2)", () => {
         v[0] = value as number;
         return { ...out, values: v };
       };
-      await expect(reduceFromAdjacency([[true]], { method: "assignment_minimum" })).rejects.toThrow(SolverError);
-      await expect(reduceFromAdjacency([[true]], { method: "assignment_minimum" })).rejects.toThrow(/HiGHS returned an invalid solution/);
+      await expect(reduceFromAdjacency(MULTIPARTITE, { method: "assignment_minimum" })).rejects.toThrow(SolverError);
+      await expect(reduceFromAdjacency(MULTIPARTITE, { method: "assignment_minimum" })).rejects.toThrow(/HiGHS returned an invalid solution/);
     });
 });
 

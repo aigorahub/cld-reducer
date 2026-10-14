@@ -118,7 +118,7 @@ test_that("the adapter maps ambiguous status and retains its text", {
   out <- solve_lp(problem,0,1)
   expect_identical(out$status,"infeasible")
   expect_identical(out$text,"Primal infeasible or unbounded")
-  expect_error(reduce_from_adjacency(diag(TRUE,1),method="letter_minimum"),
+  expect_error(reduce_from_adjacency(multipartite222_adjacency(),method="letter_minimum"),
     "letter-minimum MILP failed: Primal infeasible or unbounded")
 })
 

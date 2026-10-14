@@ -1,6 +1,6 @@
 # cld-reducer for JavaScript
 
-Reduce compact letter displays (CLDs) while preserving the pairwise statistical relationships they encode. This is the JavaScript and TypeScript package of the [cld-reducer repository](https://github.com/aigorahub/cld-reducer), which also holds an R package and a Python package. All three default to CLD-C, which minimizes distinct letters. The optional CLD-sigma method minimizes assignments, as defined by Ennis, Fayle, and Ennis (2012), <https://doi.org/10.1145/2133803.2275596>. Both methods use [HiGHS](https://highs.dev) and return the same display across languages. The rules they follow are in `docs/algorithm.md` in the repository.
+Reduce compact letter displays (CLDs) while preserving the pairwise statistical relationships they encode. This is the JavaScript and TypeScript package of the [cld-reducer repository](https://github.com/aigorahub/cld-reducer), which also holds an R package and a Python package. All three default to CLD-C, which minimizes distinct letters. The optional CLD-sigma method minimizes assignments, as defined by Ennis, Fayle, and Ennis (2012), <https://doi.org/10.1145/2133803.2275596>. For both methods, a feasible essential set can prove the exact optimum without a solver call. [HiGHS](https://highs.dev) is the fallback. The methods return the same display across languages. The rules they follow are in `docs/algorithm.md` in the repository.
 
 The solver is HiGHS compiled to WebAssembly (the npm package [`highs`](https://www.npmjs.com/package/highs)). The only runtime dependency is `highs`. ESM only, Node.js 22 or later, TypeScript declarations included.
 
@@ -86,7 +86,7 @@ loadSolver(options?): Promise<void>
 | `groups` | Labels for the rows of an adjacency matrix (default `"1"` to `"n"`). |
 | `group1`, `group2`, `significant` | Key names in the pairwise rows. |
 | `method` | `"letter_minimum"` (default CLD-C) or `"assignment_minimum"` (CLD-sigma); both accept hyphenated aliases. |
-| `timeLimit` | One time budget in seconds for all solves of the call. |
+| `timeLimit` | One time budget in seconds for the essential scan, certificate check, and all solves of the call. |
 | `maxCliques` | Cap on maximal cliques, 10000 by default; `null` removes the cap. |
 
 **Result** (`CldReduction`): `letters` and `assignments` (objects keyed by group label), `groups` (the order), `rows` (one `{ group, letters, assignments }` per group, in order, with the tokens joined by spaces), `stats`, `method`, `relationshipPreserved`, and `adjacency`. Use `groups` or `rows` for the order, because JavaScript objects list integer-like keys first. `letters` joins one character tokens without a separator and longer tokens (after `Z`: `AA`, `AB`, and so on) with single spaces; `assignments` is the safe machine form. `stats.reductionPct` is not rounded.

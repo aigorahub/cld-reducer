@@ -1,6 +1,6 @@
 # Failure paths of docs/algorithm.md section 6, through the replaceable solver call.
 
-simple <- function(...) reduce_from_adjacency(simple_adjacency(), ..., method = "assignment_minimum")
+simple <- function(...) reduce_from_adjacency(multipartite222_adjacency(), ..., method = "assignment_minimum")
 
 test_that("a first solve that is not optimal is a solver error", {
   for (status in c("failed", "time_limit", "infeasible")) {
@@ -35,7 +35,7 @@ test_that("scripted invalid solutions are rejected", {
     fractional = function(v) replace(v, 1, 0.5),
     missing = function(v) replace(v, 1, NA),
     short = function(v) v[-1],
-    sum_differs = function(v) replace(v, 1:9, 1)
+    sum_differs = function(v) rep(1, length(v))
   )
   for (change in changes) {
     local_mocked_bindings(solve_lp = corrupt(change))

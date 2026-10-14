@@ -1,6 +1,6 @@
 # cld-reducer for Python
 
-Reduce compact letter displays (CLDs) while preserving the pairwise statistical relationships they encode. This is the Python package of the [cld-reducer repository](https://github.com/aigorahub/cld-reducer), which also holds an R package and a JavaScript package. All three default to CLD-C, which minimizes distinct letters. The optional CLD-sigma method minimizes assignments, as defined by Ennis, Fayle, and Ennis (2012), <https://doi.org/10.1145/2133803.2275596>. Both methods use [HiGHS](https://highs.dev) and return the same display across languages. The rules they follow are in `docs/algorithm.md` in the repository.
+Reduce compact letter displays (CLDs) while preserving the pairwise statistical relationships they encode. This is the Python package of the [cld-reducer repository](https://github.com/aigorahub/cld-reducer), which also holds an R package and a JavaScript package. All three default to CLD-C, which minimizes distinct letters. The optional CLD-sigma method minimizes assignments, as defined by Ennis, Fayle, and Ennis (2012), <https://doi.org/10.1145/2133803.2275596>. A feasible essential set can prove the optimum without a solver call. Both methods use [HiGHS](https://highs.dev) as the fallback and return the same display across languages. The rules they follow are in `docs/algorithm.md` in the repository.
 
 The solver is HiGHS through `highspy`. The dependencies are `highspy`, NumPy, and pandas.
 
@@ -81,7 +81,7 @@ The result, a `CLDReductionResult`, has:
 
 The public names are `reduce_letters`, `reduce_from_adjacency`, `CLDReductionResult`, `CLDReducerError`, `InvalidInputError`, and `SolverError`.
 
-When several displays have the same minimum objective, the package returns the canonical one defined in `docs/algorithm.md`, so R, Python, and JavaScript agree. `time_limit` is one time budget in seconds for all solves of a call, and `max_cliques` (10,000 by default; `None` removes it) bounds the number of maximal cliques.
+When several displays have the same minimum objective, the package returns the canonical one defined in `docs/algorithm.md`, so R, Python, and JavaScript agree. `time_limit` is one time budget in seconds for the essential scan, certificate, and all solves of a call. `max_cliques` (10,000 by default; `None` removes it) bounds the number of maximal cliques.
 
 ## Command line
 
