@@ -203,7 +203,7 @@ function startWorker(): void {
     const r = e.data;
     if (ready) { onReply(r); return; }
     // While it loads, the worker sends one ready reply without an id, or an error.
-    const record = r !== null && typeof r === "object" ? r as Record<string, unknown> : null;
+    const record = isRecord(r) ? r : null;
     if (record?.type === "ready" && record.id === undefined) {
       ready = true;
       state.solver = "ready";
@@ -264,6 +264,11 @@ function problemOf(kind: string, message: string): Problem {
         message, detail: explain(message) };
 }
 
+/** A plain object, as the worker sends: not null, an array, a date, a buffer, or another kind of object. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype;
+}
+
 /** A reply that the protocol does not have stops the run or the study, and the page starts a new worker. */
 function protocolError(message: string): void {
   if (state.study?.status === "running") {
@@ -277,7 +282,7 @@ function protocolError(message: string): void {
 }
 
 function onReply(value: unknown): void {
-  if (value === null || typeof value !== "object") {
+  if (!isRecord(value)) {
     protocolError("The worker sent a reply that is not a record.");
     return;
   }

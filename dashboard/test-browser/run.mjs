@@ -765,9 +765,12 @@ async function main() {
     for (const [type, message] of [["ready", "The worker sent a reply that a run does not have."],
                                    ["before", "The worker sent a reply that a run does not have."],
                                    ["second ready", "The worker sent a second ready reply."],
-                                   ["null", "The worker sent a reply that is not a record."]]) {
+                                   ["null", "The worker sent a reply that is not a record."],
+                                   ["array", "The worker sent a reply that is not a record."],
+                                   ["date", "The worker sent a reply that is not a record."]]) {
       await page.evaluate((type) => {
-        window.__alter = (reply) => (type === "null" ? null : type === "second ready" ? { type: "ready" } : { type, id: reply.id });
+        window.__alter = (reply) => (type === "null" ? null : type === "array" ? [] : type === "date" ? new Date(0)
+          : type === "second ready" ? { type: "ready" } : { type, id: reply.id });
       }, type);
       await ready();
       const workersBefore = await page.evaluate(() => window.__workers.length);
@@ -923,12 +926,14 @@ async function main() {
       ["type", "The worker sent a reply that a study does not have."],
       ["ready", "The worker sent a reply that a study does not have."],
       ["null", "The worker sent a reply that is not a record."],
+      ["array", "The worker sent a reply that is not a record."],
     ]) {
       await page.evaluate((alter) => {
         window.__alterInstance = (reply) => {
           if (alter === "type") return { type: "start", id: reply.id, method: "letter_minimum", stage: 1 };
           if (alter === "ready") return { type: "ready", id: reply.id };
           if (alter === "null") return null;
+          if (alter === "array") return new Array(3);
           if (alter === "order") reply.instance.solves.letter_then_assignment = { letters: 999, assignments: 999, milliseconds: 1 };
           else reply.instance.seed = 999;
           return reply;
