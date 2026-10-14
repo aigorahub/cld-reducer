@@ -1,43 +1,53 @@
-## Submission
+## Submission status
 
-This is the first CRAN submission of cldreducer, version 0.2.0.
-The package has not yet been submitted. John Ennis is the sole package author
-and maintainer. The package code is MIT licensed.
+The maintainer submitted and confirmed cldreducer 0.2.0 on 2026-10-10.
+That archive remains frozen. The 0.3.0 source candidate adds CLD-C as the default,
+weighted vertex reduction, essential decisions, and a certificate that can avoid
+BIP construction. It has not been submitted to CRAN.
 
-## Test environments
+John Ennis is the sole package author and maintainer. The package code is MIT
+licensed. See `docs/submission-status.md` for the registry and email records.
 
-- macOS Tahoe 26.6.2, aarch64-apple-darwin23, R 4.6.1 (2026-06-24).
-- GitHub Actions covers macOS release, Windows release, and Ubuntu devel,
-  release, and oldrel-1. Final candidate results must be recorded before submission.
-- Both win-builder queues accepted the candidate below on 2026-10-10 at
-  12:57 UTC. Results are pending. Earlier candidate results do not certify it.
+## Frozen 0.2.0 archive
 
-## R CMD check results
+Source commit: `54ec3703ae96fc910aab8d7103c36d4798fc49e5`.
+Archive: `cldreducer_0.2.0.tar.gz`.
+SHA-256: `11b68758ac001659237998568a8d0d0bf11d27548cf6441851cf07eb7dccbeb0`.
 
-Local command: `R CMD check --as-cran --timings cldreducer_0.2.0.tar.gz`.
-The complete check reached `* DONE`. PDF and HTML manual checks passed.
+The local `R CMD check --as-cran --timings` run completed with zero errors,
+zero warnings, and one new-submission NOTE. PDF and HTML manual checks passed.
+The longest example took 0.333 seconds. The old source passed 310 testthat
+checks and 1,505 conformance cases.
 
-0 errors | 0 warnings | 1 NOTE
+Both win-builder checks passed on 2026-10-10. CRAN's automated Windows and
+Debian pretests also reported one NOTE each, with no errors or warnings.
+Manual review was pending in the last recorded email. The public CRAN package
+index did not list cldreducer on 2026-10-13.
 
-The NOTE is `New submission`. The longest example, `reduce_letters`, took
-0.333 seconds. All 310 local testthat checks passed without warnings or skips.
-The repository conformance suite passed all 1,505 cases and three data comparisons.
+## 0.3.0 candidate checks
 
-Candidate source: `54ec3703ae96fc910aab8d7103c36d4798fc49e5`.
-Candidate SHA-256:
-`11b68758ac001659237998568a8d0d0bf11d27548cf6441851cf07eb7dccbeb0`.
-Later changes to this file and `docs/` do not enter the R archive.
+The local source tests at `8e9464b63d8c1ddddc87d07420db6bfab46b555c`
+pass 631 R assertions. All 47 GitHub checks pass at that commit, including
+R package checks and the PDF manual check. The preceding implementation
+archive check reported zero errors, zero warnings, and one new-submission NOTE.
+
+These checks do not certify a new frozen submission file. Before submitting
+0.3.0, build the archive from its approved release commit. Record its SHA-256,
+R version, local archive checks, example times, and new win-builder results.
+Do not use the frozen 0.2.0 hash or results as evidence for that file.
 
 ## Notes for the reviewer
 
 The package imports `highs` and `Matrix`. Ennis, Fayle, and Piepho in
 DESCRIPTION are author names. CLD and CLDs refer to compact letter displays.
+CLD-C minimizes distinct letters. The optional CLD-sigma method minimizes
+assignments. Neither method uses a secondary optimization objective.
 
 ## Data
 
 The wheat example contains 190 pairwise significance decisions for 20
-treatments. It comes from Piepho (2004), reproduced in Table 7 of Ennis, Fayle,
-and Ennis (2012). The simple example contains ten pair comparisons and five
-means from Ennis, Fayle, and Ennis (2012). `COPYRIGHTS` records the sources and
-CSV-to-R transformations. On 2026-10-10, John Ennis confirmed that the example
-data are public and approved their inclusion.
+treatments. It comes from Piepho (2004), reproduced in Table VIII of Ennis,
+Fayle, and Ennis (2012). The simple example contains ten pair comparisons and
+five means from Ennis, Fayle, and Ennis (2012). `COPYRIGHTS` records the sources
+and CSV-to-R transformations. On 2026-10-10, John Ennis confirmed that the
+example data are public and approved their inclusion.

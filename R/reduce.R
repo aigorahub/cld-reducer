@@ -113,7 +113,7 @@ reduce_graph <- function(graph, method, time_limit, max_cliques) {
                       groups = groups[vapply(reduced$classes, function(g) g[1L], integer(1))],
                       means = NULL)
   cliques <- maximal_cliques(reduced$adjacency, controls$max_cliques)
-  model <- strategy$builder(graph_context(small_graph, cliques, reduced$weights))
+  model <- strategy$planner(graph_context(small_graph, cliques, reduced$weights, strategy$counts_assignments))
   solution <- solve_canonical(model, controls$time_limit, strategy)
 
   columns <- expand_graph_columns(strategy$decoder(cliques, model, solution$selected),
@@ -125,10 +125,12 @@ reduce_graph <- function(graph, method, time_limit, max_cliques) {
 reduction_methods <- function() list(
   list(name = "assignment_minimum", aliases = c("assignment_minimum", "assignment-minimum"),
        failure_prefix = "assignment-minimum MILP failed: ", builder = build_model,
+       planner = build_assignment_plan, compiler = compile_assignment_plan,
        coverage = assignment_coverage, essential_decisions = assignment_essential_decisions,
        decoder = assignment_columns, counts_assignments = TRUE),
   list(name = "letter_minimum", aliases = c("letter_minimum", "letter-minimum"),
        failure_prefix = "letter-minimum MILP failed: ", builder = build_letter_model,
+       planner = build_letter_plan, compiler = compile_letter_plan,
        coverage = letter_coverage, essential_decisions = letter_essential_decisions,
        decoder = letter_columns, counts_assignments = FALSE)
 )

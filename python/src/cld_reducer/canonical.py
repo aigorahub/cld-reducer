@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 
 from . import _solver
+from .context import DecisionPlan
 from .exceptions import SolverError
 
 _now = time.monotonic
@@ -46,6 +47,8 @@ def _solve_canonical(
     model: Any, time_limit: float | None, strategy: Any, *, _certificate: bool = True
 ) -> tuple[np.ndarray, int]:
     """Certify or solve, then fix canonical decisions under one shared deadline."""
+    if isinstance(model, DecisionPlan):
+        return _solve_plan(model, time_limit, strategy, _certificate=_certificate)
     problem = model.problem
     decisions = problem.decision_columns
     decision_set = set(decisions)
@@ -54,8 +57,6 @@ def _solve_canonical(
     ):
         raise SolverError(_INVALID_SOLUTION)
     deadline = _now() + time_limit if time_limit is not None else None
-    col_lower = np.zeros(problem.num_cols)
-    col_upper = np.ones(problem.num_cols)
     required = strategy.essential_decisions(model)
     if (
         not isinstance(required, list)
@@ -72,8 +73,15 @@ def _solve_canonical(
         _remaining_time(deadline, strategy)
         if certificate is not None:
             return certificate
-    col_lower[required] = 1.0
+    return _canonical_trials(model, strategy, required, deadline)
 
+
+def _canonical_trials(model, strategy, required, deadline):
+    problem = model.problem
+    decisions = problem.decision_columns
+    col_lower = np.zeros(problem.num_cols)
+    col_upper = np.ones(problem.num_cols)
+    col_lower[required] = 1.0
     outcome = _solve(model, col_lower, col_upper, None, deadline, strategy)
     selected = _check_solution(model, outcome, col_lower, col_upper, None, strategy)
     minimum = int(round(float(outcome.objective)))
@@ -161,3 +169,62 @@ def _check_solution(
     if total != wanted:
         raise SolverError(_INVALID_SOLUTION)
     return rounded
+
+
+def _plan_certificate(plan, required, strategy):
+    cost = plan.cost
+    if any(
+        isinstance(v, bool) or not isinstance(v, Real) or not isfinite(v) or v <= 0 or int(v) != v
+        for v in cost
+    ):
+        return None
+    selected = np.zeros(plan.decision_count, dtype=bool)
+    selected[required] = True
+    if not strategy.coverage(plan, selected):
+        return None
+    return selected, sum(int(cost[k]) for k in required)
+
+
+def _solve_plan(plan, time_limit, strategy, *, _certificate=True):
+    count = plan.decision_count
+    if len(plan.cost) != count:
+        raise SolverError(_INVALID_SOLUTION)
+    deadline = _now() + time_limit if time_limit is not None else None
+    required = strategy.essential_decisions(plan)
+    if (
+        not isinstance(required, list)
+        or any(
+            isinstance(v, bool) or not isinstance(v, Integral) or v < 0 or v >= count
+            for v in required
+        )
+        or any(a >= b for a, b in zip(required, required[1:], strict=False))
+    ):
+        raise SolverError(_INVALID_SOLUTION)
+    _remaining_time(deadline, strategy)
+    if _certificate:
+        certified = _plan_certificate(plan, required, strategy)
+        _remaining_time(deadline, strategy)
+        if certified is not None:
+            return certified
+    # Pause only compilation. Validation and all canonical work consume the budget.
+    remaining = _remaining_time(deadline, strategy)
+    model = strategy.compiler(plan)
+    deadline = _now() + remaining if remaining is not None else None
+    problem = model.problem
+    decisions = problem.decision_columns
+    if (
+        len(decisions) != count
+        or len(set(decisions)) != count
+        or any(
+            isinstance(v, bool) or not isinstance(v, Integral) or v < 0 or v >= problem.num_cols
+            for v in decisions
+        )
+        or len(problem.cost) != problem.num_cols
+    ):
+        raise SolverError(_INVALID_SOLUTION)
+    decision_set = set(decisions)
+    if any(problem.cost[v] != plan.cost[k] for k, v in enumerate(decisions)) or any(
+        cost != 0 for v, cost in enumerate(problem.cost) if v not in decision_set
+    ):
+        raise SolverError(_INVALID_SOLUTION)
+    return _canonical_trials(model, strategy, [decisions[k] for k in required], deadline)

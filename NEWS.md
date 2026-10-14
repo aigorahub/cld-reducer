@@ -1,5 +1,8 @@
 # cldreducer 0.3.0
 
+- Prove essential covers before BIP construction in Python, R, and JavaScript.
+  Reuse ordered coverage data on fallback. Preserve results and solver time budgets.
+
 - Add pure CLD-C with `method="letter_minimum"` and alias `letter-minimum` in R,
   Python, JavaScript, and the Python CLI. It minimizes full maximal-clique letter
   columns with a fixed canonical tie rule; it has no assignment secondary objective.

@@ -6,6 +6,7 @@ import numpy as np
 from highspy import kHighsInf
 
 from .. import _solver
+from ..context import DecisionPlan, shared_positions
 
 
 @dataclass(frozen=True)
@@ -15,17 +16,29 @@ class Model:
     coverage_columns: list[list[int]]
 
 
-def build_model(context):
-    cliques = context.cliques
+def build_plan(context):
     rows = context.cliques_of + [
-        [c for c in context.cliques_of[i] if j in cliques[c]] for i, j in context.edges
+        [
+            context.cliques_of[i][a]
+            for a, _ in shared_positions(context.cliques_of[i], context.cliques_of[j])
+        ]
+        for i, j in context.edges
     ]
+    return DecisionPlan(context, [1] * len(context.cliques), [], [], [], rows)
+
+
+def build_model(context):
+    return compile_plan(build_plan(context))
+
+
+def compile_plan(plan):
+    rows = plan.coverage_columns
     starts = [0]
     indices = []
     for row in rows:
         indices.extend(row)
         starts.append(len(indices))
-    n = len(cliques)
+    n = plan.decision_count
     return Model(
         _solver.Problem(
             num_cols=n,
@@ -37,7 +50,7 @@ def build_model(context):
             row_lower=np.ones(len(rows)),
             row_upper=np.full(len(rows), kHighsInf),
         ),
-        context.edges,
+        plan.context.edges,
         rows,
     )
 

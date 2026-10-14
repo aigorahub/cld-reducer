@@ -1,3 +1,4 @@
+import type { DecisionData } from "../src/model.js";
 import { afterEach, expect, it, vi } from "vitest";
 import { clock, essentialCoverCertificate, solveCanonical } from "../src/canonical.js";
 import * as api from "../src/index.js";
@@ -162,7 +163,7 @@ it.each(["scan","certificate success","certificate failure"])("checks the deadli
   for (const strategy of methods) {
     let now = 0; clock.now = () => now;
     const model = noncontiguous();
-    const coverage = vi.fn((_model:Model, _selected:boolean[]) => {
+    const coverage = vi.fn((_model:DecisionData, _selected:boolean[]) => {
       now = 5;
       return phase !== "certificate failure";
     });

@@ -43,7 +43,7 @@ function observeCanonical(registry) {
     const decoder = strategy.decoder;
     strategy.decoder = (cliques,model,selected) => {
       observation.value = {selected:[...selected],minimum:selected.reduce((sum,on,k)=>
-        sum+(on?model.problem.cost[model.problem.decisionColumns[k]]:0),0)};
+        sum+(on?(model.problem ? model.problem.cost[model.problem.decisionColumns[k]] : model.cost[k]):0),0)};
       return decoder(cliques,model,selected);
     };
   }

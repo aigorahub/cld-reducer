@@ -6,7 +6,9 @@ The solver is HiGHS through `highspy`. The dependencies are `highspy`, NumPy, an
 
 ## Installation
 
-Install from PyPI:
+The examples need version 0.3.0 or later. Version 0.2.0 minimizes assignments
+and does not offer CLD-C. Check the installed version before using the examples.
+Install the published release with:
 
 ```sh
 pip install cld-reducer
@@ -104,6 +106,15 @@ python examples/piepho2004_wheat.py
 ```
 
 The CSV files in `examples/` are identical copies of the files in `conformance/data/` at the repository root.
+
+## Changes in 0.3.0
+
+CLD-C is the default. Use `method="assignment_minimum"` or the CLI flag
+`--method assignment-minimum` to retain the assignment objective. Both methods
+combine identical closed neighborhoods and scan for essential decisions.
+A complete essential cover proves the optimum before BIP construction.
+Otherwise, HiGHS solves the same constrained model. The solver budget includes
+the scan and proof but excludes graph preparation and BIP compilation.
 
 ## Changes in 0.2.0
 

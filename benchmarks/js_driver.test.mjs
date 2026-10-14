@@ -20,7 +20,7 @@ const call = (driver, action, c = abc('assignment_minimum')) => driver.handle({ 
 
 function hookState(runtime) {
   return { run: runtime.solver.hooks.run, create: runtime.solver.loadedSolver().createModel,
-    strategy: runtime.model.methods.map(s => [s.builder, s.essentialDecisions, s.decoder]) };
+    strategy: runtime.model.methods.map(s => [s.builder, s.planner, s.compiler, s.essentialDecisions, s.decoder]) };
 }
 
 test('version loads without solving; first measure is first solve', async () => {
@@ -88,13 +88,16 @@ test('certified calls preserve complete output, avoid solves, and restore hooks 
         assert.equal(profiled.metrics.essential_cover, true);
         assert.equal(profiled.metrics.essential_decisions, method === 'letter_minimum' ? 2 : 4);
         assert.equal(profiled.metrics.decision_variables, captured.canonical.selected.length);
+        assert.equal(profiled.profile_schema, 2);
+        assert.equal(profiled.metrics.model_compiled, false);
+        for (const key of ['constraints', 'nonzeros', 'auxiliary_variables']) assert.equal(profiled.metrics[key], null);
         assert.equal(profiled.metrics.solve_count, 0);
         assert.equal(profiled.metrics.solver_total_ns, 0);
         assert.equal(profiled.metrics.solver_settings.available, false);
         assert.deepEqual(profiled.metrics.solver_settings.records, []);
         assert.equal(profiled.metrics.solver_counters.available, false);
         assert.match(profiled.metrics.solver_counters.reason, /No native solver run/);
-        for (const phase of ['adapter_setup', 'model_load', 'initial_optimization']) {
+        for (const phase of ['model_construction', 'adapter_setup', 'model_load', 'initial_optimization']) {
           assert.equal(profiled.phases_ns[phase], null);
         }
         assert.equal(profiled.metrics.probe_ns, 0);
@@ -106,7 +109,7 @@ test('certified calls preserve complete output, avoid solves, and restore hooks 
         assert.equal(profiled.profile_notes.patch_sha256.length, 64);
         assert.equal(profiled.profile_notes.source_head.length, 40);
         for (const [phase, value] of Object.entries(profiled.phases_ns)) {
-          if (!['adapter_setup', 'model_load', 'initial_optimization'].includes(phase)) {
+          if (!['model_construction', 'adapter_setup', 'model_load', 'initial_optimization'].includes(phase)) {
             assert.ok(Number.isSafeInteger(value) && value >= 0);
           }
         }
@@ -153,7 +156,10 @@ test('profile preserves pair routes, custom columns, means ordering and labels',
       const preprocessed = check(await call(driver, 'preprocess', c));
       for (const key of ['vertices_before', 'vertices_after', 'edges', 'maximal_cliques',
         'decision_variables', 'auxiliary_variables', 'constraints', 'nonzeros', 'essential_decisions', 'essential_cover']) {
-        assert.equal(profiled.metrics[key], preprocessed.metrics[key], `${c.id} ${key}`);
+        if (!profiled.metrics.model_compiled && ['auxiliary_variables', 'constraints', 'nonzeros'].includes(key)) {
+          assert.equal(profiled.metrics[key], null);
+          assert.ok(Number.isInteger(preprocessed.metrics[key]));
+        } else assert.equal(profiled.metrics[key], preprocessed.metrics[key], `${c.id} ${key}`);
       }
     }
   } finally { await driver.close(); }
@@ -164,9 +170,10 @@ test('capture ignores auxiliary columns, including noncontiguous decision column
   await driver.load();
   const strategy = driver.runtime.model.methods.find(s => s.name === 'assignment_minimum');
   const builder = strategy.builder;
+  const planner = strategy.planner;
   const essential = strategy.essentialDecisions;
   const normal = check(await call(driver, 'capture'));
-  strategy.builder = context => {
+  strategy.planner = context => {
     const model = builder(context);
     const p = model.problem;
     model.problem = { ...p, numCols: p.numCols + 1,
@@ -180,7 +187,7 @@ test('capture ignores auxiliary columns, including noncontiguous decision column
     assert.deepEqual(captured.result, normal.result);
     assert.deepEqual(captured.canonical, normal.canonical);
     assert.equal(captured.canonical.selected.length, 4);
-  } finally { strategy.builder = builder; strategy.essentialDecisions = essential; await driver.close(); }
+  } finally { strategy.planner = planner; strategy.essentialDecisions = essential; await driver.close(); }
 });
 
 test('failures restore capture and profile hooks, including native model methods', async () => {

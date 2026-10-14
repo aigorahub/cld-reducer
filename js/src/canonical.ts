@@ -1,6 +1,6 @@
 import { SolverError } from "./errors.js";
 import { hooks, type Outcome } from "./solver.js";
-import type { Model, Strategy } from "./model.js";
+import type { Model, Strategy, DecisionPlan } from "./model.js";
 export const clock = { now: (): number => performance.now() / 1000 };
 const INTEGRALITY_TOLERANCE = 1e-6;
 const INVALID_SOLUTION = "HiGHS returned an invalid solution";
@@ -25,7 +25,8 @@ export function essentialCoverCertificate(
 }
 
 /** Certify the essential cover or solve and fix decisions in canonical order. */
-export function solveCanonical(model: Model, timeLimit: number | null, strategy: Strategy, certificate = true): CanonicalSolution {
+export function solveCanonical(model: Model | DecisionPlan, timeLimit: number | null, strategy: Strategy, certificate = true): CanonicalSolution {
+  if (!("problem" in model)) return solvePlan(model, timeLimit, strategy, certificate);
   const { problem } = model;
   const decisions = problem.decisionColumns;
   const decisionSet = new Set(decisions);
@@ -47,6 +48,12 @@ export function solveCanonical(model: Model, timeLimit: number | null, strategy:
     remainingTime(deadline, strategy);
     if (certified !== null) return certified;
   }
+  return canonicalTrials(model, strategy, required, deadline);
+}
+
+function canonicalTrials(model: Model, strategy: Strategy, required: number[], deadline: number | null): CanonicalSolution {
+  const { problem } = model;
+  const decisions = problem.decisionColumns;
   let colLower = new Float64Array(problem.numCols);
   const colUpper = new Float64Array(problem.numCols).fill(1);
   for (const v of required) colLower[v] = 1;
@@ -111,4 +118,42 @@ function checkSolution(
   const wanted = expectedSum ?? Math.round(outcome.objective as number);
   if (total !== wanted) throw new SolverError(INVALID_SOLUTION);
   return rounded;
+}
+
+
+export function planCertificate(plan: DecisionPlan, required: number[], strategy: Strategy): CanonicalSolution | null {
+  for (const v of plan.cost) if (!Number.isSafeInteger(v) || v <= 0) return null;
+  const selected = Array<boolean>(plan.decisionCount).fill(false);
+  for (const k of required) selected[k] = true;
+  const minimum = required.reduce((sum,k) => sum + plan.cost[k], 0);
+  if (!Number.isSafeInteger(minimum) || !strategy.coverage(plan, selected)) return null;
+  return { selected, minimum };
+}
+
+function solvePlan(plan: DecisionPlan, timeLimit: number | null, strategy: Strategy, certificate: boolean): CanonicalSolution {
+  const count = plan.decisionCount;
+  if (!Number.isSafeInteger(count) || count < 0 || plan.cost.length !== count) throw new SolverError(INVALID_SOLUTION);
+  let deadline = timeLimit !== null ? clock.now() + timeLimit : null;
+  const required = strategy.essentialDecisions(plan);
+  if (!Array.isArray(required)) throw new SolverError(INVALID_SOLUTION);
+  let previous = -1;
+  for (const v of required) {
+    if (!Number.isInteger(v) || v < 0 || v >= count || v <= previous) throw new SolverError(INVALID_SOLUTION);
+    previous = v;
+  }
+  remainingTime(deadline, strategy);
+  if (certificate) {
+    const certified = planCertificate(plan, required, strategy);
+    remainingTime(deadline, strategy);
+    if (certified !== null) return certified;
+  }
+  const remaining = remainingTime(deadline, strategy);
+  const model = strategy.compiler(plan);
+  deadline = remaining !== null ? clock.now() + remaining : null;
+  const { decisionColumns: decisions, cost, numCols } = model.problem;
+  if (decisions.length !== count || new Set(decisions).size !== count || cost.length !== numCols ||
+    decisions.some((v,k) => !Number.isInteger(v) || v < 0 || v >= numCols || cost[v] !== plan.cost[k])) throw new SolverError(INVALID_SOLUTION);
+  const decisionSet = new Set(decisions);
+  if (cost.some((v,k) => !decisionSet.has(k) && v !== 0)) throw new SolverError(INVALID_SOLUTION);
+  return canonicalTrials(model, strategy, required.map(k => decisions[k]), deadline);
 }

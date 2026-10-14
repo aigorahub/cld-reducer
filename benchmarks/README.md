@@ -1,8 +1,15 @@
 # Measure full API speed
 
+Status on 2026-10-13: the user stopped the timing study. All study cloud resources
+were deleted. The retained records do not establish a general speed gain.
+The commands below document the harness. They are not an instruction to restart
+the study or a merge requirement. See [development status](../docs/development-status.md).
+
 These tools measure the Python, R, and JavaScript APIs. They keep the runtime code unchanged. See `PROTOCOL.md` for the driver interface and `../docs/plans/clique-performance/design.md` for the accepted design.
 
-For the final essential cover cloud study, follow `../docs/plans/essential-cover/contract.md`. That contract overrides the generic examples and retry instructions below. Derive three full-corpus manifests from the CLI output by changing only `languages` to one language, `processes` to 16, and `batches` to 36. Use one pilot and one calibration per lane. Keep failed evidence and stop. Do not repeat or restart a collection.
+The earlier cloud study used `../docs/plans/essential-cover/contract.md`. That
+file remains a frozen historical contract. Its machine layout and acceptance
+rules do not authorize a new run. A new timing study needs a separate plan.
 
 Install the Python package dependencies and `benchmarks/requirements.txt` in one environment. Install the R package dependencies plus `jsonlite`, `microbenchmark`, and `digest`. The R clock requires `microbenchmark`. Run `npm ci` and `npm run build` in `js/` in each source checkout. Use clean Git worktrees. The harness binds source commits, executable JavaScript files, lock files, and dependency versions. It compares JavaScript output with a fresh temporary build. It hashes the installed solver and compiler files. Version records declare the solver settings. Profiles read the settings from actual solver calls.
 

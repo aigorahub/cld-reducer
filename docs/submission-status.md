@@ -1,6 +1,12 @@
 # Submission status
 
-Status on 2026-10-10.
+Registry check on 2026-10-13. The publication and CRAN correspondence records
+below describe the 0.2.0 release of 2026-10-10.
+
+PyPI and npm still list 0.2.0 as the latest release. Neither lists 0.3.0.
+CRAN's current source package index does not list `cldreducer`.
+The 0.3.0 implementation candidate is separate from these published files and
+the frozen R submission. See [development status](development-status.md).
 
 Version `v0.2.0` is tagged at package commit
 `8a09915a6ad0dcb1fc0ca17bce4ebaa46ddc2b39`.
@@ -87,7 +93,9 @@ and [Debian pretest](https://win-builder.r-project.org/incoming_pretest/cldreduc
 The NOTE covers a new submission and possible spelling flags for CLD, CLDs,
 Ennis, Fayle, and Piepho. The email states that manual inspection is pending
 and that a team member typically responds within 10 working days.
-No acceptance has been received.
+No acceptance is recorded in this repository. The public CRAN index check on
+2026-10-13 found no package entry. The last recorded correspondence remains
+the automated pretest described above.
 
 ## Remaining steps
 
