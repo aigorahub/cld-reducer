@@ -6,8 +6,8 @@ below describe the 0.2.0 release of 2026-10-10.
 PyPI and npm still list 0.2.0 as the latest release. Neither lists 0.3.0.
 CRAN's current source package index does not list `cldreducer`.
 The 0.3.0 implementation candidate is separate from these published files and
-the frozen R submission. The source has since moved to version 0.3.1, which adds
-a browser page and does not change the packages. See
+the frozen R submission. Version 0.3.1 adds a browser page and does not change
+the packages. The source has since moved to development version 0.3.2. See
 [development status](development-status.md) for the retained 0.3.0 candidate commit.
 
 Version `v0.2.0` is tagged at package commit
