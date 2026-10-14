@@ -761,12 +761,18 @@ async function main() {
     await page.evaluate(() => { window.__alterStart = null; });
     await ready();
     // A ready or before reply with the id of the run stops it.
-    for (const type of ["ready", "before"]) {
-      await page.evaluate((type) => { window.__alter = (reply) => ({ type, id: reply.id }); }, type);
+    // So do a second ready reply without an id and a reply that is not a record.
+    for (const [type, message] of [["ready", "The worker sent a reply that a run does not have."],
+                                   ["before", "The worker sent a reply that a run does not have."],
+                                   ["second ready", "The worker sent a second ready reply."],
+                                   ["null", "The worker sent a reply that is not a record."]]) {
+      await page.evaluate((type) => {
+        window.__alter = (reply) => (type === "null" ? null : type === "second ready" ? { type: "ready" } : { type, id: reply.id });
+      }, type);
       await ready();
       const workersBefore = await page.evaluate(() => window.__workers.length);
       await page.click("#run");
-      await wait(() => document.querySelector(".problem > p")?.textContent === "The worker sent a reply that a run does not have.");
+      await wait((m) => document.querySelector(".problem > p")?.textContent === m, message);
       check(await page.evaluate((n) => window.__workers.length === n + 1, workersBefore), `the worker runs on after a ${type} reply`);
       await page.evaluate(() => { window.__alter = null; });
     }
@@ -1027,6 +1033,26 @@ async function main() {
     await wait(() => document.getElementById("solver-status").textContent ===
       "The solver could not start: The worker sent an error without a message.");
     check(errors.length === errorsBefore, `console messages after a loading error: ${errors.slice(errorsBefore).join(" | ")}`);
+
+    // While a worker loads, a ready reply with an id, or a reply that is not a record, means that the
+    // solver could not start. Each case needs a page of its own, because the solver stays failed.
+    for (const [load, message] of [["ready with id", "The worker sent a reply that loading does not have."],
+                                   ["null", "The worker sent a reply that loading does not have."]]) {
+      const other = await context.newPage();
+      await other.addInitScript(instrument);
+      await other.goto(file);
+      await other.waitForFunction(() => document.getElementById("solver-status").textContent === "Solver ready");
+      await other.evaluate((load) => {
+        window.__hold = true;
+        window.__alterLoad = () => (load === "null" ? null : { type: "ready", id: 7 });
+      }, load);
+      await other.click("#run");
+      await other.waitForFunction(() => window.__held.some((r) => r.type === "start"));
+      await other.click("#run");
+      await other.waitForFunction((m) => document.getElementById("solver-status").textContent === `The solver could not start: ${m}`,
+                                  message, { timeout: 60_000 });
+      await other.close();
+    }
 
     check(readFileSync(join(here, "..", "dist", "site", "index.html")).equals(readFileSync(built)),
           "dist/site/index.html is not the built page");

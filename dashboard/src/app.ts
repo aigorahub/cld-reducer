@@ -198,19 +198,22 @@ function startWorker(): void {
   }
   worker = w;
   let ready = false;
-  w.onmessage = (e: MessageEvent<Reply>) => {
+  w.onmessage = (e: MessageEvent<unknown>) => {
     if (w !== worker) return;
     const r = e.data;
     if (ready) { onReply(r); return; }
-    if (r.type === "ready") {
+    // While it loads, the worker sends one ready reply without an id, or an error.
+    const record = r !== null && typeof r === "object" ? r as Record<string, unknown> : null;
+    if (record?.type === "ready" && record.id === undefined) {
       ready = true;
       state.solver = "ready";
       if (!currentBefore()) requestBefore();
       render();
-    } else if (r.type === "error") {
+    } else {
       w.terminate();
       // The message of a loading error is used as text only when it is text.
-      solverFailed(typeof r.message === "string" ? r.message : "The worker sent an error without a message.");
+      solverFailed(record?.type !== "error" ? "The worker sent a reply that loading does not have."
+        : typeof record.message === "string" ? record.message : "The worker sent an error without a message.");
     }
   };
   w.onerror = (e) => {
@@ -261,10 +264,30 @@ function problemOf(kind: string, message: string): Problem {
         message, detail: explain(message) };
 }
 
-function onReply(reply: Reply): void {
-  // A worker sends ready once, when it has loaded (startWorker). A later ready that names a run or a
-  // study goes on to the checks below, which reject it.
-  if (reply.type === "ready" && (reply as { id?: unknown }).id === undefined) return;
+/** A reply that the protocol does not have stops the run or the study, and the page starts a new worker. */
+function protocolError(message: string): void {
+  if (state.study?.status === "running") {
+    endStudy("error", `The solver returned an invalid result. ${message}`);
+    restartWorker();
+  } else if (state.run) {
+    fail({ title: "The solver returned an invalid result", message, detail: "The page shows no result." });
+    restartWorker();
+  }
+  render();
+}
+
+function onReply(value: unknown): void {
+  if (value === null || typeof value !== "object") {
+    protocolError("The worker sent a reply that is not a record.");
+    return;
+  }
+  const reply = value as Reply;
+  // A worker sends ready once, when it has loaded (startWorker). A second ready without an id stops
+  // the work in progress; a ready that names a run or a study goes on to the checks below.
+  if (reply.type === "ready" && reply.id === undefined) {
+    protocolError("The worker sent a second ready reply.");
+    return;
+  }
   // An error reply is used as text: a message that is not text, or an unknown kind, is a solver error.
   const valid = reply.type === "error" && typeof reply.message === "string" &&
     (["input", "solver", "other"] as unknown[]).includes(reply.kind);
