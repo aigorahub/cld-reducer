@@ -4,18 +4,34 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; worker-src blob:; img-src data:; base-uri 'none'; form-action 'none'">
-<title>cld-reducer in the browser</title>
-<meta name="description" content="Reduce a compact letter display in your browser. The data stays on your computer.">
-<link rel="icon" href="data:,">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; worker-src blob:; img-src 'self' data:; font-src data:; base-uri 'none'; form-action 'none'">
+<title>cld-reducer · Aigora</title>
+<meta name="description" content="Simpler compact letter displays in your browser: the fewest letters for the same significance decisions. Free and open source. Your data stays on your computer.">
+<link rel="icon" href="favicon.ico" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="{{favicon}}">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="cld-reducer">
+<meta property="og:title" content="cld-reducer: simpler letter displays in your browser">
+<meta property="og:description" content="The fewest letters for the same significance decisions. Free and open source. Your data stays on your computer.">
+<meta property="og:url" content="https://cld.aigora.ai/">
+<meta property="og:image" content="https://cld.aigora.ai/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="cld-reducer: simpler letter displays. A table of five groups whose letters go from 9 to 8 assignments.">
+<meta name="twitter:card" content="summary_large_image">
+<!-- Fonts: Manrope, Copyright 2018 The Manrope Project Authors; Instrument Serif, Copyright 2022 The Instrument Serif Project Authors. Both under the SIL Open Font License 1.1, https://openfontlicense.org -->
 <style>/* styles */</style>
 </head>
 <body>
 <header class="top">
   <div class="brand">
-    <h1 class="brand-name">cld-reducer</h1>
+    <img class="brand-mark" src="{{logo}}" alt="" width="30" height="29">
+    <span class="brand-wordmark">aigora</span>
+    <h1 class="brand-product">cld-reducer</h1>
     <span class="brand-version">{{version}}</span>
   </div>
+  <span class="brand-note">Simpler letter displays in your browser</span>
   <nav class="views" aria-label="Views">
     <button id="view-reduce" type="button" class="view" aria-pressed="true">Reduce a display</button>
     <button id="view-study" type="button" class="view" aria-pressed="false">Simulation study</button>
@@ -28,8 +44,8 @@
 <div id="reduce-view" class="layout">
   <div class="side">
     <section class="side-block" aria-labelledby="input-heading">
-      <h2 id="input-heading">Input</h2>
-      <p class="lead">This page reads significance decisions. It runs no significance tests on your data; Generate simulates decisions with a t test. A group is one item or treatment.</p>
+      <h2 id="input-heading">Data</h2>
+      <p class="lead">Give the decisions of your own analysis. The page runs no significance tests on your data. A group is one item or treatment.</p>
 
       <div class="field">
         <p class="field-label" id="examples-label">Examples</p>
@@ -44,7 +60,7 @@
           <label>Seed <input id="sim-seed" class="input small" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
           <button id="sim-generate" type="button" class="button-secondary">Generate</button>
         </div>
-        <p id="sim-hint" class="hint">Treatment means and their covariances are simulated with the model that Section 8 of Ennis, Fayle, and Ennis (2012) uses (Section 3.2 of Gramm et al. 2007; the 2012 paper names it Gramm et al. 2006). A pair differs significantly when |t| &gt; 1.96.</p>
+        <p id="sim-hint" class="hint">Simulates the means of an experiment and decides each pair with a t test, |t| &gt; 1.96. "Methods and sources" below the results gives the model.</p>
       </div>
 
       <div id="pairs-field" class="field drop">
@@ -64,14 +80,17 @@
       </div>
     </section>
 
-    <div class="run-bar">
+    <section class="side-block" aria-labelledby="method-label">
+      <h2 id="method-label">Method</h2>
       <div class="methods" role="radiogroup" aria-labelledby="method-label" aria-describedby="method-hint">
-        <span id="method-label" class="field-label">Method</span>
-        <label class="choice"><input type="radio" name="method" value="letter_minimum" checked> CLD-C</label>
-        <label class="choice"><input type="radio" name="method" value="assignment_minimum"> CLD-sigma</label>
+        <label class="choice"><input type="radio" name="method" value="letter_minimum" checked> CLD-C, fewest letters</label>
+        <label class="choice"><input type="radio" name="method" value="assignment_minimum"> CLD-sigma, fewest assignments</label>
       </div>
       <label class="choice staged"><input id="staged" type="checkbox" checked> Then minimize the other quantity</label>
-      <p id="method-hint" class="hint">CLD-C gives the fewest distinct letters. CLD-sigma gives the fewest assignments of a letter to a group. The second stage keeps that minimum and then minimizes the other quantity. It is experimental and exists in this page only.</p>
+      <p id="method-hint" class="hint">CLD-C gives the fewest distinct letters. CLD-sigma gives the fewest assignments of a letter to a group, so the fewest letters in the table. The second stage keeps that minimum and then minimizes the other quantity. It is experimental and exists in this page only.</p>
+    </section>
+
+    <div class="run-bar">
       <button id="run" type="button" class="button-primary" disabled>Run</button>
       <div class="run-more">
         <button id="compare" type="button" class="button-secondary" disabled>Compare both methods</button>
@@ -85,37 +104,54 @@
     <section id="results" class="results" aria-label="Results"></section>
     <footer class="foot">
       <details>
-        <summary>Licenses and data sources</summary>
-        <p>The page holds the cld-reducer JavaScript package, the HiGHS solver from the npm package highs, and both example data sets.</p>
+        <summary>Methods and sources</summary>
+        <h3>Simulated experiments</h3>
+        <p>Treatment means and their covariances are simulated with the model that Section 8 of Ennis, Fayle, and Ennis (2012) uses (Section 3.2 of Gramm et al. 2007; the 2012 paper names it Gramm et al. 2006). A pair differs significantly when |t| &gt; 1.96.</p>
+        <h3>Licenses</h3>
+        <p>The page holds the cld-reducer JavaScript package, the HiGHS solver from the npm package highs, both example data sets, and the Manrope and Instrument Serif fonts. The Aigora name and mark are trademarks of Aigora and are not covered by the MIT License.</p>
         <h3>cld-reducer</h3>
         <pre>{{license}}</pre>
         <h3>highs</h3>
         <pre>{{highs-license}}</pre>
         <h3>Example data</h3>
         <pre>{{notice}}</pre>
+        <h3>Manrope</h3>
+        <pre>{{manrope-license}}</pre>
+        <h3>Instrument Serif</h3>
+        <pre>{{instrument-license}}</pre>
       </details>
     </footer>
   </div>
 </div>
 
-<div id="study-view" class="study" hidden>
-  <section class="study-head" aria-labelledby="study-heading">
-    <h2 id="study-heading">Simulation study</h2>
-    <p class="study-text">This view follows the design of the experiment of Section 8 of Ennis, Fayle, and Ennis (2012) in this browser. Each instance is one simulated experiment. The page runs CLD-C, CLD-sigma, and both two-stage solves on it, each solve with the time limit below. The 2012 study ran an exact backtracking search (FIND-AM) on 1,000 instances for each number of treatments, with a limit of 30 seconds.</p>
-    <div class="study-fields">
-      <label>Treatments from <input id="study-from" class="input small" type="number" min="2" max="80" step="1" value="10" inputmode="numeric"></label>
-      <label>to <input id="study-to" class="input small" type="number" min="2" max="80" step="1" value="45" inputmode="numeric"></label>
-      <label>step <input id="study-step" class="input small" type="number" min="1" max="40" step="1" value="5" inputmode="numeric"></label>
-      <label>Instances for each size <input id="study-count" class="input small" type="number" min="1" max="1000" step="1" value="10" inputmode="numeric"></label>
-      <label>First seed <input id="study-seed" class="input small" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
-      <label>Time limit (s) <input id="study-limit" class="input small" type="number" min="1" max="600" step="1" value="30" inputmode="numeric"></label>
-    </div>
-    <div class="study-actions">
-      <button id="study-run" type="button" class="button-primary study-button" disabled>Run the study</button>
+<div id="study-view" class="layout" hidden>
+  <div class="side">
+    <section class="side-block" aria-labelledby="study-settings-heading">
+      <h2 id="study-settings-heading">Study</h2>
+      <div class="study-fields">
+        <label for="study-from">Treatments from</label><input id="study-from" class="input small" type="number" min="2" max="80" step="1" value="10" inputmode="numeric">
+        <label for="study-to">to</label><input id="study-to" class="input small" type="number" min="2" max="80" step="1" value="45" inputmode="numeric">
+        <label for="study-step">step</label><input id="study-step" class="input small" type="number" min="1" max="40" step="1" value="5" inputmode="numeric">
+        <label for="study-count">Instances for each size</label><input id="study-count" class="input small" type="number" min="1" max="1000" step="1" value="10" inputmode="numeric">
+        <label for="study-seed">First seed</label><input id="study-seed" class="input small" type="number" min="1" step="1" value="1" inputmode="numeric">
+        <label for="study-limit">Time limit (s)</label><input id="study-limit" class="input small" type="number" min="1" max="600" step="1" value="30" inputmode="numeric">
+      </div>
+    </section>
+    <div class="run-bar">
+      <button id="study-run" type="button" class="button-primary" disabled>Run the study</button>
       <p id="study-hint" class="hint" aria-live="polite"></p>
     </div>
-  </section>
-  <section id="study-results" class="study-results" aria-label="Study results"></section>
+  </div>
+  <div class="results-pane">
+    <div class="results">
+      <section class="intro" aria-labelledby="study-heading">
+        <h2 id="study-heading" class="intro-title">Simulation study</h2>
+        <p class="study-text">This view follows the design of the experiment of Section 8 of Ennis, Fayle, and Ennis (2012) in this browser. Each instance is one simulated experiment. The page runs CLD-C, CLD-sigma, and both two-stage solves on it, each solve with the time limit of the study settings. The 2012 study ran an exact backtracking search (FIND-AM) on 1,000 instances for each number of treatments, with a limit of 30 seconds.</p>
+        <p class="intro-note">Set the sizes and the time limit, then press Run the study. The tables appear here as the instances finish.</p>
+      </section>
+      <section id="study-results" class="study-results" aria-label="Study results"></section>
+    </div>
+  </div>
 </div>
 </main>
 <noscript><p class="noscript">This page needs JavaScript.</p></noscript>

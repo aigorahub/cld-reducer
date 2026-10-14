@@ -28,3 +28,4 @@ python/build/
 node_modules/
 js/dist/
 *.tgz
+.vercel

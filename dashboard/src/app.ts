@@ -779,21 +779,18 @@ function renderResults(): void {
     renderShown(host, state.shown);
   } else {
     if (state.notice) el("p", "notice", state.notice, host).setAttribute("role", "status");
+    if (!state.problem) renderIntro(host);
     if (before) {
-      const head = el("section", "headline", undefined, host);
+      const head = el("section", "headline is-before", undefined, host);
       el("h2", "headline-title", `Before reduction: ${count(before.letters, "letter", "letters")} and ` +
          `${count(before.assignments, "assignment", "assignments")}`, head);
       el("p", "headline-text", "One letter for each maximal clique. Press Run to reduce it. The reduced letters appear next to these.", head);
       el("p", "muted", `${state.source}. Computed in ${duration(before.milliseconds)} in this browser.`, head);
     } else if (!state.problem) {
       const empty = el("div", "empty", undefined, host);
-      el("h2", undefined, "Reduce a compact letter display", empty);
       el("p", undefined,
          "Give one row for each pair of groups, with the decision of your analysis: significant or not significant. " +
          "Choose a method, then press Run.", empty);
-      el("p", undefined,
-         "Two groups share a letter exactly when they are not significantly different. " +
-         "The solve runs in this browser. The data does not leave this computer.", empty);
       if (state.beforeNote) el("p", "hint", `The display before reduction is not available: ${state.beforeNote}`, empty);
     }
   }
@@ -802,6 +799,29 @@ function renderResults(): void {
   const means = state.shown ? state.shown.input.means : state.run ? state.run.input.means : meansForBefore();
   if (shownBefore || results.length) renderLetters(host, shownBefore, results, means);
   if (state.shown) renderMatrices(host, state.shown);
+}
+
+/** What the page is for, until the first result. */
+function renderIntro(host: HTMLElement): void {
+  const intro = el("section", "intro", undefined, host);
+  el("h2", "intro-title", "Simpler letter displays, with the same conclusions", intro);
+  el("p", undefined,
+     "In a compact letter display, groups that are not significantly different share a letter. " +
+     "The usual display gives one letter to each maximal clique, as in the Before column, and often shows more letters " +
+     "than the decisions need. CLD-C finds the display with the fewest distinct letters. CLD-sigma finds the display " +
+     "with the fewest letters in the table. Every pair keeps its decision.", intro);
+  el("p", "intro-note", "The solve runs in this browser. Your data does not leave this computer.", intro);
+}
+
+/** A row of numbers under a headline: a label, a value, and a note for each. */
+function renderStats(host: HTMLElement, stats: readonly (readonly [string, string, string])[]): void {
+  const dl = el("dl", "stats", undefined, host);
+  for (const [label, value, note] of stats) {
+    const stat = el("div", "stat", undefined, dl);
+    el("dt", undefined, label, stat);
+    el("dd", "stat-value", value, stat);
+    el("dd", "stat-note", note, stat);
+  }
 }
 
 /** The means of the current input for the before column, when they can be read. */
@@ -844,12 +864,6 @@ function renderRunning(host: HTMLElement, run: Run): void {
 const finalsOf = (results: readonly MethodResult[]): MethodResult[] =>
   results.filter((r, k) => r.stage === 2 || results[k + 1]?.stage !== 2);
 
-function removal(r: MethodResult): string {
-  const s = r.reduction.stats;
-  return `The reduction removes ${count(s.assignmentsBefore - s.assignmentsAfter, "assignment", "assignments")} ` +
-    `(${s.reductionPct.toFixed(1)}%) and ${count(s.numLettersBefore - s.numLettersAfter, "letter", "letters")}.`;
-}
-
 function renderShown(host: HTMLElement, shown: Shown): void {
   const { results } = shown;
   const finals = finalsOf(results);
@@ -858,26 +872,41 @@ function renderShown(host: HTMLElement, shown: Shown): void {
     return `${count(s.numLettersAfter, "letter", "letters")} and ${count(s.assignmentsAfter, "assignment", "assignments")}`;
   };
   const s0 = results[0].reduction.stats;
-  const beforeText = `Before reduction: ${count(s0.numLettersBefore, "letter", "letters")} and ` +
-    `${count(s0.assignmentsBefore, "assignment", "assignments")}.`;
+  const removed = (r: MethodResult): string => {
+    const s = r.reduction.stats;
+    return `${count(s.assignmentsBefore - s.assignmentsAfter, "assignment", "assignments")}, ` +
+      `${count(s.numLettersBefore - s.numLettersAfter, "letter", "letters")}`;
+  };
   const head = el("section", "headline", undefined, host);
+  let times: string;
   if (finals.length === 1) {
     const last = finals[0];
+    const s = last.reduction.stats;
     el("h2", "headline-title", `${methodInfo(last.method).name}: ${both(last)}`, head);
-    el("p", "headline-text", `${beforeText} ${removal(last)}`, head);
-    el("p", "headline-text", results.length === 2
+    renderStats(head, [
+      ["Distinct letters", String(s.numLettersAfter), `${s.numLettersBefore} before`],
+      ["Assignments", String(s.assignmentsAfter), `${s.assignmentsBefore} before`],
+      ["Removed", `${s.reductionPct.toFixed(1)}%`, removed(last)],
+    ]);
+    times = results.length === 2
       ? `Stage 1, ${methodInfo(results[0].method).name}, took ${duration(results[0].milliseconds)}. ` +
         `Stage 2 took ${duration(results[1].milliseconds)}. Both ran in this browser.`
-      : `${methodInfo(last.method).name} took ${duration(last.milliseconds)} in this browser.`, head);
+      : `${methodInfo(last.method).name} took ${duration(last.milliseconds)} in this browser.`;
   } else {
     el("h2", "headline-title", results.length > 2 ? "CLD-C and CLD-sigma, each with a second stage" : "CLD-C and CLD-sigma", head);
-    el("p", "headline-text", `${beforeText} ${finals.map((r) => `${methodInfo(r.method).name}: ${both(r)}.`).join(" ")}`, head);
-    el("p", "headline-text", `All solves together took ${duration(results.reduce((t, r) => t + r.milliseconds, 0))} in this browser.`, head);
+    renderStats(head, [
+      ["Before reduction", count(s0.numLettersBefore, "letter", "letters"), count(s0.assignmentsBefore, "assignment", "assignments")],
+      ...finals.map((r): [string, string, string] => [methodInfo(r.method).name,
+        count(r.reduction.stats.numLettersAfter, "letter", "letters"),
+        `${count(r.reduction.stats.assignmentsAfter, "assignment", "assignments")}, ${r.reduction.stats.reductionPct.toFixed(1)}% fewer`]),
+    ]);
+    times = `All solves together took ${duration(results.reduce((t, r) => t + r.milliseconds, 0))} in this browser.`;
   }
   const pairs = s0.numGroups * (s0.numGroups - 1) / 2;
   el("p", "muted",
      `${shown.source}: ${count(s0.numGroups, "group", "groups")} and ${count(pairs, "pair", "pairs")}. ` +
      `${count(s0.numEdges, "pair is", "pairs are")} not significantly different.`, head);
+  el("p", "muted", times, head);
   const actions = el("div", "actions", undefined, head);
   const name = slug(shown.source);
   button("button-secondary", "Download CSV", actions,

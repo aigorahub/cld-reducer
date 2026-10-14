@@ -2,6 +2,11 @@
 
 - Unreleased development version after the 0.3.2 merge.
   No algorithm or public API changes.
+- The browser page in `dashboard/` uses the Aigora design of the turfLP
+  dashboard: its colors, fonts, mark, and app bar. The page says what the
+  reduction gives, shows the counts of each result as a row of numbers, and
+  has an icon and a link preview image. Each push to `main` deploys it to
+  <https://cld.aigora.ai>.
 
 # cldreducer 0.3.2
 
