@@ -494,10 +494,15 @@ async function loadFile(file: File, target: HTMLTextAreaElement): Promise<void> 
   const what = target === ui.pairs ? "decisions" : "means";
   changed(target);
   const change = fieldChange.get(target);
-  if (file.size > MAX_CHARS) {
+  const tooLong = (): void => {
     state.problem = { title: `The ${what} could not be read`, detail: null,
-                      message: `${file.name} is larger than the page reads (${MAX_CHARS.toLocaleString("en-US")} characters).` };
+                      message: `${file.name} has more characters than the page reads (${MAX_CHARS.toLocaleString("en-US")}).` };
     render();
+  };
+  // The limit counts characters. A character takes at most 3 bytes in UTF-8 (two for each half of a
+  // pair), so a larger file cannot fit, and the page does not read it.
+  if (file.size > 3 * MAX_CHARS + 3) {
+    tooLong();
     return;
   }
   let text: string;
@@ -511,6 +516,10 @@ async function loadFile(file: File, target: HTMLTextAreaElement): Promise<void> 
   }
   // The field changed during the read: an example, an edit, Reset, or a later file.
   if (fieldChange.get(target) !== change) return;
+  if (text.length > MAX_CHARS) {
+    tooLong();
+    return;
+  }
   target.value = text;
   state.example = null;
   state.sourceNote = null;

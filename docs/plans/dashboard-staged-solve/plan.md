@@ -49,7 +49,7 @@ displays than Table X of the 2012 paper reports. The mean assignment count of th
 18.0, 60.3, and 126.9 for n = 10, 20, and 30, against 14.38, 42.87, and 80.03 in
 Table X. Table X averages over the searches that finished: all of them at
 n = 10, so that comparison is direct. None of the eight readings of the
-ambiguous parameters that we tried (variance or standard deviation, gamma scale
+parameters that we tried as alternatives to the published text (variance or standard deviation, gamma scale
 or rate, gamma value as variance or standard deviation) matches.
 The page keeps the published model and states the difference. It does not fit
 parameters to Table X.

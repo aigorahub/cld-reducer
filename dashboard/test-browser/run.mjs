@@ -341,6 +341,14 @@ async function main() {
     await page.waitForTimeout(200);
     state = await read();
     check(state.pairs === WHEAT_PAIRS && same(state.pressed, ["Wheat yield"]), "a late file read replaced the newer input");
+    // The limit counts characters, not bytes: 2,600,000 two-byte characters are read, and a file with
+    // more than 5,000,000 characters is not.
+    const wide = "group1,group2,significant\n" + "é".repeat(2_600_000) + ",b,false\n";
+    await page.setInputFiles("#pairs-file", { name: "wide.csv", mimeType: "text/csv", buffer: Buffer.from(wide) });
+    await wait((n) => document.getElementById("pairs").value.length === n, wide.length);
+    await page.setInputFiles("#pairs-file", { name: "long.csv", mimeType: "text/csv", buffer: Buffer.from("x".repeat(5_000_001)) });
+    await wait(() => document.querySelector(".problem > p")?.textContent ===
+      "long.csv has more characters than the page reads (5,000,000).");
     // The next file is read as usual.
     await page.setInputFiles("#pairs-file", { name: "trial 1.tsv", mimeType: "text/tab-separated-values",
       buffer: Buffer.from("group1\tgroup2\tsignificant\nlow\tmid\tFALSE\nlow\thigh\tTRUE\nmid\thigh\tFALSE\n") });

@@ -118,7 +118,7 @@ The triticale data of Table VI of the 2012 paper is not in the page. The data re
 
 ### Simulated experiments
 
-"Generate" makes a new input from a number of treatments and a seed. The same pair gives the same experiment. Each click uses the seed shown and then adds 1; after 2,147,483,647 the next seed is 1. A study uses the same rule for the seeds of its instances. Section 8 of the 2012 paper generates its graphs with the method of Section 3.2 of Gramm, Guo, Hüffner, Niedermeier, Piepho, and Schmid (2007), Computational Statistics and Data Analysis 52, 725-736, which the 2012 paper cites as Gramm et al. [2006]. The page uses that model:
+"Generate" makes a new input from a number of treatments and a seed. The same pair gives the same experiment. Each click uses the seed shown and then adds 1; after 2,147,483,647 the next seed is 1. A study uses the same rule for the seeds of its instances; for each number of treatments, the seeds start again at the first seed, so each size gets the same seeds. Section 8 of the 2012 paper generates its graphs with the method of Section 3.2 of Gramm, Guo, Hüffner, Niedermeier, Piepho, and Schmid (2007), Computational Statistics and Data Analysis 52, 725-736, which the 2012 paper cites as Gramm et al. [2006]. The page uses that model:
 
 - treatment means from a normal distribution with mean 42.6 and variance 12.7;
 - variances of the sample means from a gamma distribution with shape 4.12 and scale 0.429;
