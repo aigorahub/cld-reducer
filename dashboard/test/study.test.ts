@@ -93,6 +93,13 @@ describe("checkInstance", () => {
     expect(checkInstance(altered((i) => { i.solves.assignment_then_letter.milliseconds = null; }), 10, 3))
       .toBe("The assignment_then_letter solve has a result but did not run.");
     expect(checkInstance("instance", 10, 3)).toBe("The reply holds no instance.");
+    // Each letter has at least one assignment, and each group at most one assignment for each letter.
+    expect(checkInstance(altered((i) => { i.lettersBefore = 21; }), 10, 3))
+      .toBe("The counts before reduction of the instance are not possible.");
+    expect(checkInstance(altered((i) => { i.lettersBefore = 1; }), 10, 3))
+      .toBe("The counts before reduction of the instance are not possible.");
+    expect(checkInstance(altered((i) => { i.solves.letter_minimum = solve(19, 18, 2); }), 10, 3))
+      .toBe("The counts of the letter_minimum solve are not possible.");
   });
 
   it("rejects a second stage that runs without its first stage, or does not run after it", () => {
@@ -111,7 +118,15 @@ describe("checkInstance", () => {
       (i: Instance) => { i.solves.assignment_then_letter.letters = 3; },
       (i: Instance) => { i.solves.letter_minimum.letters = 6; },
       (i: Instance) => { i.solves.assignment_minimum.assignments = 21; },
+      // The second stage after CLD-C reaches the assignment minimum, so the other one must reach the letter minimum.
+      (i: Instance) => { i.solves.letter_then_assignment.assignments = 15; },
+      // The second stage after CLD-sigma reaches the letter minimum, so the other one must reach the assignment minimum.
+      (i: Instance) => { i.solves.assignment_then_letter.letters = 4; },
     ]) expect(checkInstance(altered(f), 10, 3)).toBe(message);
+    expect(checkInstance(altered((i) => {
+      i.solves.letter_then_assignment.assignments = 15;
+      i.solves.assignment_then_letter.letters = 4;
+    }), 10, 3)).toBeNull();
   });
 });
 

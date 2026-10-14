@@ -26,20 +26,23 @@ export function planned(study: Study, index: number): { n: number; seed: number 
 
 const whole = (v: unknown, min: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= min;
 
+/** Letter and assignment counts of a display of n groups: each group and each letter has at least one assignment. */
+const counts = (letters: unknown, assignments: unknown, n: number): boolean =>
+  whole(letters, 1) && whole(assignments, n) && letters <= assignments && assignments <= n * letters;
+
 /**
  * Check one instance reply of a study before the page keeps it: the planned
- * treatment count and seed, possible counts and times, a second stage exactly
- * when its first stage finished, and the order of the minimums of the four
- * solves. Returns the first problem, or null.
+ * treatment count and seed, the edge count, letter and assignment counts that a
+ * display of n groups can have, times, a second stage exactly when its first
+ * stage finished, and the order of the minimums of the four solves. Returns the
+ * first problem, or null.
  */
 export function checkInstance(value: unknown, n: number, seed: number): string | null {
   if (value === null || typeof value !== "object") return "The reply holds no instance.";
   const i = value as Record<string, unknown>;
   if (i.n !== n || i.seed !== seed) return `The reply is not for the instance with ${n} treatments and seed ${seed}.`;
   if (!whole(i.edges, 0) || i.edges > (n * (n - 1)) / 2) return "The edge count of the instance is not possible.";
-  if (!whole(i.lettersBefore, 1) || !whole(i.assignmentsBefore, n)) {
-    return "The counts before reduction of the instance are not possible.";
-  }
+  if (!counts(i.lettersBefore, i.assignmentsBefore, n)) return "The counts before reduction of the instance are not possible.";
   const solves = i.solves as Record<string, unknown> | null | undefined;
   if (solves === null || typeof solves !== "object") return "The instance has no solves.";
   for (const m of ALL_METHODS) {
@@ -50,7 +53,7 @@ export function checkInstance(value: unknown, n: number, seed: number): string |
       return `The time of the ${m} solve is not a time.`;
     }
     const finished = s.letters !== null || s.assignments !== null;
-    if (finished && !(whole(s.letters, 1) && whole(s.assignments, n))) return `The counts of the ${m} solve are not possible.`;
+    if (finished && !counts(s.letters, s.assignments, n)) return `The counts of the ${m} solve are not possible.`;
     if (finished && !ran) return `The ${m} solve has a result but did not run.`;
   }
   const { letter_minimum: c, assignment_minimum: sigma, letter_then_assignment: cs, assignment_then_letter: sc } =
@@ -67,7 +70,10 @@ export function checkInstance(value: unknown, n: number, seed: number): string |
     le(c.letters, sigma.letters) && le(sigma.assignments, c.assignments) &&
     eq(cs.letters, c.letters) && le(cs.assignments, c.assignments) && le(sigma.assignments, cs.assignments) &&
     eq(sc.assignments, sigma.assignments) && le(sc.letters, sigma.letters) && le(c.letters, sc.letters);
-  return ordered ? null : "The solves of the instance do not keep the order of the minimums.";
+  // A display with both minimums exists exactly when each second stage reaches the minimum of the other method.
+  const both = [cs.assignments, sigma.assignments, sc.letters, c.letters].every((v) => v !== null);
+  const agree = !both || (cs.assignments === sigma.assignments) === (sc.letters === c.letters);
+  return ordered && agree ? null : "The solves of the instance do not keep the order of the minimums.";
 }
 
 /** The figures of one number of treatments. */
