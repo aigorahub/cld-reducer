@@ -94,6 +94,7 @@ function instrument() {
   window.__alterInstance = null;
   window.__alterStart = null;
   window.__seen = [];
+  window.__alterLoad = null;
   window.Worker = class extends Native {
     constructor(...args) {
       super(...args);
@@ -114,6 +115,7 @@ function instrument() {
         if (window.__alter && e.data?.type === "result") { this.deliver(window.__alter(structuredClone(e.data))); return; }
         if (window.__alterBefore && e.data?.type === "before") { this.deliver(window.__alterBefore(structuredClone(e.data))); return; }
         if (window.__alterStart && e.data?.type === "start") { this.deliver(window.__alterStart(structuredClone(e.data))); return; }
+        if (window.__alterLoad && e.data?.type === "ready") { this.deliver(window.__alterLoad(e.data)); return; }
         if (window.__alterInstance && e.data?.type === "instance") {
           this.deliver(window.__alterInstance(structuredClone(e.data)));
           return;
@@ -862,9 +864,11 @@ async function main() {
     for (const [alter, message] of [
       ["order", "The solves of the instance do not keep the order of the minimums."],
       ["seed", "The reply is not for the instance with 10 treatments and seed 1."],
+      ["type", "The worker sent a reply that a study does not have."],
     ]) {
       await page.evaluate((alter) => {
         window.__alterInstance = (reply) => {
+          if (alter === "type") return { type: "start", id: reply.id, method: "letter_minimum", stage: 1 };
           if (alter === "order") reply.instance.solves.letter_then_assignment = { letters: 999, assignments: 999, milliseconds: 1 };
           else reply.instance.seed = 999;
           return reply;
@@ -983,6 +987,17 @@ async function main() {
       fetch("https://example.invalid/").then(() => resolve("fetched"), () => setTimeout(() => resolve("failed without the policy"), 2000));
     }));
     check(refused === "connect-src", `content security policy: ${refused}`);
+
+    // A loading error of a new worker with a message that is not text: the page says so and does not break.
+    const errorsBefore = errors.length;
+    await page.evaluate(() => { window.__hold = true; window.__held = []; });
+    await page.click("#run");
+    await wait(() => window.__held.some((r) => r.type === "start"));
+    await page.evaluate(() => { window.__alterLoad = () => ({ type: "error", message: { toString: null } }); });
+    await page.click("#run");
+    await wait(() => document.getElementById("solver-status").textContent ===
+      "The solver could not start: The worker sent an error without a message.");
+    check(errors.length === errorsBefore, `console messages after a loading error: ${errors.slice(errorsBefore).join(" | ")}`);
 
     check(readFileSync(join(here, "..", "dist", "site", "index.html")).equals(readFileSync(built)),
           "dist/site/index.html is not the built page");

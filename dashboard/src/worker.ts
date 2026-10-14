@@ -79,8 +79,9 @@ export async function timed(solve: () => Promise<CldReduction> | CldReduction, t
     return { result, solve: { letters: s.numLettersAfter, assignments: s.assignmentsAfter, milliseconds } };
   } catch (e) {
     if (!isTimeout(e)) {
-      // Name the solve, so that a study error can be traced.
+      // Name the solve, so that a study error can be traced, also for a thrown value that is not an Error.
       if (method && e instanceof Error) e.message = `${methodInfo(method).name}: ${e.message}`;
+      else if (method) throw new Error(`${methodInfo(method).name}: ${typeof e === "string" ? e : "a failure without a message"}`);
       throw e;
     }
     return { result: null, solve: { letters: null, assignments: null, milliseconds: performance.now() - t0 } };

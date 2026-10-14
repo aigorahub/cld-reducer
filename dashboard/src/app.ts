@@ -209,7 +209,8 @@ function startWorker(): void {
       render();
     } else if (r.type === "error") {
       w.terminate();
-      solverFailed(r.message);
+      // The message of a loading error is used as text only when it is text.
+      solverFailed(typeof r.message === "string" ? r.message : "The worker sent an error without a message.");
     }
   };
   w.onerror = (e) => {
@@ -621,6 +622,8 @@ function onStudyReply(r: Reply): void {
   } else if (r.type === "error") {
     endStudy("error", r.message);
     restartWorker();
+  } else {
+    defect = "The worker sent a reply that a study does not have.";
   }
   if (defect) {
     endStudy("error", `The solver returned an invalid result. ${defect}`);

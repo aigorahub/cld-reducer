@@ -261,6 +261,8 @@ describe("study errors", () => {
                                   ["assignment_then_letter", "CLD-sigma then CLD-C"]] as const) {
       await expect(timed(() => { throw new SolverError("staged solve failed: Solve error"); }, 30, method))
         .rejects.toThrow(`${name}: staged solve failed: Solve error`);
+      await expect(timed(() => { throw "Solve error"; }, 30, method)).rejects.toThrow(`${name}: Solve error`);
+      await expect(timed(() => { throw { toString: null }; }, 30, method)).rejects.toThrow(`${name}: a failure without a message`);
     }
   });
 
