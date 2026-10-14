@@ -207,8 +207,29 @@ describe("checkBefore", () => {
       return { rows, letters: new Set(tokens.flat()).size, assignments: tokens.flat().length };
     };
     expect(checkBefore(display("A", "A", "A"), all, null)).toBeNull();
-    expect(checkBefore(display("A B", "A B", "A"), all, null)).toBe("Letter B before reduction is not a maximal clique: c fits in it.");
+    expect(checkBefore(display("A B", "A B", "A"), all, null)).toBe("Letter B before reduction is not a maximal clique of the input.");
     expect(checkBefore(display("A B", "A B", "A B"), all, null)).toBe("Letter B before reduction has the same groups as another letter.");
+    const triangle = [
+      { group1: "a", group2: "b", significant: "false" }, { group1: "b", group2: "c", significant: "false" },
+      { group1: "a", group2: "c", significant: "false" }, { group1: "a", group2: "x", significant: "false" },
+      { group1: "b", group2: "x", significant: "false" }, { group1: "c", group2: "x", significant: "true" },
+    ];
+    const four = (rows: [string, string][]) => {
+      const r = rows.map(([group, t]) => ({ group, letters: displayOf(t.split(" ")), assignments: t }));
+      const tokens = r.map((row) => row.assignments.split(" "));
+      return { rows: r, letters: new Set(tokens.flat()).size, assignments: tokens.flat().length };
+    };
+    // Maximal cliques {a, b, c} and {a, b, x}: both are needed, so drop nothing here; check the complete one.
+    expect(checkBefore(four([["a", "A B"], ["b", "A B"], ["c", "A"], ["x", "B"]]), triangle, null)).toBeNull();
+    // The triangle a, b, c is a maximal clique, but the cliques a b x, b c y, and a c z cover its pairs.
+    // A display without it still matches every decision, and the page finds that it is incomplete.
+    const joined = new Set(["a,b", "b,c", "a,c", "a,x", "b,x", "b,y", "c,y", "a,z", "c,z"]);
+    const names = ["a", "b", "c", "x", "y", "z"];
+    const sun = names.flatMap((g, i) => names.slice(i + 1).map((h) => ({ group1: g, group2: h, significant: String(!joined.has(`${g},${h}`)) })));
+    const full: [string, string][] = [["a", "A B C"], ["b", "A B D"], ["c", "A C D"], ["x", "B"], ["y", "D"], ["z", "C"]];
+    expect(checkBefore(four(full), sun, null)).toBeNull();
+    const without = four(full.map(([g, t]) => [g, t.split(" ").filter((l) => l !== "A").join(" ")]));
+    expect(checkBefore(without, sun, null)).toBe("The display before reduction misses a maximal clique of the input.");
   });
 });
 
@@ -275,6 +296,11 @@ describe("result files", () => {
     expect(resultsCsv([{ ...result(), reduction: chain() }], means).split("\n").slice(0, 3)).toEqual([
       "method,group,mean,letters,assignments", "letter_minimum,low,,A,A", "letter_minimum,mid,2.5,AB,A B",
     ]);
+  });
+
+  it("write a very large time in JSON as a number", () => {
+    const file = JSON.parse(resultsJson([{ ...result(), milliseconds: 1e308 }], { source: "x", pairs: 3, means: null }, "1.0.0"));
+    expect(file.results[0].milliseconds).toBe(1e308);
   });
 
   it("write JSON with the exact labels, the statistics, and the package version", () => {

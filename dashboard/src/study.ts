@@ -1,6 +1,9 @@
 // Summaries and the result file of the simulation study.
 
+import { maximalCliques } from "../../js/src/cliques.js";
+import { DEFAULT_MAX_CLIQUES } from "../../js/src/input.js";
 import { isTime, type ResultMethod } from "./data.js";
+import { simulate } from "./simulate.js";
 import type { Instance, Solve, Study } from "./worker.js";
 
 export const ALL_METHODS: readonly ResultMethod[] = ["letter_minimum", "assignment_minimum",
@@ -24,6 +27,31 @@ export function planned(study: Study, index: number): { n: number; seed: number 
   return size < study.sizes.length ? { n: study.sizes[size], seed: study.firstSeed + (index % study.count) } : null;
 }
 
+/** What the page knows of an instance without a solve. It finds them from the seeded generator. */
+export interface InstanceFacts {
+  edges: number;
+  lettersBefore: number;
+  assignmentsBefore: number;
+  /** The size of the largest maximal clique. */
+  largest: number;
+}
+
+/** The facts of the instance with n treatments and a seed, or null when it has too many maximal cliques. */
+export function instanceFacts(n: number, seed: number): InstanceFacts | null {
+  const { significant } = simulate(n, seed);
+  const adjacency = significant.map((row, i) => row.map((s, j) => i === j || !s));
+  let edges = 0;
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) edges += Number(!significant[i][j]);
+  let cliques: number[][];
+  try {
+    cliques = maximalCliques(adjacency, DEFAULT_MAX_CLIQUES);
+  } catch {
+    return null;
+  }
+  return { edges, lettersBefore: cliques.length, assignmentsBefore: cliques.reduce((t, q) => t + q.length, 0),
+           largest: largest(cliques.map((q) => q.length)) };
+}
+
 const whole = (v: unknown, min: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= min;
 
 /** Letter and assignment counts of a display of n groups: each group and each letter has at least one assignment. */
@@ -32,17 +60,24 @@ const counts = (letters: unknown, assignments: unknown, n: number): boolean =>
 
 /**
  * Check one instance reply of a study before the page keeps it: the planned
- * treatment count and seed, the edge count, letter and assignment counts that a
- * display of n groups can have, times, a second stage exactly when its first
- * stage finished, and the order of the minimums of the four solves. Returns the
- * first problem, or null.
+ * treatment count and seed; the edge count and counts before reduction of its
+ * graph; letter and assignment counts that a display of that graph can have;
+ * times; a second stage exactly when its first stage finished; and the order of
+ * the minimums of the four solves. It does not prove that a count is minimal.
+ * Returns the first problem, or null.
  */
-export function checkInstance(value: unknown, n: number, seed: number): string | null {
+export function checkInstance(value: unknown, n: number, seed: number, facts: InstanceFacts | null): string | null {
   if (value === null || typeof value !== "object") return "The reply holds no instance.";
   const i = value as Record<string, unknown>;
   if (i.n !== n || i.seed !== seed) return `The reply is not for the instance with ${n} treatments and seed ${seed}.`;
-  if (!whole(i.edges, 0) || i.edges > (n * (n - 1)) / 2) return "The edge count of the instance is not possible.";
-  if (!counts(i.lettersBefore, i.assignmentsBefore, n)) return "The counts before reduction of the instance are not possible.";
+  if (!facts) return "The page cannot find the maximal cliques of the instance.";
+  if (i.edges !== facts.edges) return "The edge count of the instance does not match its graph.";
+  if (i.lettersBefore !== facts.lettersBefore || i.assignmentsBefore !== facts.assignmentsBefore) {
+    return "The counts before reduction of the instance do not match its graph.";
+  }
+  // A letter has at most `largest` groups and covers at most largest(largest - 1)/2 edges.
+  const fits = (letters: number, assignments: number): boolean =>
+    assignments <= letters * facts.largest && letters * (facts.largest * (facts.largest - 1)) / 2 >= facts.edges;
   const solves = i.solves as Record<string, unknown> | null | undefined;
   if (solves === null || typeof solves !== "object") return "The instance has no solves.";
   for (const m of ALL_METHODS) {
@@ -52,6 +87,7 @@ export function checkInstance(value: unknown, n: number, seed: number): string |
     if (ran && !isTime(s.milliseconds)) return `The time of the ${m} solve is not a time.`;
     const finished = s.letters !== null || s.assignments !== null;
     if (finished && !counts(s.letters, s.assignments, n)) return `The counts of the ${m} solve are not possible.`;
+    if (finished && !fits(s.letters as number, s.assignments as number)) return `The counts of the ${m} solve do not fit its graph.`;
     if (finished && !ran) return `The ${m} solve has a result but did not run.`;
   }
   const { letter_minimum: c, assignment_minimum: sigma, letter_then_assignment: cs, assignment_then_letter: sc } =
@@ -93,6 +129,13 @@ export interface Summary {
   tradeOff: number;
   /** Instances in which both of those solves finished, so that the comparison is known. */
   tradeOffKnown: number;
+  /**
+   * Over the instances in which CLD-sigma finished, as Table X averages over the searches that
+   * finished: their count, their mean assignments before reduction, and the mean time of CLD-sigma.
+   */
+  sigmaFinished: number;
+  sigmaBefore: number | null;
+  sigmaTime: number | null;
 }
 
 const average = (values: number[]): number | null =>
@@ -135,6 +178,9 @@ export function summarize(instances: readonly Instance[]): Summary[] {
       }).length,
       tradeOffKnown: group.filter((i) => i.solves.letter_then_assignment.assignments !== null &&
                                          i.solves.assignment_minimum.assignments !== null).length,
+      sigmaFinished: solved.length,
+      sigmaBefore: average(solved.map((i) => i.assignmentsBefore)),
+      sigmaTime: average(solved.map((i) => i.solves.assignment_minimum.milliseconds!)),
     };
   });
 }

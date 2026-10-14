@@ -1,7 +1,8 @@
 // Methods, examples, the check of a solver reply, and the result files.
 
 import type { CldReduction } from "../../js/src/index.js";
-import { pairsToGraph, type Graph } from "../../js/src/input.js";
+import { maximalCliques } from "../../js/src/cliques.js";
+import { DEFAULT_MAX_CLIQUES, pairsToGraph, type Graph } from "../../js/src/input.js";
 import type { MeanRow, PairRow } from "./csv.js";
 import { TABLE_II } from "./simulate.js";
 
@@ -261,8 +262,15 @@ export function checkBefore(value: unknown, pairs: readonly PairRow[], means: re
   if (letters !== new Set(tokens.flat()).size || assignments !== tokens.reduce((sum, t) => sum + t.length, 0)) {
     return "The counts of the display before reduction do not match its letters.";
   }
-  // The groups of a letter are pairwise joined (checkLetters). The letter must also be a maximal
-  // clique, and no two letters can have the same groups.
+  // The groups of a letter are pairwise joined (checkLetters). The letters must also be the
+  // maximal cliques of the input, each one once. The page finds them itself.
+  let cliques: number[][];
+  try {
+    cliques = maximalCliques(graph.adjacency, DEFAULT_MAX_CLIQUES);
+  } catch {
+    return "The page cannot find the maximal cliques of the input.";
+  }
+  const maximal = new Set(cliques.map((q) => [...q].sort((a, b) => a - b).join(",")));
   const members = new Map<string, number[]>();
   tokens.forEach((own, i) => own.forEach((t) => {
     const list = members.get(t);
@@ -273,10 +281,9 @@ export function checkBefore(value: unknown, pairs: readonly PairRow[], means: re
     const key = list.join(",");
     if (seen.has(key)) return `Letter ${t} before reduction has the same groups as another letter.`;
     seen.add(key);
-    const inside = new Set(list);
-    const fits = groups.findIndex((_, v) => !inside.has(v) && list.every((u) => graph.adjacency[u][v]));
-    if (fits >= 0) return `Letter ${t} before reduction is not a maximal clique: ${groups[fits]} fits in it.`;
+    if (!maximal.has(key)) return `Letter ${t} before reduction is not a maximal clique of the input.`;
   }
+  if (members.size !== maximal.size) return "The display before reduction misses a maximal clique of the input.";
   return null;
 }
 
@@ -363,6 +370,9 @@ export function resultsCsv(results: readonly MethodResult[], means: readonly Mea
   return [head, ...lines].join("\n") + "\n";
 }
 
+/** A time to a tenth of a millisecond. Math.round(ms * 10) / 10 overflows for a very large time. */
+const tenths = (ms: number): number => Number(ms.toFixed(1));
+
 /** The results as JSON, with the exact labels and all statistics. */
 export function resultsJson(results: readonly MethodResult[], input: { source: string; pairs: number;
                             means: readonly MeanRow[] | null }, version: string,
@@ -375,14 +385,14 @@ export function resultsJson(results: readonly MethodResult[], input: { source: s
     version,
     input: { source: input.source, pairs: input.pairs, means: input.means },
     before: before && { letters: before.letters, assignments: before.assignments,
-                        milliseconds: Math.round(before.milliseconds * 10) / 10, rows: rowsOf(before.rows) },
+                        milliseconds: tenths(before.milliseconds), rows: rowsOf(before.rows) },
     results: results.map(({ method, stage, reduction, milliseconds }) => ({
       method,
       stage,
       minimizes: methodInfo(method).minimizes.toLowerCase(),
       relationshipPreserved: reduction.relationshipPreserved,
       stats: reduction.stats,
-      milliseconds: Math.round(milliseconds * 10) / 10,
+      milliseconds: tenths(milliseconds),
       rows: reduction.rows.map((row) => ({
         group: row.group, letters: row.letters, assignments: tokensOf(row.assignments),
       })),

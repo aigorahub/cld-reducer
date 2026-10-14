@@ -8,7 +8,7 @@ import type { CldReduction } from "../../js/src/index.js";
 import { hooks } from "../../js/src/solver.js";
 import { TEMPLATE_MEANS, TEMPLATE_PAIRS, parseMeans, parsePairs, type PairRow } from "../src/csv.js";
 import { checkReduction, explain, type Method } from "../src/data.js";
-import { handle, studyInstance, type Input, type Reply } from "../src/worker.js";
+import { handle, studyInstance, timed, type Input, type Reply } from "../src/worker.js";
 
 const repo = (path: string): string => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 const require = createRequire(new URL("../../js/package.json", import.meta.url));
@@ -237,5 +237,19 @@ describe("worker", () => {
     } finally {
       hooks.run = run;
     }
+  });
+});
+
+describe("timed", () => {
+  const result = (): CldReduction => ({ stats: { numLettersAfter: 2, assignmentsAfter: 4 } }) as unknown as CldReduction;
+  const late = (ms: number) => () => new Promise<CldReduction>((resolve) => setTimeout(() => resolve(result()), ms));
+
+  it("counts a solve as not finished when its whole time passes the limit, as Table X does", async () => {
+    const over = await timed(late(60), 0.02);
+    expect(over.result).toBeNull();
+    expect(over.solve.letters).toBeNull();
+    expect(over.solve.milliseconds).toBeGreaterThan(20);
+    const within = await timed(late(1), 5);
+    expect(within.solve).toMatchObject({ letters: 2, assignments: 4 });
   });
 });

@@ -62,12 +62,20 @@ export type Reply =
 
 const isTimeout = (e: unknown): boolean => e instanceof SolverError && e.message.endsWith("Time limit reached");
 
-async function timed(solve: () => Promise<CldReduction> | CldReduction): Promise<{ result: CldReduction | null; solve: Solve }> {
+/**
+ * One solve of the study with its whole time. The timeLimit option covers the solves; clique
+ * enumeration and model construction come before it. Table X counts the whole time, so a solve
+ * whose whole time passes the limit counts as not finished.
+ */
+export async function timed(solve: () => Promise<CldReduction> | CldReduction,
+                            timeLimit: number): Promise<{ result: CldReduction | null; solve: Solve }> {
   const t0 = performance.now();
   try {
     const result = await solve();
+    const milliseconds = performance.now() - t0;
+    if (milliseconds > timeLimit * 1000) return { result: null, solve: { letters: null, assignments: null, milliseconds } };
     const s = result.stats;
-    return { result, solve: { letters: s.numLettersAfter, assignments: s.assignmentsAfter, milliseconds: performance.now() - t0 } };
+    return { result, solve: { letters: s.numLettersAfter, assignments: s.assignmentsAfter, milliseconds } };
   } catch (e) {
     if (!isTimeout(e)) throw e;
     return { result: null, solve: { letters: null, assignments: null, milliseconds: performance.now() - t0 } };
@@ -83,11 +91,13 @@ export async function studyInstance(n: number, seed: number, timeLimit: number):
   }
   const means = e.groups.map((group, i) => ({ group, mean: e.means[i] }));
   const options = { means, timeLimit };
-  const c = await timed(() => reduceLetters(pairs, { ...options, method: "letter_minimum" }));
-  const sigma = await timed(() => reduceLetters(pairs, { ...options, method: "assignment_minimum" }));
+  const c = await timed(() => reduceLetters(pairs, { ...options, method: "letter_minimum" }), timeLimit);
+  const sigma = await timed(() => reduceLetters(pairs, { ...options, method: "assignment_minimum" }), timeLimit);
   const missing = { result: null, solve: { letters: null, assignments: null, milliseconds: null } };
-  const cs = c.result ? await timed(() => stagedSolve(pairs, means, "letter_then_assignment", c.result!.stats.objective, timeLimit)) : missing;
-  const sc = sigma.result ? await timed(() => stagedSolve(pairs, means, "assignment_then_letter", sigma.result!.stats.objective, timeLimit)) : missing;
+  const cs = c.result ? await timed(() => stagedSolve(pairs, means, "letter_then_assignment", c.result!.stats.objective,
+                                                      timeLimit), timeLimit) : missing;
+  const sc = sigma.result ? await timed(() => stagedSolve(pairs, means, "assignment_then_letter", sigma.result!.stats.objective,
+                                                          timeLimit), timeLimit) : missing;
   const any = c.result ?? sigma.result;
   const before = beforeDisplay(pairs, means);
   return {

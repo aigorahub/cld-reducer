@@ -77,8 +77,9 @@ The staged solve is lexicographic:
 
 The model is the CLD-sigma model with one binary column u for each maximal
 clique and the rows x(c, g) <= u(c). One column for each maximal clique loses no
-display: two letters inside one maximal clique merge into their union, with
-fewer letters and no more assignments. The weighted vertex reduction stays
+lexicographic optimum (it does lose displays, such as {A}, {B}, and {A, B} for
+two groups that do not differ): two letters inside one maximal clique merge into
+their union, with fewer letters and no more assignments. The weighted vertex reduction stays
 exact: a vertex can take the pattern of a twin with fewer memberships, and
 neither count increases.
 

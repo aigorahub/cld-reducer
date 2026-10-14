@@ -92,6 +92,7 @@ function instrument() {
   window.__alter = null;
   window.__alterBefore = null;
   window.__alterInstance = null;
+  window.__alterStart = null;
   window.Worker = class extends Native {
     constructor(...args) {
       super(...args);
@@ -110,6 +111,7 @@ function instrument() {
         if (window.__holdBefore && e.data?.type === "before") { window.__heldBefore.push([this, e.data]); return; }
         if (window.__alter && e.data?.type === "result") { this.deliver(window.__alter(structuredClone(e.data))); return; }
         if (window.__alterBefore && e.data?.type === "before") { this.deliver(window.__alterBefore(structuredClone(e.data))); return; }
+        if (window.__alterStart && e.data?.type === "start") { this.deliver(window.__alterStart(structuredClone(e.data))); return; }
         if (window.__alterInstance && e.data?.type === "instance") {
           this.deliver(window.__alterInstance(structuredClone(e.data)));
           return;
@@ -626,9 +628,8 @@ async function main() {
       .startsWith("The display before reduction is not available: The reply failed the check of the page."));
     state = await read();
     check(state.title === null && state.letters === null, `an altered display before reduction is shown: ${state.title}`);
-    // A display before reduction can pass that check and still miss a maximal clique. Here the
-    // triangle a, b, c is a maximal clique, but the three other cliques cover its pairs. A run then
-    // finds that the counts differ from the package, and the page shows neither.
+    // A display before reduction can match every decision and still miss a maximal clique. Here the
+    // triangle a, b, c is a maximal clique, but the three other cliques cover its pairs.
     await page.evaluate(() => {
       window.__alterBefore = (reply) => {
         const b = reply.before;
@@ -648,13 +649,73 @@ async function main() {
     const sun = ["a", "b", "c", "x", "y", "z"].flatMap((g, i, all) => all.slice(i + 1).map((h) => `${g},${h},${!joined.has(`${g},${h}`)}`));
     await page.fill("#means", "");
     await page.fill("#pairs", ["group1,group2,significant", ...sun].join("\n") + "\n");
+    await wait(() => document.querySelector(".empty .hint")?.textContent === "The display before reduction is not available: " +
+      "The reply failed the check of the page. The display before reduction misses a maximal clique of the input.");
+    check((await read()).title === null, "a display before reduction without a maximal clique is shown");
+    await page.evaluate(() => { window.__alterBefore = null; });
+
+    // A result with other counts before reduction than the display before reduction is not shown,
+    // also when the display before reduction arrives after the run.
+    const BEFORE_MISMATCH = "The display before reduction does not match the statistics of the package.";
+    await page.evaluate(() => {
+      window.__alter = (reply) => {
+        const s = reply.reduction.stats;
+        s.assignmentsBefore += 1;
+        s.reductionPct = (s.assignmentsBefore - s.assignmentsAfter) / s.assignmentsBefore * 100;
+        return reply;
+      };
+    });
+    await page.click('button.example:has-text("Simple example")');
     await wait(() => document.querySelector(".headline-title")?.textContent === "Before reduction: 3 letters and 9 assignments");
     await page.click("#run");
-    await wait(() => document.querySelector(".problem > p")?.textContent ===
-      "The display before reduction does not match the statistics of the package.");
-    state = await read();
-    check(state.title === null && state.letters === null, `a display before reduction with a missing clique stays: ${state.title}`);
-    await page.evaluate(() => { window.__alterBefore = null; });
+    await wait(() => document.querySelector(".problem > p")?.textContent === "The display before reduction does not match the statistics of the package.");
+    noResult(await read(), "result with other counts before reduction");
+    // The same for a second stage with other counts before reduction than its first stage.
+    await page.evaluate(() => {
+      window.__alter = (reply) => {
+        if (reply.method !== "letter_then_assignment") return reply;
+        const s = reply.reduction.stats;
+        s.assignmentsBefore -= 1;
+        s.reductionPct = (s.assignmentsBefore - s.assignmentsAfter) / s.assignmentsBefore * 100;
+        return reply;
+      };
+    });
+    await ready();
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > p")?.textContent === "The results have different counts before reduction.");
+    noResult(await read(), "second stage with other counts before reduction");
+    await page.evaluate(() => {
+      window.__alter = (reply) => {
+        const s = reply.reduction.stats;
+        s.assignmentsBefore += 1;
+        s.reductionPct = (s.assignmentsBefore - s.assignmentsAfter) / s.assignmentsBefore * 100;
+        return reply;
+      };
+    });
+    await ready();
+    await page.evaluate(() => { window.__heldBefore = []; window.__holdBefore = true; });
+    await page.click('button.example:has-text("Wheat yield")');
+    await wait(() => window.__heldBefore.length === 1);
+    await page.click("#run");
+    await solved();
+    check((await read()).title.startsWith("CLD-C then CLD-sigma"), "the run without a display before reduction is not shown");
+    await page.evaluate(() => {
+      window.__holdBefore = false;
+      for (const [w, reply] of window.__heldBefore) w.deliver(reply);
+    });
+    await wait((m) => document.querySelector(".problem > p")?.textContent === m, BEFORE_MISMATCH);
+    noResult(await read(), "result with other counts before reduction than a late display before reduction");
+    await page.evaluate(() => { window.__alter = null; });
+    // A start reply for a method that the run does not expect stops the run.
+    await page.evaluate(() => {
+      window.__alterStart = (reply) => { reply.method = "bogus"; return reply; };
+    });
+    await ready();
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > p")?.textContent === "The reply is for another method.");
+    noResult(await read(), "run after a start reply for another method");
+    await page.evaluate(() => { window.__alterStart = null; });
+    await ready();
     // A simulated input again, for the study and the narrow layout below.
     await page.fill("#sim-n", "12");
     await page.fill("#sim-seed", "4");
@@ -677,7 +738,8 @@ async function main() {
     check(study.length === 3 && same(study[0].slice(1).map((r) => [r[0], r[1]]), [["8", "2"], ["12", "2"]]),
           `study tables: ${JSON.stringify(study)}`);
     check(same(study[1].slice(1).map((r) => r[r.length - 1]), ["2 of 2", "2 of 2"]), "study solves within the limit");
-    check(same(study[2].slice(1).map((r) => [r[0], r[1]]), [["12", "18.8"]]), "published row for 12 treatments");
+    check(same(study[2].slice(1).map((r) => [r[0], r[1], r[2], r[4], r[6]]), [["12", "100.0%", "100.0%", "18.8", "17.9"]]),
+          `comparison row for 12 treatments: ${JSON.stringify(study[2])}`);
     const studyFile = await save("Download instances (CSV)");
     check(studyFile.name === "cld-simulation-study.csv" && studyFile.text.trimEnd().split("\n").length === 5, "study file");
     // A study reply that breaks the order of the minimums, or is for another seed, stops the study.

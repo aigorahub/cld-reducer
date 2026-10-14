@@ -1,6 +1,7 @@
 // The page: read the input, show the display before reduction, run cld-reducer
 // and the experimental second stage in a worker, and run the simulation study.
 
+import type { CldReduction } from "../../js/src/index.js";
 import wasmGzipBase64 from "virtual:highs-wasm";
 import repository from "virtual:repository";
 import workerSource from "virtual:worker-source";
@@ -11,7 +12,7 @@ import {
   checkBefore, checkInput, checkStage, isTime, type BeforeRows, type Example, type Method, type MethodResult, type ResultMethod, type StagedOrder,
 } from "./data.js";
 import { experimentCsv, simulate } from "./simulate.js";
-import { summarize, studyCsv, ALL_METHODS, checkInstance, planned, slowest } from "./study.js";
+import { summarize, studyCsv, ALL_METHODS, checkInstance, instanceFacts, planned, slowest } from "./study.js";
 import type { Input, Instance, Reply, Request, Study } from "./worker.js";
 
 /** The matrix of shared letters has one cell for each pair, so it is shown for small inputs only. */
@@ -89,6 +90,8 @@ interface Run {
 
 /** A finished run. The page shows it until the input or the method changes. */
 interface Shown {
+  /** The input version of the run. */
+  version: number;
   results: MethodResult[];
   input: Input;
   source: string;
@@ -267,6 +270,17 @@ function onReply(r: Reply): void {
     } else if (r.type === "before") {
       state.before = { ...r.before, milliseconds: r.milliseconds, version };
       state.beforeNote = null;
+      // The page checked this display against the maximal cliques of the input. A result that the
+      // page shows already must have the same counts before reduction.
+      const shown = state.shown;
+      if (shown && shown.version === version && !shown.before) {
+        const s = shown.results[0].reduction.stats;
+        if (s.numLettersBefore !== r.before.letters || s.assignmentsBefore !== r.before.assignments) {
+          fail({ title: "The solver returned an invalid result", message: BEFORE_MISMATCH, detail: "The page shows no result." });
+        } else {
+          shown.before = state.before;
+        }
+      }
     } else {
       state.before = null;
       state.beforeNote = r.message;
@@ -282,9 +296,16 @@ function onReply(r: Reply): void {
   // A reply of a run that was cancelled or replaced has another id.
   if (!run || r.id !== run.id) return;
   if (r.type === "start") {
-    run.current = r.method;
-    run.stage = r.stage;
-    run.currentStart = performance.now();
+    const stage = METHODS.some((m) => m.id === r.method) ? 1 : 2;
+    if (r.method !== run.expected[run.results.length] || r.stage !== stage) {
+      fail({ title: "The solver returned an invalid result", message: "The reply is for another method.",
+             detail: "The page shows no result." });
+      restartWorker();
+    } else {
+      run.current = r.method;
+      run.stage = r.stage;
+      run.currentStart = performance.now();
+    }
   } else if (r.type === "result") {
     const expected = run.expected[run.results.length];
     const groups = run.results[0]?.reduction.groups;
@@ -296,7 +317,8 @@ function onReply(r: Reply): void {
       ?? (isTime(r.milliseconds) ? null : "The time of the reply is not a time.")
       ?? (r.stage === 2 ? checkStage(previous.reduction, r.reduction, r.method as StagedOrder) : null)
       ?? (groups && JSON.stringify(groups) !== JSON.stringify(r.reduction.groups)
-        ? "The methods returned different groups." : null);
+        ? "The methods returned different groups." : null)
+      ?? beforeDefect(run, r.reduction);
     if (defect) {
       fail({ title: "The solver returned an invalid result", message: defect, detail: "The page shows no result." });
       // The worker can hold more replies of this run. Start again from a clean worker.
@@ -312,6 +334,20 @@ function onReply(r: Reply): void {
   render();
 }
 
+const BEFORE_MISMATCH = "The display before reduction does not match the statistics of the package.";
+
+/** Each result of a run has the counts before reduction of the first result and of the display before reduction. */
+function beforeDefect(run: Run, reduction: CldReduction): string | null {
+  const s = reduction.stats;
+  const first = run.results[0]?.reduction.stats;
+  if (first && (first.numLettersBefore !== s.numLettersBefore || first.assignmentsBefore !== s.assignmentsBefore)) {
+    return "The results have different counts before reduction.";
+  }
+  const before = state.before && state.before.version === run.inputVersion ? state.before : null;
+  return before && (before.letters !== s.numLettersBefore || before.assignments !== s.assignmentsBefore)
+    ? BEFORE_MISMATCH : null;
+}
+
 function finishRun(run: Run): void {
   if (run.results.length !== run.expected.length) {
     fail({ title: "The solver returned an invalid result", message: "A method has no result.", detail: null });
@@ -320,14 +356,11 @@ function finishRun(run: Run): void {
   const before = state.before && state.before.version === run.inputVersion ? state.before : null;
   const stats = run.results[0].reduction.stats;
   if (before && (before.letters !== stats.numLettersBefore || before.assignments !== stats.assignmentsBefore)) {
-    const message = "The display before reduction does not match the statistics of the package.";
-    fail({ title: "The solver returned an invalid result", detail: "The page shows no result.", message });
-    // One of the two is wrong, so the page shows neither.
-    state.before = null;
-    state.beforeNote = message;
+    // The page checked the display before reduction against the input, so the result is the wrong one.
+    fail({ title: "The solver returned an invalid result", detail: "The page shows no result.", message: BEFORE_MISMATCH });
     return;
   }
-  state.shown = { results: run.results, input: run.input, source: run.source, before };
+  state.shown = { version: run.inputVersion, results: run.results, input: run.input, source: run.source, before };
   state.run = null;
 }
 
@@ -550,7 +583,8 @@ function onStudyReply(r: Reply): void {
   let defect: string | null = null;
   if (r.type === "instance") {
     const next = planned(run.study, run.instances.length);
-    defect = next ? checkInstance(r.instance, next.n, next.seed) : "The worker sent more instances than the study has.";
+    defect = next ? checkInstance(r.instance, next.n, next.seed, instanceFacts(next.n, next.seed))
+      : "The worker sent more instances than the study has.";
     if (!defect) {
       run.instances.push(r.instance);
       drawStudySoon();
@@ -897,7 +931,8 @@ function renderStudy(): void {
           fixed(r.value.letter_minimum), fixed(r.value.assignment_minimum),
           r.assignmentsRemoved === null ? "" : `${(100 * r.assignmentsRemoved).toFixed(1)}%`,
           fixed(r.value.letter_then_assignment), fixed(r.value.assignment_then_letter), `${r.tradeOff} of ${r.tradeOffKnown}`]));
-  table("Time in this browser", "Mean and maximum time of each solve. A stage 2 time covers the second solve only. " +
+  table("Time in this browser", "Mean and maximum time of each solve that ran, also of a solve that reached the limit. " +
+        "A time covers the whole call, with the enumeration of the maximal cliques. A stage 2 time covers the second solve only. " +
         "A second stage does not run when its first stage does not finish, and it is not in these times.",
         ["Treatments", "CLD-C mean", "CLD-C max", "CLD-sigma mean", "CLD-sigma max", "Stage 2 after CLD-C mean",
          "Stage 2 after CLD-C max", "Stage 2 after CLD-sigma mean", "Stage 2 after CLD-sigma max",
@@ -906,16 +941,21 @@ function renderStudy(): void {
                          `${r.finished} of ${r.instances}`]));
   const published = rows.flatMap((r) => {
     const x = TABLE_X.find((t) => t.n === r.n);
-    return x ? [[String(r.n), x.ma.toFixed(1), x.ea.toFixed(1), `${x.pc.toFixed(1)}%`, `${x.et.toFixed(3)} s`,
-                 String(TABLE_XI[r.n] ?? 0)]] : [];
+    return x ? [[String(r.n), `${(100 * r.sigmaFinished / r.instances).toFixed(1)}%`, `${x.pc.toFixed(1)}%`,
+                 fixed(r.sigmaBefore), x.ma.toFixed(1), fixed(r.value.assignment_minimum), x.ea.toFixed(1),
+                 r.sigmaTime === null ? "" : duration(r.sigmaTime), `${x.et.toFixed(3)} s`,
+                 `${r.tradeOff} of ${r.tradeOffKnown}`, `${TABLE_XI[r.n] ?? 0} of 1,000`]] : [];
   });
   if (published.length) {
-    table("Published in 2012",
-          "Table X and Table XI of Ennis, Fayle, and Ennis (2012): 1,000 other instances for each size, solved by " +
-          "FIND-AM on 2012 hardware. MA and EA are means over the searches that finished. The instances above follow " +
-          "the published model text and have larger maximal displays than Table X reports, so read the two tables as separate studies.",
-          ["Treatments", "MA: assignments before", "EA: exact assignments", "Finished within 30 s",
-           "Mean time of finished searches", "Letter minimum not assignment minimum, per 1,000"], published);
+    table("Compared with 2012",
+          "Here: CLD-sigma on the instances above. 2012: FIND-AM in Table X and Table XI of Ennis, Fayle, and Ennis (2012), " +
+          "1,000 other instances for each size on 2012 hardware. Both columns of a pair count an exact solve as finished when its " +
+          "whole time, with the enumeration of the maximal cliques, is within the limit, and both average the assignments and the " +
+          "time over the finished solves only. The instances here follow the published model text and have larger maximal displays " +
+          "than Table X reports, so read the two as separate studies.",
+          ["Treatments", "Finished, here", "Finished, 2012", "Assignments before, here", "MA, 2012",
+           "Exact assignments, here", "EA, 2012", "Mean time, here", "ET, 2012",
+           "Letter minimum not assignment minimum, here", "Table XI, 2012"], published);
   }
 }
 
