@@ -78,5 +78,29 @@ it("maps plan essentials to noncontiguous native columns without changing canoni
       rowLower:Float64Array.of(1,1,1), rowUpper:Float64Array.of(Infinity,Infinity,Infinity),
     } }),
   };
+  let calls = 0;
+  hooks.run = (...args) => {
+    if (calls++ === 0) expect([...args[1]]).toEqual([1,0,0,0,1]);
+    return realRun(...args);
+  };
   expect(solveCanonical(plan,null,custom,false)).toEqual({selected:[true,true,false],minimum:10});
+  expect(calls).toBeGreaterThan(0);
 });
+
+it.each(["count","duplicate","range","decision_cost","auxiliary_cost","cost_length"])(
+  "rejects invalid compiled %s before the solver", defect => {
+    const strategy = methods[0], plan = planFor(simple,strategy);
+    const model = strategy.compiler(plan), problem = model.problem;
+    if (defect === "count") problem.decisionColumns.pop();
+    else if (defect === "duplicate") problem.decisionColumns[1] = problem.decisionColumns[0];
+    else if (defect === "range") problem.decisionColumns[0] = problem.numCols;
+    else if (defect === "decision_cost") problem.cost[0] += 1;
+    else if (defect === "auxiliary_cost") problem.cost[plan.decisionCount] = 1;
+    else problem.cost = problem.cost.slice(0,-1);
+    const run = vi.fn(() => { throw new Error("invalid model reached solver"); });
+    hooks.run = run;
+    expect(() => solveCanonical(plan,null,{...strategy,compiler:()=>model},false))
+      .toThrow("HiGHS returned an invalid solution");
+    expect(run).not.toHaveBeenCalled();
+  }
+);

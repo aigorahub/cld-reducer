@@ -1,6 +1,6 @@
 # Prove the essential cover before building the BIP
 
-Status: plan reviewed by Agy without Boost. No runtime implementation in this change.
+Status: plan reviewed by Agy without Boost. Implemented in PR #11. See implementation.md for the implementation and verification record.
 
 Review record (2026-10-13): Agy reviewed `8498e196d1bea21007ba13d7e99713ba54f50e11` and raised three findings about driver compatibility, scan index contracts, and redundant sigma lookup data. Code inspection confirmed all three. Revision `39f9f32e80b6a37762913e3d67b5f07a5ec16aca` addresses them. Agy reviewed that revision and reported no actionable findings. This status update records the result; it does not change the reviewed design. Reports are saved under `/Users/john/aigora/dev/cld-reducer-submission-artifacts/pre-model-certificate-review/`.
 

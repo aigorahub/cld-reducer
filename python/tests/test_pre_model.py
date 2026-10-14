@@ -149,14 +149,53 @@ def test_plan_cost_proof_is_defensive(cost):
     assert canonical._plan_certificate(bad, strategy.essential_decisions(bad), strategy) is None
 
 
-def test_plan_preserves_noncontiguous_compiler_mapping(presolve):
+def test_plan_preserves_noncontiguous_compiler_mapping(presolve, monkeypatch):
     strategy = METHODS[1]
     plan = replace(plan_for(SIMPLE, strategy), cost=[3, 7, 11])
     model, legacy = sparse_model(strategy)
     custom = replace(legacy, essential_decisions=lambda _: [0, 1], compiler=lambda _: model)
+    original_run = _solver.run
+    calls = 0
+
+    def run(problem, lower, upper, **options):
+        nonlocal calls
+        if calls == 0:
+            assert lower.tolist() == [1, 0, 0, 0, 1]
+        calls += 1
+        return original_run(problem, lower, upper, **options)
+
+    monkeypatch.setattr(_solver, "run", run)
     selected, minimum = canonical._solve_canonical(plan, None, custom, _certificate=False)
+    assert calls > 0
     assert selected.tolist() == [True, True, False]
     assert minimum == 10
+
+
+@pytest.mark.parametrize(
+    "defect", ["count", "duplicate", "range", "decision_cost", "auxiliary_cost", "cost_length"]
+)
+def test_plan_rejects_invalid_compilation_before_solver(defect, monkeypatch):
+    strategy = METHODS[1]
+    plan = replace(plan_for(SIMPLE, strategy), cost=[3, 7, 11])
+    model, legacy = sparse_model(strategy)
+    problem = model.problem
+    if defect == "count":
+        problem = replace(problem, decision_columns=[4, 0])
+    elif defect == "duplicate":
+        problem = replace(problem, decision_columns=[4, 0, 0])
+    elif defect == "range":
+        problem = replace(problem, decision_columns=[4, 0, 5])
+    elif defect == "decision_cost":
+        problem.cost[4] = 4
+    elif defect == "auxiliary_cost":
+        problem.cost[1] = 1
+    else:
+        problem = replace(problem, cost=problem.cost[:-1])
+    model.problem = problem
+    custom = replace(legacy, essential_decisions=lambda _: [0, 1], compiler=lambda _: model)
+    monkeypatch.setattr(_solver, "run", lambda *a, **k: pytest.fail("invalid model reached solver"))
+    with pytest.raises(SolverError, match="HiGHS returned an invalid solution"):
+        canonical._solve_canonical(plan, None, custom, _certificate=False)
 
 
 def test_plan_integer_cost_sum_is_exact():
