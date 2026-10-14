@@ -1,6 +1,6 @@
 // Summaries and the result file of the simulation study.
 
-import type { ResultMethod } from "./data.js";
+import { isTime, type ResultMethod } from "./data.js";
 import type { Instance, Solve, Study } from "./worker.js";
 
 export const ALL_METHODS: readonly ResultMethod[] = ["letter_minimum", "assignment_minimum",
@@ -49,9 +49,7 @@ export function checkInstance(value: unknown, n: number, seed: number): string |
     const s = solves[m] as Record<string, unknown> | null | undefined;
     if (s === null || typeof s !== "object") return `The instance has no ${m} solve.`;
     const ran = s.milliseconds !== null;
-    if (ran && !(typeof s.milliseconds === "number" && Number.isFinite(s.milliseconds) && s.milliseconds >= 0)) {
-      return `The time of the ${m} solve is not a time.`;
-    }
+    if (ran && !isTime(s.milliseconds)) return `The time of the ${m} solve is not a time.`;
     const finished = s.letters !== null || s.assignments !== null;
     if (finished && !counts(s.letters, s.assignments, n)) return `The counts of the ${m} solve are not possible.`;
     if (finished && !ran) return `The ${m} solve has a result but did not run.`;

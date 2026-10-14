@@ -107,6 +107,9 @@ export function sharedTokens(tokens: readonly string[][], i: number, j: number):
 
 const isCount = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0;
 
+/** A time in milliseconds: a finite number that is not negative. */
+export const isTime = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
+
 /**
  * Check a reply before the page shows it. The package makes the same
  * relationship check; this one protects the page from a reply that changed
@@ -140,6 +143,10 @@ export function checkReduction(value: unknown, method: ResultMethod): string | n
   const counts = [stats.assignmentsBefore, stats.assignmentsAfter, stats.numLettersBefore,
                   stats.numLettersAfter, stats.numGroups, stats.numEdges, stats.objective];
   if (!counts.every(isCount)) return "A statistic of the reply is not a whole number.";
+  if (typeof stats.reductionPct !== "number" || !Number.isFinite(stats.reductionPct)) {
+    return "The reduction percentage of the reply is not a number.";
+  }
+  if (typeof stats.solverStatus !== "string") return "The solver status of the reply is not a text.";
 
   const problem = checkLetters(groups, rows, adjacency);
   if (problem) return problem;
@@ -151,6 +158,14 @@ export function checkReduction(value: unknown, method: ResultMethod): string | n
   }
   if (stats.objective !== (COUNTS_LETTERS.includes(method) ? letters : assignments)) {
     return "The objective value of the reply does not match its letters.";
+  }
+  // Every method chooses among the maximal cliques, so neither count can grow.
+  if (assignments > stats.assignmentsBefore || letters > stats.numLettersBefore) {
+    return "The reply has more letters or assignments than the display before reduction.";
+  }
+  const before = stats.assignmentsBefore;
+  if (Math.abs(stats.reductionPct - (before ? (before - assignments) / before * 100 : 0)) > 1e-9) {
+    return "The reduction percentage of the reply does not match its counts.";
   }
   return null;
 }
@@ -208,13 +223,16 @@ export function checkInput(result: CldReduction, pairs: readonly PairRow[],
   if (!graph) return "The page cannot read the decisions of the input.";
   if (JSON.stringify(graph.groups) !== JSON.stringify(result.groups)) return "The reply has other groups than the input.";
   const n = graph.groups.length;
+  let edges = 0;
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
       if (graph.adjacency[i][j] !== result.adjacency[i][j]) {
         return `The reply changes the decision for ${graph.groups[i]} and ${graph.groups[j]}.`;
       }
+      if (j > i && graph.adjacency[i][j]) edges++;
     }
   }
+  if (result.stats.numEdges !== edges) return "The edge count of the reply does not match the input.";
   return null;
 }
 
@@ -242,6 +260,22 @@ export function checkBefore(value: unknown, pairs: readonly PairRow[], means: re
   const tokens = (rows as LetterRow[]).map((row) => tokensOf(row.assignments));
   if (letters !== new Set(tokens.flat()).size || assignments !== tokens.reduce((sum, t) => sum + t.length, 0)) {
     return "The counts of the display before reduction do not match its letters.";
+  }
+  // The groups of a letter are pairwise joined (checkLetters). The letter must also be a maximal
+  // clique, and no two letters can have the same groups.
+  const members = new Map<string, number[]>();
+  tokens.forEach((own, i) => own.forEach((t) => {
+    const list = members.get(t);
+    if (list) list.push(i); else members.set(t, [i]);
+  }));
+  const seen = new Set<string>();
+  for (const [t, list] of members) {
+    const key = list.join(",");
+    if (seen.has(key)) return `Letter ${t} before reduction has the same groups as another letter.`;
+    seen.add(key);
+    const inside = new Set(list);
+    const fits = groups.findIndex((_, v) => !inside.has(v) && list.every((u) => graph.adjacency[u][v]));
+    if (fits >= 0) return `Letter ${t} before reduction is not a maximal clique: ${groups[fits]} fits in it.`;
   }
   return null;
 }

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { CldReduction } from "../../js/src/index.js";
 import { parseMeans, parsePairs } from "../src/csv.js";
 import { EXAMPLES, METHODS, SECOND_STAGE, STAGES, TABLE_X, checkBefore, checkInput, checkReduction, checkStage, count,
-         displayOf, duration, explain, meanText, methodInfo, resultsCsv, resultsJson, sharedTokens, tokensOf,
+         displayOf, duration, explain, isTime, meanText, methodInfo, resultsCsv, resultsJson, sharedTokens, tokensOf,
          type MethodResult } from "../src/data.js";
 
 const repo = (path: string): string => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
@@ -125,6 +125,31 @@ describe("checkReduction", () => {
   });
 });
 
+describe("checkReduction of the statistics that the page shows and exports", () => {
+  it("rejects more letters or assignments than before, and a percentage or status that does not fit", () => {
+    const r = chain();
+    r.stats.assignmentsBefore = 3;
+    expect(checkReduction(r, "letter_minimum")).toBe("The reply has more letters or assignments than the display before reduction.");
+    const s = chain();
+    s.stats.numLettersBefore = 1;
+    expect(checkReduction(s, "letter_minimum")).toBe("The reply has more letters or assignments than the display before reduction.");
+    const t = chain();
+    t.stats.reductionPct = 25;
+    expect(checkReduction(t, "letter_minimum")).toBe("The reduction percentage of the reply does not match its counts.");
+    const u = chain() as unknown as { stats: Record<string, unknown> };
+    delete u.stats.reductionPct;
+    expect(checkReduction(u, "letter_minimum")).toBe("The reduction percentage of the reply is not a number.");
+    const v = chain() as unknown as { stats: Record<string, unknown> };
+    v.stats.solverStatus = 1;
+    expect(checkReduction(v, "letter_minimum")).toBe("The solver status of the reply is not a text.");
+  });
+
+  it("accepts a time that is a finite number and not negative", () => {
+    expect([0, 1.5, 30000].every(isTime)).toBe(true);
+    expect([NaN, -1, Infinity, "1", null].some(isTime)).toBe(false);
+  });
+});
+
 describe("checkInput", () => {
   const pairs = (lowHigh: string, extra = "low") => [
     { group1: extra, group2: "mid", significant: "false" },
@@ -140,6 +165,9 @@ describe("checkInput", () => {
     expect(checkInput(chain(), pairs("false"), null)).toBe("The reply changes the decision for low and high.");
     expect(checkInput(chain(), pairs("true", "other"), null)).toBe("The reply has other groups than the input.");
     expect(checkInput(chain(), pairs("true").slice(0, 2), null)).toBe("The page cannot read the decisions of the input.");
+    const r = chain();
+    r.stats.numEdges = 3;
+    expect(checkInput(r, pairs("true"), null)).toBe("The edge count of the reply does not match the input.");
   });
 });
 
@@ -164,6 +192,23 @@ describe("checkBefore", () => {
     expect(checkBefore({ ...before(), rows: before().rows.slice(1) }, pairs, null))
       .toBe("The display before reduction does not have one row for each group of the input.");
     expect(checkBefore(null, pairs, null)).toBe("The reply holds no display before reduction.");
+  });
+
+  it("rejects a letter that is not a maximal clique, and two letters with the same groups", () => {
+    // Three groups that do not differ: the one maximal clique is all three.
+    const all = [
+      { group1: "a", group2: "b", significant: "false" },
+      { group1: "b", group2: "c", significant: "false" },
+      { group1: "a", group2: "c", significant: "false" },
+    ];
+    const display = (a: string, b: string, c: string) => {
+      const rows = [["a", a], ["b", b], ["c", c]].map(([group, t]) => ({ group, letters: displayOf(t.split(" ")), assignments: t }));
+      const tokens = rows.map((r) => r.assignments.split(" "));
+      return { rows, letters: new Set(tokens.flat()).size, assignments: tokens.flat().length };
+    };
+    expect(checkBefore(display("A", "A", "A"), all, null)).toBeNull();
+    expect(checkBefore(display("A B", "A B", "A"), all, null)).toBe("Letter B before reduction is not a maximal clique: c fits in it.");
+    expect(checkBefore(display("A B", "A B", "A B"), all, null)).toBe("Letter B before reduction has the same groups as another letter.");
   });
 });
 

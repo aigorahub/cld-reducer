@@ -8,7 +8,7 @@ import { DataError, MAX_CHARS, TEMPLATE_MEANS, TEMPLATE_PAIRS, parseMeans, parse
 import {
   EXAMPLES, METHODS, SECOND_STAGE, TABLE_X, TABLE_XI, checkReduction, count, displayOf, duration, explain,
   meanText, methodInfo, resultsCsv, resultsJson, sharedTokens, tokensOf,
-  checkBefore, checkInput, checkStage, type BeforeRows, type Example, type Method, type MethodResult, type ResultMethod, type StagedOrder,
+  checkBefore, checkInput, checkStage, isTime, type BeforeRows, type Example, type Method, type MethodResult, type ResultMethod, type StagedOrder,
 } from "./data.js";
 import { experimentCsv, simulate } from "./simulate.js";
 import { summarize, studyCsv, ALL_METHODS, checkInstance, planned, slowest } from "./study.js";
@@ -132,6 +132,8 @@ const state = {
   notice: null as string | null,
   study: null as StudyRun | null,
 };
+
+const studyFields = [ui.studyFrom, ui.studyTo, ui.studyStep, ui.studyCount, ui.studySeed, ui.studyLimit];
 
 let nextId = 1;
 /** The before request in flight, with the input and the input version that it belongs to. */
@@ -257,7 +259,8 @@ function onReply(r: Reply): void {
   if (beforeRequest && r.id === beforeRequest.id && (r.type === "before" || r.type === "error")) {
     const { version, input } = beforeRequest;
     beforeRequest = null;
-    const defect = r.type === "before" ? checkBefore(r.before, input.pairs, input.means) : null;
+    const defect = r.type !== "before" ? null
+      : checkBefore(r.before, input.pairs, input.means) ?? (isTime(r.milliseconds) ? null : "The time of the reply is not a time.");
     if (defect) {
       state.before = null;
       state.beforeNote = `The reply failed the check of the page. ${defect}`;
@@ -290,6 +293,7 @@ function onReply(r: Reply): void {
     const defect = r.method !== expected || r.stage !== stage ? "The reply is for another method."
       : checkReduction(r.reduction, r.method)
       ?? checkInput(r.reduction, run.input.pairs, run.input.means)
+      ?? (isTime(r.milliseconds) ? null : "The time of the reply is not a time.")
       ?? (r.stage === 2 ? checkStage(previous.reduction, r.reduction, r.method as StagedOrder) : null)
       ?? (groups && JSON.stringify(groups) !== JSON.stringify(r.reduction.groups)
         ? "The methods returned different groups." : null);
@@ -316,8 +320,11 @@ function finishRun(run: Run): void {
   const before = state.before && state.before.version === run.inputVersion ? state.before : null;
   const stats = run.results[0].reduction.stats;
   if (before && (before.letters !== stats.numLettersBefore || before.assignments !== stats.assignmentsBefore)) {
-    fail({ title: "The solver returned an invalid result", detail: "The page shows no result.",
-           message: "The display before reduction does not match the statistics of the package." });
+    const message = "The display before reduction does not match the statistics of the package.";
+    fail({ title: "The solver returned an invalid result", detail: "The page shows no result.", message });
+    // One of the two is wrong, so the page shows neither.
+    state.before = null;
+    state.beforeNote = message;
     return;
   }
   state.shown = { results: run.results, input: run.input, source: run.source, before };
@@ -532,13 +539,23 @@ function endStudy(status: StudyRun["status"], message: string | null): void {
   state.study.ended = performance.now();
 }
 
+// A study can have 79,000 instances. The page draws its tables at most every 250 ms, not for each instance.
+let studyTimer: ReturnType<typeof setTimeout> | undefined;
+function drawStudySoon(): void {
+  if (studyTimer === undefined) studyTimer = setTimeout(() => { studyTimer = undefined; render(); }, 250);
+}
+
 function onStudyReply(r: Reply): void {
   const run = state.study!;
   let defect: string | null = null;
   if (r.type === "instance") {
     const next = planned(run.study, run.instances.length);
     defect = next ? checkInstance(r.instance, next.n, next.seed) : "The worker sent more instances than the study has.";
-    if (!defect) run.instances.push(r.instance);
+    if (!defect) {
+      run.instances.push(r.instance);
+      drawStudySoon();
+      return;
+    }
   } else if (r.type === "done") {
     if (run.instances.length === run.total) endStudy("done", null);
     else defect = "The study ended before all its instances were solved.";
@@ -613,6 +630,7 @@ function renderControls(): void {
   ui.run.classList.toggle("is-cancel", running);
   ui.run.disabled = !running && (state.solver !== "ready" || studying);
   ui.compare.disabled = running || studying || state.solver !== "ready";
+  for (const field of studyFields) field.disabled = studying;
   ui.runHint.textContent = state.solver === "failed" ? "The solver is not available."
     : studying ? "The simulation study is running."
     : running ? "Cancel stops the solver." : state.solver === "loading" ? "Waiting for the solver…" : "";
@@ -931,6 +949,15 @@ ui.studyRun.addEventListener("click", () => {
   if (state.study?.status === "running") cancelStudy();
   else startStudy();
 });
+// The fields cannot change during a study. A change after it removes its results, which belong to the old fields.
+for (const field of studyFields) {
+  field.addEventListener("input", () => {
+    if (state.study && state.study.status !== "running") {
+      state.study = null;
+      render();
+    }
+  });
+}
 
 for (const area of [ui.pairs, ui.means]) {
   area.addEventListener("input", () => {

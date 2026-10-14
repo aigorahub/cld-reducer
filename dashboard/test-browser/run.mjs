@@ -509,6 +509,7 @@ async function main() {
         r.adjacency = r.adjacency.map((line) => line.map(() => true));
         r.stats.numLettersAfter = r.stats.objective = 1;
         r.stats.assignmentsAfter = r.rows.length;
+        r.stats.reductionPct = (r.stats.assignmentsBefore - r.rows.length) / r.stats.assignmentsBefore * 100;
         return reply;
       };
     });
@@ -516,6 +517,11 @@ async function main() {
     await page.click("#run");
     await wait(() => /^The reply changes the decision for \d+ and \d+\.$/.test(document.querySelector(".problem > p")?.textContent ?? ""));
     noResult(await read(), "reply with other decisions than the input");
+    await page.evaluate(() => { window.__alter = (reply) => { reply.milliseconds = NaN; return reply; }; });
+    await ready();
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > p")?.textContent === "The time of the reply is not a time.");
+    noResult(await read(), "reply with a time that is not a number");
     await page.evaluate(() => { window.__alter = null; });
     await ready();
     await page.click("#compare");
@@ -550,18 +556,19 @@ async function main() {
           `Table II results: ${JSON.stringify(saved.results.map((r) => r.stats))}`);
     check(saved.before.letters === 7 && saved.before.assignments === 26 && state.matrices.length === 2, "Table II before and matrices");
     // A second stage that does not keep the minimum of its first stage is not shown. Here an extra
-    // letter copies the column of A: the display stays valid but has one letter too many.
-    await page.click('button.example:has-text("Simple example")');
+    // letter copies the column of A: the display stays valid but has one letter too many. On the
+    // Table II graph it still has fewer letters and assignments than the display before reduction.
     await page.evaluate(() => {
       window.__alter = (reply) => {
         if (reply.method !== "letter_then_assignment") return reply;
         const r = reply.reduction;
         for (const row of r.rows) {
-          if (row.assignments.split(" ").includes("A")) { row.assignments += " D"; row.letters += "D"; }
+          if (row.assignments.split(" ").includes("A")) { row.assignments += " Z"; row.letters += "Z"; }
         }
         r.stats.numLettersAfter += 1;
         r.stats.assignmentsAfter = r.rows.reduce((t, row) => t + row.assignments.split(" ").length, 0);
         r.stats.objective = r.stats.assignmentsAfter;
+        r.stats.reductionPct = (r.stats.assignmentsBefore - r.stats.assignmentsAfter) / r.stats.assignmentsBefore * 100;
         return reply;
       };
     });
@@ -619,6 +626,34 @@ async function main() {
       .startsWith("The display before reduction is not available: The reply failed the check of the page."));
     state = await read();
     check(state.title === null && state.letters === null, `an altered display before reduction is shown: ${state.title}`);
+    // A display before reduction can pass that check and still miss a maximal clique. Here the
+    // triangle a, b, c is a maximal clique, but the three other cliques cover its pairs. A run then
+    // finds that the counts differ from the package, and the page shows neither.
+    await page.evaluate(() => {
+      window.__alterBefore = (reply) => {
+        const b = reply.before;
+        const members = (t) => b.rows.filter((r) => r.assignments.split(" ").includes(t)).map((r) => r.group).join("");
+        const drop = [...new Set(b.rows.flatMap((r) => r.assignments.split(" ")))].find((t) => members(t) === "abc");
+        for (const r of b.rows) {
+          const tokens = r.assignments.split(" ").filter((t) => t !== drop);
+          r.assignments = tokens.join(" ");
+          r.letters = tokens.every((t) => t.length === 1) ? tokens.join("") : tokens.join(" ");
+        }
+        b.letters -= 1;
+        b.assignments -= 3;
+        return reply;
+      };
+    });
+    const joined = new Set(["a,b", "b,c", "a,c", "a,x", "b,x", "b,y", "c,y", "a,z", "c,z"]);
+    const sun = ["a", "b", "c", "x", "y", "z"].flatMap((g, i, all) => all.slice(i + 1).map((h) => `${g},${h},${!joined.has(`${g},${h}`)}`));
+    await page.fill("#means", "");
+    await page.fill("#pairs", ["group1,group2,significant", ...sun].join("\n") + "\n");
+    await wait(() => document.querySelector(".headline-title")?.textContent === "Before reduction: 3 letters and 9 assignments");
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > p")?.textContent ===
+      "The display before reduction does not match the statistics of the package.");
+    state = await read();
+    check(state.title === null && state.letters === null, `a display before reduction with a missing clique stays: ${state.title}`);
     await page.evaluate(() => { window.__alterBefore = null; });
     // A simulated input again, for the study and the narrow layout below.
     await page.fill("#sim-n", "12");
@@ -674,6 +709,8 @@ async function main() {
     await wait(() => document.getElementById("study-run").textContent === "Cancel");
     check(await page.$eval("#run", (e) => e.disabled) && await page.$eval("#compare", (e) => e.disabled),
           "Run is open during the study");
+    check(await page.evaluate(() => ["from", "to", "step", "count", "seed", "limit"]
+      .every((f) => document.getElementById(`study-${f}`).disabled)), "a study field is open during the study");
     await page.waitForTimeout(300);
     await page.click("#study-run");
     const studyHint = await page.$eval("#study-hint", (e) => e.textContent);
@@ -681,6 +718,24 @@ async function main() {
     check(await page.evaluate((n) => window.__workers.length === n + 1 && window.__workers[n - 1].terminated, workersBefore),
           "Cancel did not stop the study worker");
     await ready();
+    // A change of a field after the study removes its results, which belong to the old fields.
+    await page.fill("#study-seed", "2");
+    check(await page.$eval("#study-results", (e) => e.children.length === 0) &&
+          await page.$eval("#study-hint", (e) => e.textContent === ""), "study results stay after a change of a field");
+    // Many short instances: the page draws the study tables a few times, not once for each instance.
+    for (const [id, value] of [["study-from", "2"], ["study-to", "3"], ["study-step", "1"], ["study-count", "300"]]) {
+      await page.fill(`#${id}`, value);
+    }
+    await page.evaluate(() => {
+      window.__draws = 0;
+      new MutationObserver((records) => {
+        window.__draws += records.filter((r) => r.removedNodes.length > 0).length;
+      }).observe(document.getElementById("study-results"), { childList: true });
+    });
+    await page.click("#study-run");
+    await wait(() => document.getElementById("study-hint").textContent.startsWith("Done: 600 instances"));
+    const draws = await page.evaluate(() => window.__draws);
+    check(draws < 100, `the study tables were drawn ${draws} times for 600 instances`);
     await page.click("#view-reduce");
 
     // The licenses and the data sources are in the file.
