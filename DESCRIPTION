@@ -1,6 +1,6 @@
 Package: cldreducer
 Title: Reduce Compact Letter Displays
-Version: 0.3.0
+Version: 0.3.1
 Authors@R:
   c(
     person("John", "Ennis", , "john.m.ennis@aigora.com", role = c("aut", "cre")),
