@@ -45,6 +45,8 @@ jobs:
           use-public-rspm: true
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::jsonlite, any::pkgload
+          extra-packages: any::jsonlite, any::pkgload, any::microbenchmark, any::digest
           needs: check
       - run: Rscript conformance/run_r.R
+      - run: Rscript benchmarks/test_r_driver.R --repo .
+      - run: python3 benchmarks/test_r_driver.py --repo .

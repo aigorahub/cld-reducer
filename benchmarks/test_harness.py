@@ -1,0 +1,1097 @@
+"""Check that incomplete, biased, incorrect and slow evidence cannot pass."""
+
+import copy
+import json
+import random
+import sys
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import common
+from analysis import (
+    analyze,
+    estimate,
+    measurement_orders,
+    ordered_samples,
+    paired_orders,
+    rss_growth,
+    select_gain_targets,
+)
+from cases import frozen_manifest, job_key, jobs, multipartite
+from common import Driver, DriverError, digest, input_digest
+from run import fixture_mismatch, load_manifest
+
+
+def source(path="/baseline", head="a" * 40, *, js=False):
+    binding = {
+        "path": path,
+        "head": head,
+        "tree": "b" * 40,
+        "status": "",
+        "build_files": {"js/dist/index.js": "c" * 64},
+        "lock_files": {"js/package-lock.json": "d" * 64},
+    }
+    if js:
+        binding.update(
+            build_verified=True,
+            dependency_files={
+                "highs/package.json": "1" * 64,
+                "highs/build/highs.mjs": "2" * 64,
+                "highs/build/highs.wasm": "3" * 64,
+            },
+            compiler_files={"typescript/bin/tsc": "4" * 64, "typescript/lib/tsc.js": "5" * 64},
+        )
+    return binding
+
+
+def version(head="a" * 40):
+    return {
+        "ok": True,
+        "action": "version",
+        "language": "python",
+        "runtime": "3.13.0",
+        "package": "0.3.0",
+        "dependencies": {"highspy": "1.15.1", "numpy": "2.5.4"},
+        "solver": {"name": "HiGHS", "version": "1.15.1"},
+        "settings": {"presolve": "on", "threads": 1, "mip_rel_gap": 0, "mip_abs_gap": 0},
+        "module_load_ns": 100,
+        "solver_load_ns": 200,
+        "source_head": head,
+    }
+
+
+def evidence(ratio=0.8, targets=True):
+    cases = [
+        {
+            "id": f"{split}/case-{i}",
+            "split": split,
+            "tier": "solve",
+            "classification": "ordinary",
+            "wall_seconds": 30,
+            "call": "adjacency",
+            "input": {"adjacency": [[1] * (i + 1) for _ in range(i + 1)]},
+            "options": {},
+        }
+        for split in ("development", "validation")
+        for i in range(5)
+    ]
+    m = {
+        "schema_version": 1,
+        "languages": ["python"],
+        "methods": ["letter_minimum"],
+        "cases": cases,
+        "processes": 8,
+        "warmup_batches": 3,
+        "batches": 9,
+        "memory_limit_mb": 8192,
+        "presolve": {"python": "on"},
+        "bootstrap_resamples": 10000,
+        "bootstrap_seed": 41,
+        "order_seed": 17,
+        "frozen": True,
+        "iterations": {},
+        "baseline_failures": [],
+        "gain_targets": {},
+        "baseline_source": source(),
+        "pilot_source": source(),
+        "baseline_versions": {"python": version()},
+    }
+    keys = [job_key("python", c) for c in jobs(m)]
+    m["iterations"] = dict.fromkeys(keys, 1)
+    if targets:
+        m["gain_targets"] = {"python|letter_minimum": keys}
+    rows = [
+        {
+            "key": key,
+            "process": p,
+            "batch": b,
+            "iterations": 1,
+            "ok": True,
+            "correct": True,
+            "baseline_ns": 100 + p,
+            "candidate_ns": ratio * (100 + p),
+        }
+        for key in keys
+        for p in range(8)
+        for b in range(9)
+    ]
+    set_sample_orders(m, rows)
+    before = {"baseline": source(), "candidate": source("/candidate", "e" * 40)}
+    meta = {
+        "complete": True,
+        "manifest_sha256": digest(m),
+        "input_sha256": input_digest(m),
+        "source_before": before,
+        "source_after": copy.deepcopy(before),
+        "kind": "candidate",
+        "harness": source("/harness"),
+        "harness_after": source("/harness"),
+        "versions": [
+            {"language": "python", "process": p, "versions": [version(), version("e" * 40)]}
+            for p in range(8)
+        ],
+    }
+    return m, meta, rows
+
+
+def set_sample_orders(manifest, rows):
+    orders = measurement_orders(manifest)
+    for row in rows:
+        row["order"] = orders[row["key"], row["process"], row["batch"]]
+
+
+def calibration(meta):
+    meta["kind"] = "calibration"
+    for key in ("source_before", "source_after"):
+        meta[key]["candidate"] = dict(copy.deepcopy(meta[key]["baseline"]), path="/candidate")
+    for row in meta["versions"]:
+        row["versions"][1]["source_head"] = "a" * 40
+
+
+def memory_samples():
+    manifest = {
+        "languages": ["python", "js"],
+        "methods": ["letter_minimum", "assignment_minimum"],
+        "cases": [
+            {"id": name, "tier": "solve", "options": {}}
+            for name in ("z-first", "excluded", "a-last")
+        ],
+        "processes": 2,
+        "batches": 3,
+        "baseline_failures": [
+            f"{language}|{method}|excluded"
+            for language in ("python", "js")
+            for method in ("letter_minimum", "assignment_minimum")
+        ],
+        "memory_limit_mb": 128,
+        "memory_growth_tolerance_mb": 1,
+    }
+    rows = [
+        {
+            "key": job_key(language, case),
+            "language": language,
+            "process": process,
+            "batch": batch,
+            "order": [1, 0] if batch % 2 else [0, 1],
+            "rss": [1024, 1024],
+            "peak_rss": [1024, 1024],
+        }
+        for language in manifest["languages"]
+        for process in range(manifest["processes"])
+        for case in jobs(manifest)
+        if job_key(language, case) not in manifest["baseline_failures"]
+        for batch in range(manifest["batches"])
+    ]
+    return manifest, rows
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_memory_growth_uses_manifest_jobs_and_batch_order(reverse):
+    manifest, rows = memory_samples()
+    # The last manifest job sorts before the first job. File and lexical order
+    # must not turn this 2 MiB process growth into an apparent decrease.
+    rows[-1]["rss"] = rows[-1]["peak_rss"] = [1024, 1024 + 2 * 1024**2]
+    if reverse:
+        rows.reverse()
+    with pytest.raises(ValueError, match="exceeds baseline and allowance for js/1"):
+        rss_growth(manifest, rows)
+
+
+def test_memory_endpoints_and_pair_order_do_not_depend_on_file_order():
+    manifest, rows = memory_samples()
+    for row in rows:
+        if row["key"].endswith("assignment_minimum|a-last") and row["batch"] == 2:
+            row["rss"] = row["peak_rss"] = [2048, 3072]
+    expected = rss_growth(manifest, rows)
+    shuffled = rows[1::2][::-1] + rows[::2][::-1]
+    assert rss_growth(manifest, shuffled) == expected
+    ordered = ordered_samples(manifest, shuffled)
+    assert all(actual is original for actual, original in zip(ordered, rows, strict=True))
+    assert all(row["first_rss"] == [1024, 1024] for row in expected)
+    assert all(row["last_rss"] == [2048, 3072] for row in expected)
+    assert all(row["excess_candidate_growth_bytes"] == 1024 for row in expected)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing",
+        "duplicate",
+        "extra",
+        "excluded",
+        "language",
+        "process",
+        "batch",
+        "bool",
+        "missing_batch",
+    ],
+)
+def test_memory_samples_require_the_complete_index_inventory(fault):
+    manifest, rows = memory_samples()
+    if fault == "missing":
+        rows.pop(1)
+    elif fault == "duplicate":
+        rows.append(copy.deepcopy(rows[0]))
+    elif fault in ("extra", "excluded"):
+        rows[0]["key"] = "python|letter_minimum|" + fault
+    elif fault == "language":
+        rows[0]["language"] = "js"
+    elif fault in ("process", "batch"):
+        rows[0][fault] = manifest[{"process": "processes", "batch": "batches"}[fault]]
+    elif fault == "bool":
+        rows[0]["batch"] = False
+    else:
+        rows[0].pop("batch")
+    with pytest.raises(ValueError, match="sample"):
+        rss_growth(manifest, rows)
+
+
+def test_timing_analysis_uses_shared_sample_identity_validation():
+    manifest, metadata, rows = evidence()
+    rows[0]["language"] = "js"
+    report = analyze(manifest, metadata, rows)
+    assert not report["pass"]
+    assert "Invalid or unexpected sample identity" in report["reasons"]
+
+
+def test_exact_gain_and_paired_process_noise():
+    m, meta, rows = evidence()
+    report = analyze(m, meta, rows)
+    assert report["pass"], report["reasons"]
+    assert report["scope"] == "single_run"
+    assert all(g["ratio"] == pytest.approx(0.8) for g in report["groups"].values())
+    assert all(g["interval_95"][1] == pytest.approx(0.8) for g in report["groups"].values())
+
+
+def test_measurement_orders_preserves_rng_progression_and_skips():
+    from run import paired_orders as collection_paired_orders
+
+    assert collection_paired_orders is paired_orders
+    manifest, _ = memory_samples()
+    manifest.update(order_seed=17, warmup_batches=3, batches=9)
+    orders = measurement_orders(manifest)
+    # These first positions come from the original collection loop: one RNG
+    # per language/process, then warmup and measurement shuffles for each job.
+    expected = [
+        [
+            [1, 1, 0, 0, 0, 1, 0, 1, 0],
+            [1, 1, 0, 1, 0, 1, 0, 0, 0],
+            [1, 0, 1, 1, 0, 0, 0, 1, 0],
+            [1, 1, 1, 0, 0, 0, 1, 0, 0],
+        ],
+        [
+            [1, 1, 1, 1, 0, 1, 0, 0, 0],
+            [0, 1, 0, 1, 1, 0, 1, 0, 1],
+            [1, 0, 1, 0, 1, 1, 0, 1, 0],
+            [0, 1, 1, 0, 0, 0, 1, 1, 1],
+        ],
+    ]
+    for language in manifest["languages"]:
+        keys = [
+            job_key(language, case)
+            for case in jobs(manifest)
+            if job_key(language, case) not in manifest["baseline_failures"]
+        ]
+        for process in range(2):
+            assert [
+                [orders[key, process, batch][0] for batch in range(9)] for key in keys
+            ] == expected[process]
+    assert len(orders) == 2 * 2 * 4 * 9
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing",
+        "not_list",
+        "short",
+        "duplicate",
+        "bool",
+        "float",
+        "unbalanced",
+        "seed",
+        "warmups",
+        "reset_per_job",
+    ],
+)
+def test_analysis_rejects_invalid_or_changed_pair_schedule(fault):
+    manifest, metadata, rows = evidence()
+    if fault == "missing":
+        rows[0].pop("order")
+    elif fault in ("not_list", "short", "duplicate", "bool", "float"):
+        rows[0]["order"] = {
+            "not_list": "10",
+            "short": [1],
+            "duplicate": [1, 1],
+            "bool": [True, False],
+            "float": [1.0, 0.0],
+        }[fault]
+    elif fault == "unbalanced":
+        for row in rows:
+            row["order"] = [0, 1]
+    elif fault in ("seed", "warmups"):
+        other = copy.deepcopy(manifest)
+        other["order_seed" if fault == "seed" else "warmup_batches"] += 1
+        set_sample_orders(other, rows)
+    else:
+        for row in rows:
+            rng = random.Random(manifest["order_seed"] + row["process"])
+            paired_orders(rng, manifest["warmup_batches"], row["process"])
+            row["order"] = paired_orders(rng, manifest["batches"], row["process"])[row["batch"]]
+    report = analyze(manifest, metadata, rows)
+    assert not report["pass"]
+    assert any("pair order differs" in reason for reason in report["reasons"])
+
+
+def test_analysis_accepts_reordered_rows_with_the_same_pair_schedule():
+    manifest, metadata, rows = evidence()
+    original = analyze(manifest, metadata, rows)
+    assert original["pass"]
+    assert analyze(manifest, metadata, rows[::-1]) == original
+
+
+def test_analysis_schedule_skips_baseline_failures_without_rng_use():
+    manifest, metadata, rows = evidence(ratio=1, targets=False)
+    calibration(metadata)
+    original_orders = measurement_orders(manifest)
+    failed = list(manifest["iterations"])[3]
+    manifest["baseline_failures"] = [failed]
+    manifest["iterations"].pop(failed)
+    rows = [row for row in rows if row["key"] != failed]
+    set_sample_orders(manifest, rows)
+    metadata["manifest_sha256"] = digest(manifest)
+    metadata["input_sha256"] = input_digest(manifest)
+    report = analyze(manifest, metadata, rows[::-1])
+    assert report["pass"], report["reasons"]
+    for row in rows:
+        row["order"] = original_orders[row["key"], row["process"], row["batch"]]
+    report = analyze(manifest, metadata, rows)
+    assert not report["pass"]
+    assert any("pair order differs" in reason for reason in report["reasons"])
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "incomplete",
+        "missing",
+        "duplicate",
+        "wrong",
+        "failure",
+        "binding",
+        "source",
+        "iterations",
+        "nonfinite",
+    ],
+)
+def test_missing_or_invalid_evidence_fails(fault):
+    m, meta, rows = evidence()
+    if fault == "incomplete":
+        meta["complete"] = False
+    elif fault == "missing":
+        rows.pop()
+    elif fault == "duplicate":
+        rows.append(copy.deepcopy(rows[0]))
+    elif fault == "wrong":
+        rows[0]["correct"] = False
+    elif fault == "failure":
+        rows[0]["ok"] = False
+    elif fault == "binding":
+        meta["manifest_sha256"] = "wrong"
+    elif fault == "source":
+        meta["source_after"] = {"head": "other"}
+    elif fault == "iterations":
+        rows[0]["iterations"] = 2
+    elif fault == "nonfinite":
+        rows[0]["candidate_ns"] = float("nan")
+    assert not analyze(m, meta, rows)["pass"]
+
+
+def test_one_slow_case_blocks_large_group_gain():
+    m, meta, rows = evidence(0.5)
+    key = rows[0]["key"]
+    for r in rows:
+        if r["key"] == key:
+            r["candidate_ns"] = r["baseline_ns"] * 1.06
+    assert not analyze(m, meta, rows)["pass"]
+
+
+def test_process_variation_is_resampled():
+    baseline = np.full((8, 9), 100.0)
+    candidate = np.array([[v] * 9 for v in (40, 50, 60, 80, 100, 110, 140, 190)])
+    _, interval, _ = estimate(baseline, candidate, 10000, 17)
+    assert interval[1] > 1.05
+
+
+def test_validation_gain_must_pass_independently():
+    m, meta, rows = evidence()
+    for row in rows:
+        if "validation/" in row["key"]:
+            row["candidate_ns"] = row["baseline_ns"]
+    r = analyze(m, meta, rows)
+    assert not r["pass"]
+    assert any("validation" in reason for reason in r["reasons"])
+
+
+def test_empty_targets_fail_but_calibration_needs_no_gain():
+    m, meta, rows = evidence(1.0, targets=False)
+    assert not analyze(m, meta, rows)["pass"]
+    calibration(meta)
+    assert analyze(m, meta, rows)["pass"]
+
+
+@pytest.mark.parametrize("ratio,passed", [(0.8, False), (0.96, True), (1.04, True), (1.06, False)])
+def test_calibration_requires_two_sided_equivalence(ratio, passed):
+    m, meta, rows = evidence(ratio, targets=False)
+    calibration(meta)
+    report = analyze(m, meta, rows)
+    assert report["pass"] is passed
+    assert all(case["pass"] is passed for case in report["cases"].values())
+
+
+@pytest.mark.parametrize("fault", ["missing", "changed"])
+def test_analysis_rejects_missing_or_changed_collection_harness(fault):
+    m, meta, rows = evidence()
+    if fault == "missing":
+        meta.pop("harness_after")
+    else:
+        meta["harness_after"]["head"] = "9" * 40
+    report = analyze(m, meta, rows)
+    assert not report["pass"]
+    assert "Harness source binding is missing or changed during collection" in report["reasons"]
+
+
+def target_profiles(manifest):
+    return [
+        {
+            "key": job_key(language, case),
+            "case": case,
+            "response": {
+                "ok": True,
+                "metrics": {"essential_cover": True, "solver_total_ns": 25, "probe_ns": 0},
+                "phases_ns": {"total": 100},
+            },
+        }
+        for language in manifest["languages"]
+        for case in jobs(manifest)
+    ]
+
+
+def test_target_selection_keeps_small_combinations_regression_only():
+    manifest, _, _ = evidence()
+    manifest["methods"].append("assignment_minimum")
+    profiles = target_profiles(manifest)
+    for row in profiles:
+        if row["case"]["options"]["method"] == "assignment_minimum" and row["case"]["id"].endswith(
+            "4"
+        ):
+            row["response"]["metrics"]["solver_total_ns"] = 24
+    targets = select_gain_targets(manifest, profiles)
+    assert set(targets) == {"python|letter_minimum"}
+    assert len(targets["python|letter_minimum"]) == 10
+
+
+def test_target_selection_subtracts_probes_from_full_api_time():
+    manifest, _, _ = evidence()
+    profiles = target_profiles(manifest)
+    for row in profiles:
+        # Adapter time already excludes probes: 24 / (100 - 4) meets 25%,
+        # whereas dividing by the raw total would exclude every target.
+        row["response"]["metrics"].update(solver_total_ns=24, probe_ns=4)
+    assert select_gain_targets(manifest, profiles) == manifest["gain_targets"]
+    for row in profiles:
+        row["response"]["metrics"]["probe_ns"] = 3
+    with pytest.raises(ValueError, match="five distinct inputs"):
+        select_gain_targets(manifest, profiles)
+
+
+@pytest.mark.parametrize("probe", [None, True, -1, float("nan"), float("inf"), 100, 101])
+def test_target_selection_rejects_invalid_probe_correction(probe):
+    manifest, _, _ = evidence()
+    profiles = target_profiles(manifest)
+    if probe is None:
+        profiles[0]["response"]["metrics"].pop("probe_ns")
+    else:
+        profiles[0]["response"]["metrics"]["probe_ns"] = probe
+    with pytest.raises(ValueError, match="eligibility metrics"):
+        select_gain_targets(manifest, profiles)
+
+
+@pytest.mark.parametrize("solver,probe", [(90, 80), (101, 0), (97, 4)])
+@pytest.mark.parametrize("cover", [True, False])
+def test_target_selection_rejects_solver_and_probe_time_beyond_total(solver, probe, cover):
+    manifest, _, _ = evidence()
+    profiles = target_profiles(manifest)
+    profiles[0]["response"]["metrics"].update(
+        essential_cover=cover, solver_total_ns=solver, probe_ns=probe
+    )
+    with pytest.raises(ValueError, match="eligibility metrics"):
+        select_gain_targets(manifest, profiles)
+
+
+def test_target_selection_accepts_solver_and_probe_time_equal_to_total():
+    manifest, _, _ = evidence()
+    profiles = target_profiles(manifest)
+    for row in profiles:
+        row["response"]["metrics"].update(solver_total_ns=96, probe_ns=4)
+    assert select_gain_targets(manifest, profiles) == manifest["gain_targets"]
+
+
+def test_target_selection_counts_input_digests_not_case_ids():
+    manifest, _, _ = evidence()
+    for case in manifest["cases"]:
+        case["input"] = {"adjacency": [[1]]}
+    with pytest.raises(ValueError, match="five distinct inputs"):
+        select_gain_targets(manifest, target_profiles(manifest))
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing_cover",
+        "missing_solver",
+        "zero_total",
+        "nan_solver",
+        "boolean_solver",
+        "duplicate",
+        "missing",
+    ],
+)
+def test_target_selection_requires_complete_numeric_profile_evidence(fault):
+    manifest, _, _ = evidence()
+    profiles = target_profiles(manifest)
+    response = profiles[0]["response"]
+    if fault == "missing_cover":
+        response["metrics"].pop("essential_cover")
+    elif fault == "missing_solver":
+        response["metrics"].pop("solver_total_ns")
+    elif fault == "zero_total":
+        response["phases_ns"]["total"] = 0
+    elif fault == "nan_solver":
+        response["metrics"]["solver_total_ns"] = float("nan")
+    elif fault == "boolean_solver":
+        response["metrics"]["solver_total_ns"] = True
+    elif fault == "duplicate":
+        profiles.append(copy.deepcopy(profiles[0]))
+    else:
+        profiles.pop()
+    with pytest.raises(ValueError):
+        select_gain_targets(manifest, profiles)
+
+
+def test_manifest_families_are_deterministic_and_bounded():
+    repo = Path(__file__).resolve().parents[1]
+    m = frozen_manifest(repo)
+    assert m == frozen_manifest(repo)
+    assert len({c["id"] for c in m["cases"]}) == len(m["cases"])
+    assert {c["tier"] for c in m["cases"]} == {"solve", "opt-in", "preprocess", "expected-error"}
+    a = multipartite(9)
+    assert len(a) == 27 and all(a[i][i] == 1 for i in range(27))
+    assert 3**9 > 10000
+    assert all(c["classification"] in ("ordinary", "stress") for c in m["cases"])
+
+
+def test_frozen_fixture_check_detects_wrong_objective():
+    actual = {
+        "groups": ["a"],
+        "adjacency": [[True]],
+        "rows": [{"group": "a", "letters": "A", "assignments": "A"}],
+        "assignments": [["A"]],
+        "letters": ["A"],
+        "method": "letter_minimum",
+        "relationship_preserved": True,
+        "stats": {"objective": 2, "solver_status": "Optimal", "reduction_pct": 0},
+    }
+    expected = {
+        "groups": ["a"],
+        "assignments": {"a": ["A"]},
+        "letters": {"a": "A"},
+        "method": "letter_minimum",
+        "relationship_preserved": True,
+        "stats": {},
+        "objective": 1,
+        "solver_status": "Optimal",
+        "reduction_pct": {"numerator": 0, "denominator": 1},
+    }
+    assert fixture_mismatch(actual, expected) == ["stats.objective"]
+
+
+def fake_driver(tmp_path, monkeypatch, body):
+    directory = tmp_path / "benchmarks"
+    directory.mkdir()
+    (directory / "python_driver.py").write_text(body)
+    monkeypatch.setattr(common, "ROOT", tmp_path)
+    return Driver("python", tmp_path, "on", tmp_path / "stderr", memory_mb=128)
+
+
+def test_transport_rejects_wrong_action(tmp_path, monkeypatch):
+    with fake_driver(  # noqa: SIM117
+        tmp_path,
+        monkeypatch,
+        "import sys,json\n"
+        'for l in sys.stdin: print(json.dumps({"ok":True,"action":"wrong"}),flush=True)\n',
+    ) as d:
+        with pytest.raises(DriverError, match="match"):
+            d.request({"action": "version"})
+
+
+def test_transport_kills_wall_limit(tmp_path, monkeypatch):
+    with fake_driver(tmp_path, monkeypatch, "import time\ntime.sleep(30)\n") as d:
+        with pytest.raises(DriverError, match="wall limit"):
+            d.request({"action": "version"}, timeout=0.15)
+        assert d.process.poll() is not None
+
+
+def test_manifest_rejects_underpowered_process_count(tmp_path):
+    m, _, _ = evidence()
+    m["processes"] = 3
+    p = tmp_path / "manifest.json"
+    p.write_text(json.dumps(m))
+    with pytest.raises(ValueError, match="measurement design"):
+        load_manifest(p)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing_before",
+        "missing_after",
+        "missing_harness",
+        "empty",
+        "short_head",
+        "dirty",
+        "missing_build",
+        "bad_build_hash",
+        "missing_locks",
+        "bad_lock_path",
+        "frozen_source",
+        "stale_driver",
+    ],
+)
+def test_source_bindings_must_be_complete_and_match_frozen_baseline(fault):
+    m, meta, rows = evidence()
+    if fault == "missing_before":
+        meta.pop("source_before")
+    elif fault == "missing_after":
+        meta.pop("source_after")
+    elif fault == "missing_harness":
+        meta.pop("harness")
+    elif fault == "empty":
+        meta["source_before"] = meta["source_after"] = {}
+    elif fault == "frozen_source":
+        m["baseline_source"]["head"] = "f" * 40
+    elif fault == "stale_driver":
+        meta["versions"][0]["versions"][0]["source_head"] = "f" * 40
+    else:
+        for key in ("source_before", "source_after"):
+            binding = meta[key]["baseline"]
+            if fault == "short_head":
+                binding["head"] = "abc"
+            elif fault == "dirty":
+                binding["status"] = " M runtime.py"
+            elif fault == "missing_build":
+                binding.pop("build_files")
+            elif fault == "bad_build_hash":
+                binding["build_files"]["js/dist/index.js"] = "bad"
+            elif fault == "missing_locks":
+                binding.pop("lock_files")
+            elif fault == "bad_lock_path":
+                binding["lock_files"] = {"../package-lock.json": "d" * 64}
+    meta["manifest_sha256"] = digest(m)
+    meta["input_sha256"] = input_digest(m)
+    assert not analyze(m, meta, rows)["pass"]
+
+
+def test_frozen_baseline_can_use_another_clean_checkout_path():
+    m, meta, rows = evidence()
+    m["baseline_source"]["path"] = "/calibration-checkout"
+    meta["manifest_sha256"] = digest(m)
+    meta["input_sha256"] = input_digest(m)
+    assert analyze(m, meta, rows)["pass"]
+
+
+@pytest.mark.parametrize("part", ["head", "tree", "build_files", "lock_files"])
+def test_aa_cannot_use_different_source_or_executable_build(part):
+    m, meta, rows = evidence(1.0, targets=False)
+    calibration(meta)
+    for key in ("source_before", "source_after"):
+        binding = meta[key]["candidate"]
+        if part in ("head", "tree"):
+            binding[part] = "f" * 40
+        else:
+            binding[part][next(iter(binding[part]))] = "f" * 64
+    if part == "head":
+        for row in meta["versions"]:
+            row["versions"][1]["source_head"] = "f" * 40
+    report = analyze(m, meta, rows)
+    assert not report["pass"]
+    assert "A/A source identities differ" in report["reasons"]
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing",
+        "missing_process",
+        "duplicate",
+        "extra",
+        "bad_index",
+        "language",
+        "missing_solver",
+        "presolve",
+        "threads",
+        "pair",
+        "drift",
+        "frozen",
+        "missing_frozen",
+        "missing_frozen_language",
+    ],
+)
+def test_complete_stable_runtime_versions_and_settings_are_required(fault):
+    m, meta, rows = evidence()
+    if fault == "missing":
+        meta.pop("versions")
+    elif fault == "missing_process":
+        meta["versions"].pop()
+    elif fault == "duplicate":
+        meta["versions"].append(copy.deepcopy(meta["versions"][0]))
+    elif fault == "extra":
+        meta["versions"][0]["process"] = 8
+    elif fault == "bad_index":
+        meta["versions"][0]["process"] = False
+    elif fault == "language":
+        meta["versions"][0]["versions"][0]["language"] = "r"
+    elif fault == "missing_solver":
+        meta["versions"][0]["versions"][0].pop("solver")
+    elif fault == "presolve":
+        meta["versions"][0]["versions"][0]["settings"]["presolve"] = "off"
+    elif fault == "threads":
+        meta["versions"][0]["versions"][0]["settings"]["threads"] = 2
+    elif fault == "pair":
+        meta["versions"][0]["versions"][1]["dependencies"]["highspy"] = "other"
+    elif fault == "drift":
+        for v in meta["versions"][1]["versions"]:
+            v["dependencies"]["highspy"] = "other"
+    elif fault == "frozen":
+        m["baseline_versions"]["python"]["dependencies"]["highspy"] = "other"
+    elif fault == "missing_frozen":
+        m.pop("baseline_versions")
+    elif fault == "missing_frozen_language":
+        m["baseline_versions"] = {}
+    meta["manifest_sha256"] = digest(m)
+    meta["input_sha256"] = input_digest(m)
+    assert not analyze(m, meta, rows)["pass"]
+
+
+def test_aa_rejects_dependency_changes_but_ignores_load_times():
+    m, meta, rows = evidence(1.0, targets=False)
+    calibration(meta)
+    meta["versions"][0]["versions"][1]["module_load_ns"] = 99999
+    assert analyze(m, meta, rows)["pass"]
+    meta["versions"][0]["versions"][1]["dependencies"]["highspy"] = "other"
+    assert not analyze(m, meta, rows)["pass"]
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "unknown",
+        "duplicate",
+        "mixed_method",
+        "mixed_language",
+        "bad_group",
+        "short_development",
+        "short_validation",
+        "same_inputs",
+        "baseline_failure",
+    ],
+)
+def test_invalid_gain_target_membership_cannot_pass(fault):
+    m, meta, rows = evidence()
+    group = "python|letter_minimum"
+    keys = m["gain_targets"][group]
+    if fault == "unknown":
+        keys.append(group + "|development/unknown")
+    elif fault == "duplicate":
+        keys.append(keys[0])
+    elif fault in ("mixed_method", "mixed_language"):
+        replacement = "python|assignment_minimum" if fault == "mixed_method" else "r|letter_minimum"
+        m["gain_targets"][replacement] = m["gain_targets"].pop(group)
+    elif fault == "bad_group":
+        m["gain_targets"]["all"] = m["gain_targets"].pop(group)
+    elif fault == "short_development":
+        keys.pop(0)
+    elif fault == "short_validation":
+        keys.pop()
+    elif fault == "same_inputs":
+        for case in m["cases"]:
+            case["input"] = {"adjacency": [[1]]}
+    elif fault == "baseline_failure":
+        failed = keys[0]
+        m["baseline_failures"] = [failed]
+        rows = [row for row in rows if row["key"] != failed]
+        set_sample_orders(m, rows)
+    meta["manifest_sha256"] = digest(m)
+    meta["input_sha256"] = input_digest(m)
+    assert not analyze(m, meta, rows)["pass"]
+
+
+def test_batch_first_bootstrap_retains_repeated_process_samples():
+    # This fixed distribution distinguishes independent batch resampling for
+    # duplicate process selections from reusing the original process sample.
+    base = np.ones((8, 9)) * 100
+    candidate = np.random.default_rng(23).uniform(60, 130, size=(8, 9))
+    candidate *= 0.97
+    _, interval, _ = estimate(base, candidate, 10000, 12)
+    assert interval[1] > 1.05
+    legacy_rng = np.random.default_rng(12)
+    processes = legacy_rng.integers(0, 8, size=(10000, 8))
+    batches = legacy_rng.integers(0, 9, size=(10000, 8, 9))
+    legacy_ratios = (
+        np.median(np.median(candidate[processes[:, :, None], batches], axis=2), axis=1) / 100
+    )
+    assert np.exp(np.quantile(np.log(legacy_ratios), 0.975)) < 1.05
+
+
+def test_bootstrap_matches_small_manual_batch_then_process_resample():
+    base = np.array([[10.0, 20.0, 30.0], [100.0, 200.0, 300.0]])
+    candidate = np.array([[8.0, 9.0, 10.0], [50.0, 60.0, 70.0]])
+    draws, seed = 20, 13
+    rng = np.random.default_rng(seed)
+    batch_indices = rng.integers(0, 3, size=(draws, 2, 3))
+    process_indices = rng.integers(0, 2, size=(draws, 2))
+    logs = []
+    for draw in range(draws):
+        b = [np.median(base[p, batch_indices[draw, p]]) for p in range(2)]
+        c = [np.median(candidate[p, batch_indices[draw, p]]) for p in range(2)]
+        logs.append(
+            np.log(np.median([c[p] for p in process_indices[draw]]))
+            - np.log(np.median([b[p] for p in process_indices[draw]]))
+        )
+    _, interval, actual_logs = estimate(base, candidate, draws, seed)
+    assert actual_logs == pytest.approx(logs)
+    assert interval == pytest.approx(np.exp(np.quantile(logs, [0.025, 0.975])))
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "few_batches",
+        "bool_processes",
+        "duplicate_language",
+        "no_methods",
+        "bad_presolve",
+        "duplicate_case",
+        "bad_split",
+        "unknown_run",
+        "false_kind",
+        "unexpected_samples",
+        "unknown_failure",
+        "bad_sample_index",
+    ],
+)
+def test_invalid_design_and_sample_sets_fail(fault):
+    m, meta, rows = evidence()
+    if fault == "few_batches":
+        m["batches"] = 3
+    elif fault == "bool_processes":
+        m["processes"] = True
+    elif fault == "duplicate_language":
+        m["languages"].append("python")
+    elif fault == "no_methods":
+        m["methods"] = []
+    elif fault == "bad_presolve":
+        m["presolve"]["python"] = "auto"
+    elif fault == "duplicate_case":
+        m["cases"].append(copy.deepcopy(m["cases"][0]))
+    elif fault == "bad_split":
+        m["cases"][0]["split"] = "other"
+    elif fault == "unknown_run":
+        meta["kind"] = "other"
+    elif fault == "false_kind":
+        meta["complete"] = "yes"
+    elif fault == "unexpected_samples":
+        rows[0]["key"] = "python|letter_minimum|other"
+    elif fault == "unknown_failure":
+        m["baseline_failures"] = ["other"]
+    elif fault == "bad_sample_index":
+        rows[0]["batch"] = False
+    meta["manifest_sha256"] = digest(m)
+    meta["input_sha256"] = input_digest(m)
+    assert not analyze(m, meta, rows)["pass"]
+
+
+@pytest.mark.parametrize("missing", [True, False])
+def test_input_digest_is_required_and_must_match(missing):
+    m, meta, rows = evidence()
+    if missing:
+        meta.pop("input_sha256")
+    else:
+        meta["input_sha256"] = "0" * 64
+    assert "Input binding differs" in analyze(m, meta, rows)["reasons"]
+
+
+def language_evidence(language, ratio=0.8, targets=True):
+    m, meta, rows = evidence(ratio, targets)
+    m["languages"] = [language]
+    presolve = "off" if language == "r" else "on"
+    m["presolve"] = {language: presolve}
+    m["iterations"] = {
+        key.replace("python|", language + "|"): value for key, value in m["iterations"].items()
+    }
+    m["gain_targets"] = (
+        {
+            language + "|letter_minimum": [
+                key.replace("python|", language + "|")
+                for key in m["gain_targets"]["python|letter_minimum"]
+            ]
+        }
+        if targets
+        else {}
+    )
+    m["baseline_versions"] = {language: m["baseline_versions"]["python"]}
+    for row in meta["versions"]:
+        row["language"] = language
+    all_versions = [v for row in meta["versions"] for v in row["versions"]]
+    all_versions.append(m["baseline_versions"][language])
+    for v in all_versions:
+        v["language"] = "javascript" if language == "js" else "r"
+        v["runtime"] = "v22.0.0" if language == "js" else {"name": "R", "version": "4.5.0"}
+        v["settings"]["presolve"] = presolve
+    for row in rows:
+        row["key"] = row["key"].replace("python|", language + "|")
+    if language == "js":
+        m["baseline_source"] = source(js=True)
+        m["pilot_source"] = source(js=True)
+        for phase in ("source_before", "source_after"):
+            meta[phase] = {
+                "baseline": source(js=True),
+                "candidate": source("/candidate", "e" * 40, js=True),
+            }
+    meta["manifest_sha256"] = digest(m)
+    meta["input_sha256"] = input_digest(m)
+    return m, meta, rows
+
+
+@pytest.mark.parametrize("language", ["r", "js"])
+def test_actual_language_version_shapes_are_supported(language):
+    m, meta, rows = language_evidence(language)
+    result = analyze(m, meta, rows)
+    assert result["pass"], result["reasons"]
+
+
+@pytest.mark.parametrize(
+    "fault",
+    ["missing_proof", "false_proof", "solver_bytes", "compiler_bytes", "missing_wasm", "bad_hash"],
+)
+def test_javascript_analysis_requires_build_proof_and_equal_installed_bytes(fault):
+    m, meta, rows = language_evidence("js")
+    for phase in ("source_before", "source_after"):
+        binding = meta[phase]["candidate"]
+        if fault == "missing_proof":
+            binding.pop("build_verified")
+        elif fault == "false_proof":
+            binding["build_verified"] = False
+        elif fault == "solver_bytes":
+            binding["dependency_files"]["highs/build/highs.wasm"] = "9" * 64
+        elif fault == "compiler_bytes":
+            binding["compiler_files"]["typescript/lib/tsc.js"] = "9" * 64
+        elif fault == "missing_wasm":
+            binding["dependency_files"].pop("highs/build/highs.wasm")
+        else:
+            binding["compiler_files"]["typescript/lib/tsc.js"] = "invalid"
+    report = analyze(m, meta, rows)
+    assert not report["pass"]
+    assert any(
+        "source binding" in reason or "bytes differ" in reason for reason in report["reasons"]
+    )
+
+
+@pytest.mark.parametrize("fault", ["missing", "missing_proof", "solver_bytes", "source"])
+def test_calibration_requires_the_verified_pilot_source(fault):
+    m, meta, rows = language_evidence("js", 1.0, targets=False)
+    calibration(meta)
+    if fault == "missing":
+        m.pop("pilot_source")
+    elif fault == "missing_proof":
+        m["pilot_source"].pop("build_verified")
+    elif fault == "solver_bytes":
+        m["pilot_source"]["dependency_files"]["highs/build/highs.wasm"] = "9" * 64
+    else:
+        m["pilot_source"]["head"] = "9" * 40
+    meta["manifest_sha256"] = digest(m)
+    report = analyze(m, meta, rows)
+    assert not report["pass"]
+    assert any("ilot" in reason for reason in report["reasons"])
+
+
+@pytest.mark.parametrize("field,value", [("processes", 17), ("batches", 37)])
+def test_analysis_rejects_sampling_beyond_fixed_limits(field, value):
+    manifest, metadata, rows = evidence()
+    manifest[field] = value
+    report = analyze(manifest, metadata, rows)
+    assert not report["pass"]
+    assert f"Measurement design exceeds the fixed limit: {field}" in report["reasons"]
+
+
+@pytest.mark.parametrize("ratio,passed", [(0.90, True), (0.900001, False)])
+def test_exact_target_gain_boundary(ratio, passed):
+    manifest, metadata, rows = evidence(ratio)
+    assert analyze(manifest, metadata, rows)["pass"] is passed
+
+
+@pytest.mark.parametrize("ratio,passed", [(1.05, True), (1.050001, False)])
+def test_exact_case_regression_boundary(ratio, passed):
+    manifest, metadata, rows = evidence(ratio, targets=False)
+    calibration(metadata)
+    report = analyze(manifest, metadata, rows)
+    assert report["pass"] is passed
+
+
+def test_target_upper_bound_requires_strict_gain():
+    manifest, metadata, rows = evidence()
+    for row in rows:
+        row["candidate_ns"] = row["baseline_ns"] * (0.8 if row["process"] < 5 else 1.0)
+    report = analyze(manifest, metadata, rows)
+    assert all(value["pass"] for value in report["cases"].values())
+    assert all(value["ratio"] <= 0.90 for value in report["groups"].values())
+    assert all(value["interval_95"][1] == 1.0 for value in report["groups"].values())
+    assert not report["pass"]
+
+
+def test_calibration_checks_joint_target_interval_even_when_each_case_passes():
+    manifest, metadata, rows = evidence(1.0, targets=False)
+    calibration(metadata)
+    targets = {"python|letter_minimum": list(manifest["iterations"])}
+    for row in rows:
+        outlier_process = int(row["key"].rsplit("-", 1)[1])
+        if row["process"] == outlier_process:
+            row["candidate_ns"] = 100 * row["baseline_ns"]
+    original_hash = digest(manifest)
+    report = analyze(manifest, metadata, rows, calibration_targets=targets)
+    assert all(case["pass"] for case in report["cases"].values())
+    assert not report["pass"]
+    assert any("A/A target equivalence not established" in reason for reason in report["reasons"])
+    assert report["manifest_sha256"] == original_hash == digest(manifest)
+
+
+def test_candidate_cannot_override_frozen_targets():
+    manifest, metadata, rows = evidence()
+    report = analyze(manifest, metadata, rows, calibration_targets={})
+    assert not report["pass"]
+    assert "Target overrides are only valid for A/A calibration" in report["reasons"]
+
+
+def test_candidate_release_version_change_preserves_dependency_checks():
+    m, metadata, rows = evidence()
+    for record in metadata["versions"]:
+        record["versions"][1]["package"] = "0.4.0"
+    assert analyze(m, metadata, rows)["pass"]
+    for record in metadata["versions"]:
+        record["versions"][1]["dependencies"]["highspy"] = "1.16.0"
+    report = analyze(m, metadata, rows)
+    assert not report["pass"]
+    assert any("dependency versions differ" in reason for reason in report["reasons"])
