@@ -39,7 +39,8 @@ export interface InstanceFacts {
 /** The facts of the instance with n treatments and a seed, or null when it has too many maximal cliques. */
 export function instanceFacts(n: number, seed: number): InstanceFacts | null {
   const { significant } = simulate(n, seed);
-  const adjacency = significant.map((row, i) => row.map((s, j) => i === j || !s));
+  // The upper triangle, as the worker reads the decisions.
+  const adjacency = significant.map((_, i) => significant.map((__, j) => i === j || !significant[Math.min(i, j)][Math.max(i, j)]));
   let edges = 0;
   for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) edges += Number(!significant[i][j]);
   let cliques: number[][];

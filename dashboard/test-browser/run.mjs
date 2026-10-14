@@ -108,7 +108,7 @@ function instrument() {
       this.deliver = (data) => fn.call(this, new MessageEvent("message", { data }));
       super.onmessage = (e) => {
         if (window.__hold && ["start", "result", "done"].includes(e.data?.type)) { window.__held.push(e.data); return; }
-        if (window.__holdBefore && e.data?.type === "before") { window.__heldBefore.push([this, e.data]); return; }
+        if (window.__holdBefore && ["before", "error"].includes(e.data?.type)) { window.__heldBefore.push([this, e.data]); return; }
         if (window.__alter && e.data?.type === "result") { this.deliver(window.__alter(structuredClone(e.data))); return; }
         if (window.__alterBefore && e.data?.type === "before") { this.deliver(window.__alterBefore(structuredClone(e.data))); return; }
         if (window.__alterStart && e.data?.type === "start") { this.deliver(window.__alterStart(structuredClone(e.data))); return; }
@@ -616,6 +616,18 @@ async function main() {
     await page.waitForTimeout(200);
     state = await read();
     check(state.title === null && state.letters === null, `a late display before reduction is shown: ${state.title}`);
+    // The same for a late reply that arrives before the page asks again for a later, valid input.
+    await page.evaluate(() => { window.__heldBefore = []; window.__holdBefore = true; });
+    await page.fill("#pairs", "group1,group2,significant\nA,B,false\nA,C,true\n");
+    await wait(() => window.__heldBefore.length === 1);
+    await page.fill("#pairs", "group1,group2,significant\nA,B,false\n");
+    await page.evaluate(() => {
+      window.__holdBefore = false;
+      for (const [w, reply] of window.__heldBefore) w.deliver(reply);
+    });
+    const early = await page.evaluate(() => document.querySelector(".empty .hint")?.textContent ?? "");
+    check(!early.includes("missing"), `a late reply for an earlier input is shown: ${early}`);
+    await wait(() => document.querySelector(".headline-title")?.textContent === "Before reduction: 1 letter and 2 assignments");
     // A display before reduction that does not match the input is not shown.
     await page.evaluate(() => {
       window.__alterBefore = (reply) => {
@@ -716,6 +728,17 @@ async function main() {
     noResult(await read(), "run after a start reply for another method");
     await page.evaluate(() => { window.__alterStart = null; });
     await ready();
+    // A solver error in a run ends it, and the next run starts from a new worker.
+    await page.evaluate(() => {
+      window.__alter = (reply) => ({ type: "error", id: reply.id, kind: "solver", message: "assignment-minimum MILP failed: Error" });
+    });
+    let workers = await page.evaluate(() => window.__workers.length);
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > h2")?.textContent === "The solver stopped with an error");
+    check(await page.evaluate((n) => window.__workers.length === n + 1 && window.__workers[n - 1].terminated, workers),
+          "the worker runs on after a solver error");
+    await page.evaluate(() => { window.__alter = null; });
+    await ready();
     // 26 groups in 13 significant pairs have 8,192 maximal cliques. The check of that display before
     // reduction must not block the page.
     await page.evaluate(() => {
@@ -760,6 +783,18 @@ async function main() {
     check(studyFile.name === "cld-simulation-study.csv" && studyFile.text.trimEnd().split("\n").length === 5, "study file");
     // A study reply that breaks the order of the minimums, or is for another seed, stops the study.
     for (const [id, value] of [["study-from", "10"], ["study-to", "10"], ["study-count", "2"]]) await page.fill(`#${id}`, value);
+    // A solver error in a study ends it, and the page starts a new worker.
+    await page.evaluate(() => {
+      window.__alterInstance = (reply) => ({ type: "error", id: reply.id, kind: "solver", message: "letter-minimum MILP failed: Error" });
+    });
+    const studyWorkers = await page.evaluate(() => window.__workers.length);
+    await page.click("#study-run");
+    await wait(() => document.getElementById("study-hint").textContent ===
+      "The study stopped with an error after 0 instances: letter-minimum MILP failed: Error");
+    check(await page.evaluate((n) => window.__workers.length === n + 1 && window.__workers[n - 1].terminated, studyWorkers),
+          "the study worker runs on after a solver error");
+    await page.evaluate(() => { window.__alterInstance = null; });
+    await ready();
     for (const [alter, message] of [
       ["order", "The solves of the instance do not keep the order of the minimums."],
       ["seed", "The reply is not for the instance with 10 treatments and seed 1."],

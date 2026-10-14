@@ -94,7 +94,7 @@ The study fields are locked during a study. A change of a field after a study re
 
 ### Checks of the worker replies
 
-The page checks every reply of the worker before it uses it. A reply with the id of an earlier run, input, or study is dropped. A start, result, or study reply that fails a check stops the run or the study, and the page starts a new worker. A display before reduction that fails a check is not shown.
+The page checks every reply of the worker before it uses it. A reply with the id of an earlier run, input, or study is dropped. A start, result, or study reply that fails a check stops the run or the study, and the page starts a new worker. A solver error does the same. A display before reduction that fails a check is not shown.
 
 - A start reply names the next method and stage of the run.
 - A result names the next method and stage of the run. It confirms the relationship check of the package. It has the groups of the input in the same order, one row for each group, and the decisions and edge count of the input. Each row has distinct letters and the display string of those letters, and two groups share a letter exactly when they do not differ. Its statistics are whole numbers that match its letters; the objective is the letter count for CLD-C and for CLD-sigma then CLD-C, else the assignment count. Neither count is larger than before reduction, the reduction percentage matches the counts, the solver status is text, and the time is a number that is not negative. All results of a run have the same groups and the same counts before reduction. A second stage keeps the minimum of its first stage, and its other count is not larger. The run ends only when every result has arrived.

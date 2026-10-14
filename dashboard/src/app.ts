@@ -330,6 +330,8 @@ function onReply(r: Reply): void {
     finishRun(run);
   } else if (r.type === "error") {
     fail(problemOf(r.kind, r.message));
+    // After a solver error, the next run starts from a clean worker.
+    if (r.kind !== "input") restartWorker();
   }
   render();
 }
@@ -383,6 +385,8 @@ function invalidate(): void {
 function inputChanged(): void {
   state.inputVersion++;
   state.beforeNote = null;
+  // A reply to the request in flight belongs to the earlier input.
+  beforeRequest = null;
   clearTimeout(beforeTimer);
   beforeTimer = setTimeout(requestBefore, 250);
   invalidate();
@@ -594,6 +598,7 @@ function onStudyReply(r: Reply): void {
     else defect = "The study ended before all its instances were solved.";
   } else if (r.type === "error") {
     endStudy("error", r.message);
+    restartWorker();
   }
   if (defect) {
     endStudy("error", `The solver returned an invalid result. ${defect}`);
