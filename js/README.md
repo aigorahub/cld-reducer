@@ -6,7 +6,9 @@ The solver is HiGHS compiled to WebAssembly (the npm package [`highs`](https://w
 
 ## Installation
 
-Install from npm:
+The examples describe version 0.3.0 and later. As checked on 2026-10-13, npm
+provides 0.2.0. That release minimizes assignments and does not offer CLD-C.
+Install the published release with:
 
 ```sh
 npm install cld-reducer
@@ -18,8 +20,10 @@ To build the development version from a clone of the repository:
 cd js
 npm ci
 npm pack
-npm install ./cld-reducer-0.3.0.tgz   # in your own project
 ```
+
+`npm pack` prints the archive filename for the version in `package.json`.
+In your own project, run `npm install /absolute/path/to/that-archive.tgz`.
 
 ## Usage
 

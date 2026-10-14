@@ -2,7 +2,8 @@
 
 The repository follows the turfLP layout: R at the root, Python in `python/`,
 and JavaScript in `js/`. Version 0.2.0 is tagged and published on PyPI and npm.
-CRAN review is pending.
+The next candidate is 0.3.0. The recorded CRAN submission is still 0.2.0;
+the package was absent from the public CRAN index on 2026-10-13.
 See [submission status](submission-status.md) for the current evidence.
 These instructions describe future releases. Checks do not grant permission
 to merge or publish.
@@ -44,11 +45,20 @@ See the Python section of `NEWS.md` for all API and input changes.
 
 ## Validate the candidate
 
-Version 0.2.0 is already used. Choose the next unused common version for a
-future release, at least 0.2.1. Keep that version in `DESCRIPTION`,
+Version 0.2.0 is already used. Version 0.3.0 is the candidate for CLD-C and
+the essential-cover changes. Registry checks on 2026-10-13 found no 0.3.0
+publication on PyPI or npm. Check again before publishing. Keep the candidate version in `DESCRIPTION`,
 `CITATION.cff`, `NEWS.md`, both package manifests and locks, and Python's
 `__version__`. `scripts/release.py version` checks agreement. Never replace an
 uploaded version.
+
+Before merging a feature release, synchronize the candidate version and its
+NEWS entry. After that merge, set the next unused patch version for development
+in a separate reviewed commit. For this stack, those versions are 0.3.0 and
+0.3.1. Add a NEWS entry that marks the later version as unreleased. The version
+check uses the same three-part number in R, Python, npm, citation metadata, and
+both lock files. Record the earlier candidate commit so that a later authorized
+tag can identify it. Do not tag or upload the development commit by default.
 
 Run from the repository root unless a block changes directory:
 
@@ -112,13 +122,13 @@ selected version. Obtain separate authorization to tag and publish.
 
 Create an immutable tag for the new version from the checked commit on `main`.
 Push it only after authorization. Both publication workflows are manual.
-The examples below use `v0.2.1`; confirm it is unused and substitute the selected
+The examples below use `v0.3.0`; confirm it is unused and substitute the selected
 version where needed. Run each workflow from `main`, with that tag and
 `dry_run=true`:
 
 ```sh
-gh workflow run publish-npm.yaml --ref main -f tag=v0.2.1 -F dry_run=true
-gh workflow run publish-python.yaml --ref main -f tag=v0.2.1 -F dry_run=true
+gh workflow run publish-npm.yaml --ref main -f tag=v0.3.0 -F dry_run=true
+gh workflow run publish-python.yaml --ref main -f tag=v0.3.0 -F dry_run=true
 ```
 
 The workflows reject invalid tags, commits outside `origin/main`, version
@@ -147,8 +157,8 @@ commit and tag, then compare the downloaded tarball's SHA-256 with the saved
 manifest. Stop on a mismatch. Publish that exact path:
 
 ```sh
-shasum -a 256 downloaded/npm-candidate/packages/cld-reducer-0.2.1.tgz
-npm publish downloaded/npm-candidate/packages/cld-reducer-0.2.1.tgz --access public
+shasum -a 256 downloaded/npm-candidate/packages/cld-reducer-0.3.0.tgz
+npm publish downloaded/npm-candidate/packages/cld-reducer-0.3.0.tgz --access public
 ```
 
 Do not repack the source or publish from a directory. Do not run the npm workflow

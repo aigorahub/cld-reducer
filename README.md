@@ -32,7 +32,9 @@ remotes::install_github("aigorahub/cld-reducer")   # R
 pip install "git+https://github.com/aigorahub/cld-reducer.git#subdirectory=python"   # Python 3.10 or later
 ```
 
-The `#subdirectory=python` part is needed because the Python package lives in `python/`. The JavaScript package is built from `js/`; see [js/README.md](js/README.md). For registry releases, the commands are `install.packages("cldreducer")`, `pip install cld-reducer`, and `npm install cld-reducer`.
+The `#subdirectory=python` part is needed because the Python package lives in `python/`. The JavaScript package is built from `js/`; see [js/README.md](js/README.md).
+
+The examples below describe version 0.3.0 and later. On 2026-10-13, PyPI and npm still provide version 0.2.0, which minimizes assignments and does not offer CLD-C. Use the repository build for the new methods. CRAN does not yet list the package. See [submission status](docs/submission-status.md) for the dated registry checks.
 
 ## Usage in R
 
@@ -129,13 +131,16 @@ See [js/README.md](js/README.md) for the pairwise input, the options, and loadin
 
 The default method is `letter_minimum` (CLD-C). Use `assignment_minimum` for CLD-sigma.
 
-CLD-sigma follows these steps.
+Both methods use the same pipeline.
 
 1. Build the non-significance graph from the pairwise results.
 2. Merge identical closed neighborhoods with their original vertex counts as weights, then find all maximal cliques. At least one assignment-minimum covering is a subcovering of the maximal covering, which is the starting point used by the 2012 paper.
-3. Solve a binary mixed-integer program with class weights, then expand the selected memberships to the original groups.
-4. Among the displays with that smallest count, pick the canonical one: the display whose membership vector is lexicographically greatest in a fixed order. The wheat example has 64 displays with 44 assignments, and without a fixed rule different solvers would print different ones. The canonical rule makes the result independent of the solver and the language.
-5. Rebuild the pairwise relationship matrix from the letters and return the result only if every original relationship is preserved.
+3. Build ordered coverage data. C decisions select full maximal cliques. Sigma decisions select individual memberships, with the original class sizes as costs.
+4. Find essential decisions from unique vertex or edge coverage. If those decisions cover the graph, positive costs prove that they form the unique optimum. Return it without building a BIP or calling HiGHS.
+5. Otherwise, compile the BIP once. Fix the essential decisions to 1 and let HiGHS choose the remaining decisions. Resolve equal optima with the canonical binary selection order.
+6. Expand the selected columns to the original vertices. Name the letters and rebuild the pairwise relationship matrix. Return the result only if every original relationship is preserved.
+
+The solver time limit covers the essential scan, certificate checks, and all canonical solves. Graph preparation and BIP compilation are outside that budget. Fallback retains the time left after the scan and proof attempt.
 
 Exact assignment minimization can become expensive for dense or highly structured graphs. All three packages offer a time limit and a cap on the number of maximal cliques (10,000 by default); the call stops with a clear error beyond the cap.
 
@@ -199,5 +204,6 @@ result$stats$objective            # 3 letters
 result$stats$assignments_after    # 9 assignments
 ```
 
-Version 0.3.0 is a development candidate. The published 0.2.0 packages and pending
-frozen CRAN candidate are unchanged.
+Version 0.3.0 is the candidate for these changes. The published 0.2.0 packages and
+frozen CRAN candidate are unchanged. See [development status](docs/development-status.md)
+for implementation, review, version, and timing records.
