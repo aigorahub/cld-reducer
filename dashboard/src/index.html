@@ -15,17 +15,21 @@
   <div class="brand">
     <h1 class="brand-name">cld-reducer</h1>
     <span class="brand-version">{{version}}</span>
-    <span class="brand-note">Compact letter displays in your browser</span>
   </div>
+  <nav class="views" aria-label="Views">
+    <button id="view-reduce" type="button" class="view" aria-pressed="true">Reduce a display</button>
+    <button id="view-study" type="button" class="view" aria-pressed="false">Simulation study</button>
+  </nav>
   <p id="solver-status" class="status" role="status">Loading the solver…</p>
   <a class="top-link" href="https://github.com/aigorahub/cld-reducer" target="_blank" rel="noopener">GitHub</a>
 </header>
 
-<main class="layout">
+<main class="main">
+<div id="reduce-view" class="layout">
   <div class="side">
     <section class="side-block" aria-labelledby="input-heading">
       <h2 id="input-heading">Input</h2>
-      <p class="lead">This page reads significance decisions. It does not run significance tests. A group is one item or treatment.</p>
+      <p class="lead">This page reads significance decisions. It runs no significance tests on your data; Generate simulates decisions with a t test. A group is one item or treatment.</p>
 
       <div class="field">
         <p class="field-label" id="examples-label">Examples</p>
@@ -33,9 +37,19 @@
         <p id="example-note" class="hint" hidden></p>
       </div>
 
+      <div class="field">
+        <p class="field-label" id="simulate-label">Simulated experiment</p>
+        <div class="inline-fields" role="group" aria-labelledby="simulate-label">
+          <label>Treatments <input id="sim-n" class="input small" type="number" min="2" max="80" step="1" value="20" inputmode="numeric"></label>
+          <label>Seed <input id="sim-seed" class="input small" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
+          <button id="sim-generate" type="button" class="button-secondary">Generate</button>
+        </div>
+        <p id="sim-hint" class="hint">Treatment means and their covariances are simulated with the model that Section 8 of Ennis, Fayle, and Ennis (2012) uses (Section 3.2 of Gramm et al. 2007; the 2012 paper names it Gramm et al. 2006). A pair differs significantly when |t| &gt; 1.96.</p>
+      </div>
+
       <div id="pairs-field" class="field drop">
         <label class="field-label" for="pairs">Pairwise decisions (CSV)</label>
-        <textarea id="pairs" class="input" rows="8" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="pairs-hint"></textarea>
+        <textarea id="pairs" class="input" rows="7" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="pairs-hint"></textarea>
         <p id="pairs-hint" class="hint">One row for each pair of groups, with the columns group1, group2, and significant. The decision is true when the two groups differ significantly. Every pair needs a row.</p>
         <p class="hint"><button id="pairs-choose" type="button" class="link">Choose a file</button> or <button id="pairs-template" type="button" class="link">download a template</button>.</p>
         <input id="pairs-file" type="file" hidden tabindex="-1" accept=".csv,.tsv,.txt,text/csv,text/plain,text/tab-separated-values">
@@ -56,7 +70,8 @@
         <label class="choice"><input type="radio" name="method" value="letter_minimum" checked> CLD-C</label>
         <label class="choice"><input type="radio" name="method" value="assignment_minimum"> CLD-sigma</label>
       </div>
-      <p id="method-hint" class="hint">CLD-C gives the fewest distinct letters. CLD-sigma gives the fewest assignments of a letter to a group. Neither method optimizes the other quantity as a second objective.</p>
+      <label class="choice staged"><input id="staged" type="checkbox" checked> Then minimize the other quantity</label>
+      <p id="method-hint" class="hint">CLD-C gives the fewest distinct letters. CLD-sigma gives the fewest assignments of a letter to a group. The second stage keeps that minimum and then minimizes the other quantity. It is experimental and exists in this page only.</p>
       <button id="run" type="button" class="button-primary" disabled>Run</button>
       <div class="run-more">
         <button id="compare" type="button" class="button-secondary" disabled>Compare both methods</button>
@@ -81,6 +96,27 @@
       </details>
     </footer>
   </div>
+</div>
+
+<div id="study-view" class="study" hidden>
+  <section class="study-head" aria-labelledby="study-heading">
+    <h2 id="study-heading">Simulation study</h2>
+    <p class="study-text">This view follows the design of the experiment of Section 8 of Ennis, Fayle, and Ennis (2012) in this browser. Each instance is one simulated experiment. The page runs CLD-C, CLD-sigma, and both two-stage solves on it, each solve with the time limit below. The 2012 study ran an exact backtracking search (FIND-AM) on 1,000 instances for each number of treatments, with a limit of 30 seconds.</p>
+    <div class="study-fields">
+      <label>Treatments from <input id="study-from" class="input small" type="number" min="2" max="80" step="1" value="10" inputmode="numeric"></label>
+      <label>to <input id="study-to" class="input small" type="number" min="2" max="80" step="1" value="45" inputmode="numeric"></label>
+      <label>step <input id="study-step" class="input small" type="number" min="1" max="40" step="1" value="5" inputmode="numeric"></label>
+      <label>Instances for each size <input id="study-count" class="input small" type="number" min="1" max="1000" step="1" value="10" inputmode="numeric"></label>
+      <label>First seed <input id="study-seed" class="input small" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
+      <label>Time limit (s) <input id="study-limit" class="input small" type="number" min="1" max="600" step="1" value="30" inputmode="numeric"></label>
+    </div>
+    <div class="study-actions">
+      <button id="study-run" type="button" class="button-primary study-button" disabled>Run the study</button>
+      <p id="study-hint" class="hint" aria-live="polite"></p>
+    </div>
+  </section>
+  <section id="study-results" class="study-results" aria-label="Study results"></section>
+</div>
 </main>
 <noscript><p class="noscript">This page needs JavaScript.</p></noscript>
 <script type="module">/* script */</script>

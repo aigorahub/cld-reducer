@@ -1,7 +1,11 @@
 # cldreducer 0.3.2
 
-- Unreleased development version after the 0.3.1 merge.
-  No algorithm or public API changes.
+- The browser page in `dashboard/` shows the letters before reduction next to
+  the reduced letters, with the time of each solve. It adds the graph of
+  Table II of the 2012 paper, simulated experiments, a simulation study, and an
+  experimental second stage that minimizes the other quantity. The second stage
+  exists in the page only.
+- No package algorithm or public API changes since 0.3.1. The second stage is solver code of the page only.
 
 # cldreducer 0.3.1
 

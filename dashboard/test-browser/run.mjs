@@ -87,7 +87,14 @@ function instrument() {
   window.__workers = [];
   window.__held = [];
   window.__hold = false;
+  window.__heldBefore = [];
+  window.__holdBefore = false;
   window.__alter = null;
+  window.__alterBefore = null;
+  window.__alterInstance = null;
+  window.__alterStart = null;
+  window.__seen = [];
+  window.__alterLoad = null;
   window.Worker = class extends Native {
     constructor(...args) {
       super(...args);
@@ -102,8 +109,17 @@ function instrument() {
     set onmessage(fn) {
       this.deliver = (data) => fn.call(this, new MessageEvent("message", { data }));
       super.onmessage = (e) => {
-        if (window.__hold && e.data?.type !== "ready") { window.__held.push(e.data); return; }
+        window.__seen.push(e.data?.type);
+        if (window.__hold && ["start", "result", "done"].includes(e.data?.type)) { window.__held.push(e.data); return; }
+        if (window.__holdBefore && ["before", "error"].includes(e.data?.type)) { window.__heldBefore.push([this, e.data]); return; }
         if (window.__alter && e.data?.type === "result") { this.deliver(window.__alter(structuredClone(e.data))); return; }
+        if (window.__alterBefore && e.data?.type === "before") { this.deliver(window.__alterBefore(structuredClone(e.data))); return; }
+        if (window.__alterStart && e.data?.type === "start") { this.deliver(window.__alterStart(structuredClone(e.data))); return; }
+        if (window.__alterLoad && e.data?.type === "ready") { this.deliver(window.__alterLoad(e.data)); return; }
+        if (window.__alterInstance && e.data?.type === "instance") {
+          this.deliver(window.__alterInstance(structuredClone(e.data)));
+          return;
+        }
         fn.call(this, e);
       };
     }
@@ -126,7 +142,13 @@ async function main() {
     await page.addInitScript(instrument);
     await page.goto(file);
 
-    const wait = (fn, arg) => page.waitForFunction(fn, arg, { timeout: 60_000 });
+    // A timeout names the condition, so that a failure says where the test stopped.
+    const wait = (fn, arg) => page.waitForFunction(fn, arg, { timeout: 60_000 }).catch(async (e) => {
+      const shown = await page.evaluate(() => [document.getElementById("solver-status").textContent,
+        document.getElementById("run").textContent, document.querySelector(".results")?.innerText.slice(0, 400)])
+        .catch(() => null);
+      throw new Error(`${e.message.split("\n")[0]} Waiting for: ${fn.toString().slice(0, 300)} Page: ${JSON.stringify(shown)}`);
+    });
     const ready = () => wait(() => document.getElementById("solver-status").textContent === "Solver ready" &&
                                    document.getElementById("run").textContent === "Run" &&
                                    !document.getElementById("run").disabled);
@@ -156,8 +178,10 @@ async function main() {
       const [download] = await Promise.all([page.waitForEvent("download"), page.click(`text=${label}`)]);
       return { name: download.suggestedFilename(), text: readFileSync(await download.path(), "utf8") };
     };
-    const noResult = (state, what) => check(state.summary === null && state.letters === null &&
-                                            state.matrices.length === 0 && state.title === null, `${what}: a result is shown`);
+    // No result: no summary and no matrix, and at most the display before reduction.
+    const noResult = (state, what) => check(state.summary === null && state.matrices.length === 0 &&
+      (state.letters === null || state.letters[0].every((h) => ["Group", "Mean", "Before"].includes(h))) &&
+      (state.title === null || state.title.startsWith("Before reduction")), `${what}: a result is shown`);
 
     // The page starts with the solver loading and the simple example in the fields.
     await ready();
@@ -165,24 +189,32 @@ async function main() {
     check(await page.$eval(".brand-version", (e) => e.textContent) === version, "the version is not the one of js/package.json");
     check(state.pairs === SIMPLE_PAIRS && state.means === SIMPLE_MEANS, "the fields do not hold the simple example");
     check(same(state.pressed, ["Simple example"]) && state.checked === "letter_minimum", "the default example or method");
-    check(state.empty === "Reduce a compact letter display", "the page does not start empty");
+    // The display before reduction appears without a run: one letter for each maximal clique.
+    await wait(() => document.querySelector(".letters-table") !== null);
+    state = await read();
+    check(state.title === "Before reduction: 3 letters and 9 assignments", `before title: ${state.title}`);
+    check(same(state.letters, [["Group", "Mean", "Before"], ["1", "3.73", "A"], ["2", "3.57", "AB"], ["3", "3.46", "ABC"],
+                               ["4", "3.33", "BC"], ["5", "3.3", "C"]]), `before letters: ${JSON.stringify(state.letters)}`);
     noResult(state, "start");
     check(await page.evaluate(() => window.__workers.length) === 1, "the page did not start one worker");
     if (shots) await page.screenshot({ path: join(shots, "wide-start.png") });
 
-    // CLD-C is the default. The simple example with it is an essential cover result.
+    // CLD-C is the default. The simple example with it is an essential cover result. First without the second stage.
+    await page.uncheck("#staged");
     await page.click("#run");
     await solved();
     state = await read();
     check(state.title === "CLD-C: 3 letters and 9 assignments", `simple CLD-C title: ${state.title}`);
-    check(same(state.summary[0], ["", "CLD-C"]), "simple CLD-C summary head");
-    check(same(summaryRow(state, "Minimizes"), ["Distinct letters"]), "CLD-C does not state its objective");
-    check(same(summaryRow(state, "Objective value"), ["3"]) && same(summaryRow(state, "Distinct letters"), ["3"]) &&
-          same(summaryRow(state, "Assignments"), ["9"]) && same(summaryRow(state, "Relationships preserved"), ["Yes"]),
+    check(same(state.summary[0], ["", "Before", "CLD-C"]), "simple CLD-C summary head");
+    check(same(summaryRow(state, "Minimizes"), ["One letter for each maximal clique", "Distinct letters"]),
+          "CLD-C does not state its objective");
+    check(same(summaryRow(state, "Distinct letters"), ["3", "3"]) && same(summaryRow(state, "Assignments"), ["9", "9"]) &&
+          same(summaryRow(state, "Assignments removed"), ["", "0 (0.0%)"]) &&
+          same(summaryRow(state, "Relationships preserved"), ["", "Yes"]),
           `simple CLD-C summary: ${JSON.stringify(state.summary)}`);
-    check(/^(<1|\d+) ms$|^\d+\.\d+ s$/.test(summaryRow(state, "Time in this browser")[0]), "no browser time");
-    check(same(state.letters, [["Group", "Mean", "CLD-C"], ["1", "3.73", "A"], ["2", "3.57", "AB"],
-                               ["3", "3.46", "ABC"], ["4", "3.33", "BC"], ["5", "3.3", "C"]]),
+    check(summaryRow(state, "Time in this browser").every((t) => /^(<1|\d+) ms$|^\d+\.\d+ s$/.test(t)), "no browser time");
+    check(same(state.letters, [["Group", "Mean", "Before", "CLD-C"], ["1", "3.73", "A", "A"], ["2", "3.57", "AB", "AB"],
+                               ["3", "3.46", "ABC", "ABC"], ["4", "3.33", "BC", "BC"], ["5", "3.3", "C", "C"]]),
           `simple CLD-C letters: ${JSON.stringify(state.letters)}`);
     check(state.matrices.length === 1 && same(state.matrices[0][1], ["1", "A", "A", "A", "different", "different"]) &&
           same(state.matrices[0][3], ["3", "A", "AB", "ABC", "BC", "C"]), `simple matrix: ${JSON.stringify(state.matrices[0])}`);
@@ -190,7 +222,8 @@ async function main() {
     check(json.name === "cld-simple-example.json", `JSON name: ${json.name}`);
     let saved = JSON.parse(json.text);
     check(saved.package === "cld-reducer" && saved.version === version && saved.input.source === "Simple example" &&
-          saved.input.pairs === 10 && saved.input.means.length === 5 && saved.results.length === 1, "JSON head");
+          saved.input.pairs === 10 && saved.input.means.length === 5 && saved.results.length === 1 &&
+          saved.before.letters === 3 && saved.before.assignments === 9, "JSON head");
     checkAgainst(saved.results[0], EXPECTED.simple.letter_minimum, "simple CLD-C");
 
     // A method change removes the result. Keyboard: the arrow key moves the choice.
@@ -205,9 +238,9 @@ async function main() {
     await solved();
     state = await read();
     check(state.title === "CLD-sigma: 3 letters and 8 assignments", `simple CLD-sigma title: ${state.title}`);
-    check(same(summaryRow(state, "Minimizes"), ["Assignments"]) && same(summaryRow(state, "Objective value"), ["8"]),
-          "CLD-sigma does not state its objective");
-    check(state.letters[3][2] === "AC", "simple CLD-sigma does not give group 3 the letters AC");
+    check(same(summaryRow(state, "Minimizes"), ["One letter for each maximal clique", "Assignments"]) &&
+          same(summaryRow(state, "Assignments"), ["9", "8"]), "CLD-sigma does not state its objective");
+    check(state.letters[3][3] === "AC", "simple CLD-sigma does not give group 3 the letters AC");
     checkAgainst(JSON.parse((await save("Download JSON")).text).results[0], EXPECTED.simple.assignment_minimum, "simple CLD-sigma");
 
     // Wheat, both methods. CLD-sigma needs HiGHS here.
@@ -219,13 +252,13 @@ async function main() {
     await solved();
     state = await read();
     check(state.title === "CLD-C and CLD-sigma", `compare title: ${state.title}`);
-    check(same(state.summary[0], ["", "CLD-C", "CLD-sigma"]) &&
-          same(summaryRow(state, "Minimizes"), ["Distinct letters", "Assignments"]) &&
-          same(summaryRow(state, "Distinct letters"), ["4", "4"]) && same(summaryRow(state, "Assignments"), ["56", "44"]) &&
-          same(summaryRow(state, "Objective value"), ["4", "44"]) &&
-          same(summaryRow(state, "Assignments before reduction"), ["56", "56"]),
+    check(same(state.summary[0], ["", "Before", "CLD-C", "CLD-sigma"]) &&
+          same(summaryRow(state, "Minimizes"), ["One letter for each maximal clique", "Distinct letters", "Assignments"]) &&
+          same(summaryRow(state, "Distinct letters"), ["4", "4", "4"]) &&
+          same(summaryRow(state, "Assignments"), ["56", "56", "44"]) &&
+          same(summaryRow(state, "Assignments removed"), ["", "0 (0.0%)", "12 (21.4%)"]),
           `wheat summary: ${JSON.stringify(state.summary)}`);
-    check(state.letters.length === 21 && same(state.letters[0], ["Group", "CLD-C", "CLD-sigma"]), "wheat letters table");
+    check(state.letters.length === 21 && same(state.letters[0], ["Group", "Before", "CLD-C", "CLD-sigma"]), "wheat letters table");
     json = await save("Download JSON");
     saved = JSON.parse(json.text);
     check(json.name === "cld-wheat-yield.json" && saved.input.means === null && saved.input.pairs === 190, "wheat JSON head");
@@ -247,8 +280,9 @@ async function main() {
     }
     const csv = await save("Download CSV");
     const csvLines = csv.text.trimEnd().split("\n");
-    check(csv.name === "cld-wheat-yield.csv" && csvLines.length === 41 && csvLines[0] === "method,group,letters,assignments" &&
-          csvLines[1] === "letter_minimum,1,ABCD,A B C D" && csvLines[40] === "assignment_minimum,20,C,C", `CSV: ${csvLines[1]}`);
+    check(csv.name === "cld-wheat-yield.csv" && csvLines.length === 61 && csvLines[0] === "method,group,letters,assignments" &&
+          csvLines[1] === "before,1,ABCD,A B C D" && csvLines[21] === "letter_minimum,1,ABCD,A B C D" &&
+          csvLines[60] === "assignment_minimum,20,C,C", `CSV: ${csvLines[1]}`);
     if (shots) await page.screenshot({ path: join(shots, "wide-wheat.png") });
 
     // Paste: semicolons, quotes, decision words, and labels that look like markup or a formula.
@@ -261,15 +295,16 @@ async function main() {
     await solved();
     state = await read();
     check(same(state.letters.slice(1).map((row) => row[0]), LABELS), `labels: ${JSON.stringify(state.letters)}`);
-    check(same(state.letters.slice(1).map((row) => row[1]), ["A", "AB", "BC", "C"]), "letters of the pasted input");
+    check(same(state.letters.slice(1).map((row) => row[2]), ["A", "AB", "BC", "C"]), "letters of the pasted input");
     check(same(state.matrices[0][0].slice(1), LABELS), "matrix labels");
     check(await page.evaluate(() => document.querySelector("#results img, #results b") === null && window.__xss === undefined),
           "a label was read as markup");
     saved = JSON.parse((await save("Download JSON")).text);
     check(saved.input.source === "Pasted text" && same(saved.results[0].rows.map((r) => r.group), LABELS), "JSON labels");
     const labelCsv = (await save("Download CSV")).text.split("\n");
-    check(labelCsv[1] === 'letter_minimum,"<img src=x onerror=""window.__xss=1"">",A,A' &&
-          labelCsv[3] === "letter_minimum,'=1+1,BC,B C" && labelCsv[4] === 'letter_minimum,"a,b",C,C', `CSV labels: ${labelCsv}`);
+    check(labelCsv[1] === 'before,"<img src=x onerror=""window.__xss=1"">",A,A' &&
+          labelCsv[5] === 'letter_minimum,"<img src=x onerror=""window.__xss=1"">",A,A' &&
+          labelCsv[7] === "letter_minimum,'=1+1,BC,B C" && labelCsv[8] === 'letter_minimum,"a,b",C,C', `CSV labels: ${labelCsv}`);
 
     // Files: decisions with tabs, and means that set the group order.
     await page.setInputFiles("#pairs-file", { name: "trial 1.tsv", mimeType: "text/tab-separated-values",
@@ -282,7 +317,8 @@ async function main() {
     await page.click("#run");
     await solved();
     state = await read();
-    check(same(state.letters, [["Group", "Mean", "CLD-C"], ["high", "9.5", "A"], ["mid", "5", "AB"], ["low", "1.25", "B"]]),
+    check(same(state.letters, [["Group", "Mean", "Before", "CLD-C"], ["high", "9.5", "A", "A"], ["mid", "5", "AB", "AB"],
+                               ["low", "1.25", "B", "B"]]),
           `file letters: ${JSON.stringify(state.letters)}`);
     json = await save("Download JSON");
     check(json.name === "cld-trial-1.json" && JSON.parse(json.text).input.source === "trial 1.tsv", `file source: ${json.name}`);
@@ -305,6 +341,14 @@ async function main() {
     await page.waitForTimeout(200);
     state = await read();
     check(state.pairs === WHEAT_PAIRS && same(state.pressed, ["Wheat yield"]), "a late file read replaced the newer input");
+    // The limit counts characters, not bytes: 2,600,000 two-byte characters are read, and a file with
+    // more than 5,000,000 characters is not.
+    const wide = "group1,group2,significant\n" + "é".repeat(2_600_000) + ",b,false\n";
+    await page.setInputFiles("#pairs-file", { name: "wide.csv", mimeType: "text/csv", buffer: Buffer.from(wide) });
+    await wait((n) => document.getElementById("pairs").value.length === n, wide.length);
+    await page.setInputFiles("#pairs-file", { name: "long.csv", mimeType: "text/csv", buffer: Buffer.from("x".repeat(5_000_001)) });
+    await wait(() => document.querySelector(".problem > p")?.textContent ===
+      "long.csv has more characters than the page reads (5,000,000).");
     // The next file is read as usual.
     await page.setInputFiles("#pairs-file", { name: "trial 1.tsv", mimeType: "text/tab-separated-values",
       buffer: Buffer.from("group1\tgroup2\tsignificant\nlow\tmid\tFALSE\nlow\thigh\tTRUE\nmid\thigh\tFALSE\n") });
@@ -324,7 +368,7 @@ async function main() {
     await page.click("#run");
     await solved();
     state = await read();
-    check(same(state.letters.slice(1), [["low", "1", "B"], ["mid", "2", "AB"], ["high", "3", "A"]]),
+    check(same(state.letters.slice(1), [["low", "1", "B", "B"], ["mid", "2", "AB", "AB"], ["high", "3", "A", "A"]]),
           `letters after a dropped file: ${JSON.stringify(state.letters)}`);
 
     // Invalid input shows an error and no result.
@@ -392,7 +436,7 @@ async function main() {
     await solved();
     state = await read();
     check(state.title === "CLD-C: 6 letters and 30 assignments" &&
-          same(state.letters.slice(1).map((row) => row[1]), BUSY_C_LETTERS), `run after cancel: ${state.title}`);
+          same(state.letters.slice(1).map((row) => row[2]), BUSY_C_LETTERS), `run after cancel: ${state.title}`);
 
     // A change of the method during a solve stops it too.
     await method("assignment_minimum");
@@ -411,6 +455,7 @@ async function main() {
     noResult(state, "reset");
 
     // Replies of a cancelled run arrive late: the page ignores them, from the old worker and with the old id.
+    await page.uncheck("#staged");
     await page.evaluate(() => { window.__hold = true; });
     await page.click("#run");
     await wait(() => window.__held.some((r) => r.type === "done"));
@@ -434,10 +479,12 @@ async function main() {
     await page.click("#run");
     await wait(() => window.__held.filter((r) => r.type === "done").length === 2);
     await page.evaluate(() => {
-      const current = window.__workers.at(-1);
+      const [old, current] = window.__workers.slice(-2);
       const [stale, fresh] = [window.__held.slice(0, 3), window.__held.slice(3)];
       window.__hold = false;
       for (const reply of stale) current.deliver(reply);
+      // The old worker's replies with the id of the current run: the page takes no reply of an old worker.
+      for (const reply of stale) old.deliver({ ...reply, id: fresh[0].id });
       window.__afterStale = document.getElementById("run").textContent;
       for (const reply of fresh) current.deliver(reply);
     });
@@ -470,11 +517,513 @@ async function main() {
     await page.click("#run");
     await wait(() => document.querySelector(".problem > p")?.textContent === "The reply does not confirm the relationship check.");
     noResult(await read(), "reply without the relationship check");
+    // A reply that is consistent in itself but has other decisions than the input: one letter for all groups.
+    await page.evaluate(() => {
+      window.__alter = (reply) => {
+        const r = reply.reduction;
+        for (const row of r.rows) row.letters = row.assignments = "a";
+        r.adjacency = r.adjacency.map((line) => line.map(() => true));
+        r.stats.numLettersAfter = r.stats.objective = 1;
+        r.stats.assignmentsAfter = r.rows.length;
+        r.stats.reductionPct = (r.stats.assignmentsBefore - r.rows.length) / r.stats.assignmentsBefore * 100;
+        return reply;
+      };
+    });
+    await ready();
+    await page.click("#run");
+    await wait(() => /^The reply changes the decision for \d+ and \d+\.$/.test(document.querySelector(".problem > p")?.textContent ?? ""));
+    noResult(await read(), "reply with other decisions than the input");
+    await page.evaluate(() => { window.__alter = (reply) => { reply.milliseconds = NaN; return reply; }; });
+    await ready();
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > p")?.textContent === "The time of the reply is not a time.");
+    noResult(await read(), "reply with a time that is not a number");
     await page.evaluate(() => { window.__alter = null; });
     await ready();
     await page.click("#compare");
     await solved();
     check((await read()).problem === null, "the error stays after a good run");
+
+    // The second stage: CLD-C, then CLD-sigma at the minimum letter count, and the reverse order.
+    await page.check("#staged");
+    await page.click('button.example:has-text("Simple example")');
+    await page.click("#run");
+    await solved();
+    state = await read();
+    check(state.title === "CLD-C then CLD-sigma: 3 letters and 8 assignments", `staged title: ${state.title}`);
+    check(same(state.summary[0], ["", "Before", "CLD-C", "CLD-C then CLD-sigma"]), "staged summary head");
+    const stagedText = await page.$eval(".headline", (e) => e.textContent);
+    check(/Stage 1, CLD-C, took (<1|\d+) ms\. Stage 2 took (<1|\d+) ms\./.test(stagedText), `stage times: ${stagedText}`);
+    // The graph of Table II of the 2012 paper: no letter-minimum display is assignment-minimum.
+    await page.click('button.example:has-text("Table II graph")');
+    await wait(() => document.querySelector(".headline-title")?.textContent === "Before reduction: 7 letters and 26 assignments");
+    await page.click("#compare");
+    await solved();
+    state = await read();
+    check(state.title === "CLD-C and CLD-sigma, each with a second stage", `Table II title: ${state.title}`);
+    check(same(state.summary[0], ["", "Before", "CLD-C", "CLD-C then CLD-sigma", "CLD-sigma", "CLD-sigma then CLD-C"]),
+          "Table II summary head");
+    saved = JSON.parse((await save("Download JSON")).text);
+    const [c, cs, sigma, sc] = saved.results;
+    check(same(saved.results.map((r) => [r.method, r.stage]), [["letter_minimum", 1], ["letter_then_assignment", 2],
+          ["assignment_minimum", 1], ["assignment_then_letter", 2]]), "Table II stages");
+    check(cs.stats.numLettersAfter === c.stats.numLettersAfter && sc.stats.assignmentsAfter === sigma.stats.assignmentsAfter &&
+          cs.stats.assignmentsAfter > sigma.stats.assignmentsAfter && sc.stats.numLettersAfter > c.stats.numLettersAfter,
+          `Table II results: ${JSON.stringify(saved.results.map((r) => r.stats))}`);
+    check(saved.before.letters === 7 && saved.before.assignments === 26 && state.matrices.length === 2, "Table II before and matrices");
+    // A second stage that does not keep the minimum of its first stage is not shown. Here an extra
+    // letter copies the column of A: the display stays valid but has one letter too many. On the
+    // Table II graph it still has fewer letters and assignments than the display before reduction.
+    await page.evaluate(() => {
+      window.__alter = (reply) => {
+        if (reply.method !== "letter_then_assignment") return reply;
+        const r = reply.reduction;
+        for (const row of r.rows) {
+          if (row.assignments.split(" ").includes("A")) { row.assignments += " Z"; row.letters += "Z"; }
+        }
+        r.stats.numLettersAfter += 1;
+        r.stats.assignmentsAfter = r.rows.reduce((t, row) => t + row.assignments.split(" ").length, 0);
+        r.stats.objective = r.stats.assignmentsAfter;
+        r.stats.reductionPct = (r.stats.assignmentsBefore - r.stats.assignmentsAfter) / r.stats.assignmentsBefore * 100;
+        return reply;
+      };
+    });
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > p")?.textContent === "The second stage does not keep the minimum of the first stage.");
+    noResult(await read(), "second stage without the minimum");
+    await page.evaluate(() => { window.__alter = null; });
+    await ready();
+
+    // A simulated experiment as input. Generate moves the seed on by one.
+    await page.fill("#sim-n", "12");
+    await page.fill("#sim-seed", "4");
+    await page.click("#sim-generate");
+    state = await read();
+    check(state.pairs.trim().split("\n").length === 67 && state.means.trim().split("\n").length === 13, "simulated input size");
+    check(await page.$eval("#sim-seed", (e) => e.value) === "5", "the seed does not move on");
+    check((await page.$eval("#example-note", (e) => e.textContent)).startsWith("Simulated experiment with 12 treatments and seed 4."),
+          "simulated note");
+    await wait(() => document.querySelector(".headline-title")?.textContent.startsWith("Before reduction"));
+    await page.click("#run");
+    await solved();
+    state = await read();
+    check(state.title.startsWith("CLD-C then CLD-sigma: "), `simulated title: ${state.title}`);
+    json = await save("Download JSON");
+    check(json.name === "cld-simulated-12-treatments-seed-4.json" &&
+          JSON.parse(json.text).input.source === "Simulated, 12 treatments, seed 4", `simulated file: ${json.name}`);
+    // After the largest seed, the next one is 1 again.
+    await page.fill("#sim-seed", "2147483647");
+    await page.click("#sim-generate");
+    check(await page.$eval("#sim-seed", (e) => e.value) === "1", "the seed does not start again at 1");
+
+    // A late display before reduction for an earlier input is not shown for a later input.
+    await page.evaluate(() => { window.__holdBefore = true; });
+    await page.fill("#means", "");
+    await page.fill("#pairs", "group1,group2,significant\nA,B,false\n");
+    await wait(() => window.__heldBefore.length === 1);
+    await page.fill("#pairs", "x,y\n1,2\n");
+    await wait(() => document.querySelector(".empty .hint")?.textContent.startsWith("The display before reduction is not available"));
+    await page.evaluate(() => {
+      window.__holdBefore = false;
+      for (const [w, reply] of window.__heldBefore) w.deliver(reply);
+    });
+    await page.waitForTimeout(200);
+    state = await read();
+    check(state.title === null && state.letters === null, `a late display before reduction is shown: ${state.title}`);
+    // The same for a late reply that arrives before the page asks again for a later, valid input.
+    await page.evaluate(() => { window.__heldBefore = []; window.__holdBefore = true; });
+    await page.fill("#pairs", "group1,group2,significant\nA,B,false\nA,C,true\n");
+    await wait(() => window.__heldBefore.length === 1);
+    await page.fill("#pairs", "group1,group2,significant\nA,B,false\n");
+    await page.evaluate(() => {
+      window.__holdBefore = false;
+      for (const [w, reply] of window.__heldBefore) w.deliver(reply);
+    });
+    const early = await page.evaluate(() => document.querySelector(".empty .hint")?.textContent ?? "");
+    check(!early.includes("missing"), `a late reply for an earlier input is shown: ${early}`);
+    await wait(() => document.querySelector(".headline-title")?.textContent === "Before reduction: 1 letter and 2 assignments");
+    // A display before reduction that does not match the input is not shown.
+    await page.evaluate(() => {
+      window.__alterBefore = (reply) => {
+        reply.before.rows[0].letters = reply.before.rows[0].assignments = "Z";
+        return reply;
+      };
+    });
+    await page.click('button.example:has-text("Simple example")');
+    await wait(() => document.querySelector(".empty .hint")?.textContent
+      .startsWith("The display before reduction is not available: The reply failed the check of the page."));
+    state = await read();
+    check(state.title === null && state.letters === null, `an altered display before reduction is shown: ${state.title}`);
+    // A display before reduction can match every decision and still miss a maximal clique. Here the
+    // triangle a, b, c is a maximal clique, but the three other cliques cover its pairs.
+    await page.evaluate(() => {
+      window.__alterBefore = (reply) => {
+        const b = reply.before;
+        const members = (t) => b.rows.filter((r) => r.assignments.split(" ").includes(t)).map((r) => r.group).join("");
+        const drop = [...new Set(b.rows.flatMap((r) => r.assignments.split(" ")))].find((t) => members(t) === "abc");
+        for (const r of b.rows) {
+          const tokens = r.assignments.split(" ").filter((t) => t !== drop);
+          r.assignments = tokens.join(" ");
+          r.letters = tokens.every((t) => t.length === 1) ? tokens.join("") : tokens.join(" ");
+        }
+        b.letters -= 1;
+        b.assignments -= 3;
+        return reply;
+      };
+    });
+    const joined = new Set(["a,b", "b,c", "a,c", "a,x", "b,x", "b,y", "c,y", "a,z", "c,z"]);
+    const sun = ["a", "b", "c", "x", "y", "z"].flatMap((g, i, all) => all.slice(i + 1).map((h) => `${g},${h},${!joined.has(`${g},${h}`)}`));
+    await page.fill("#means", "");
+    await page.fill("#pairs", ["group1,group2,significant", ...sun].join("\n") + "\n");
+    await wait(() => document.querySelector(".empty .hint")?.textContent === "The display before reduction is not available: " +
+      "The reply failed the check of the page. The display before reduction misses a maximal clique of the input.");
+    check((await read()).title === null, "a display before reduction without a maximal clique is shown");
+    await page.evaluate(() => { window.__alterBefore = null; });
+
+    // A result with other counts before reduction than the display before reduction is not shown,
+    // also when the display before reduction arrives after the run.
+    const BEFORE_MISMATCH = "The display before reduction does not match the statistics of the package.";
+    await page.evaluate(() => {
+      window.__alter = (reply) => {
+        const s = reply.reduction.stats;
+        s.assignmentsBefore += 1;
+        s.reductionPct = (s.assignmentsBefore - s.assignmentsAfter) / s.assignmentsBefore * 100;
+        return reply;
+      };
+    });
+    await page.click('button.example:has-text("Simple example")');
+    await wait(() => document.querySelector(".headline-title")?.textContent === "Before reduction: 3 letters and 9 assignments");
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > p")?.textContent === "The display before reduction does not match the statistics of the package.");
+    noResult(await read(), "result with other counts before reduction");
+    // The same for a second stage with other counts before reduction than its first stage.
+    await page.evaluate(() => {
+      window.__alter = (reply) => {
+        if (reply.method !== "letter_then_assignment") return reply;
+        const s = reply.reduction.stats;
+        s.assignmentsBefore -= 1;
+        s.reductionPct = (s.assignmentsBefore - s.assignmentsAfter) / s.assignmentsBefore * 100;
+        return reply;
+      };
+    });
+    await ready();
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > p")?.textContent === "The results have different counts before reduction.");
+    noResult(await read(), "second stage with other counts before reduction");
+    await page.evaluate(() => {
+      window.__alter = (reply) => {
+        const s = reply.reduction.stats;
+        s.assignmentsBefore += 1;
+        s.reductionPct = (s.assignmentsBefore - s.assignmentsAfter) / s.assignmentsBefore * 100;
+        return reply;
+      };
+    });
+    await ready();
+    // A run that ends before its display before reduction arrives waits for it: no result is shown or
+    // exported before the page has checked it.
+    const heldRun = async (example) => {
+      await page.evaluate(() => { window.__heldBefore = []; window.__holdBefore = true; });
+      await page.click(`button.example:has-text("${example}")`);
+      await wait(() => window.__heldBefore.length === 1);
+      await page.evaluate(() => { window.__seen = []; });
+      await page.click("#run");
+      await wait(() => window.__seen.includes("done"));
+      await page.waitForTimeout(100);
+      const waiting = await read();
+      check(waiting.summary === null && waiting.matrices.length === 0 && waiting.run === "Cancel" &&
+            waiting.title === "Waiting for the display before reduction…", `a run waiting for its display before reduction: ${waiting.title}`);
+      await page.evaluate(() => {
+        window.__holdBefore = false;
+        for (const [w, reply] of window.__heldBefore) w.deliver(reply);
+      });
+    };
+    const workersBeforeLate = await page.evaluate(() => window.__workers.length);
+    await heldRun("Wheat yield");
+    await wait((m) => document.querySelector(".problem > p")?.textContent === m, BEFORE_MISMATCH);
+    noResult(await read(), "result with other counts before reduction than a late display before reduction");
+    check(await page.evaluate((n) => window.__workers.length === n + 1 && window.__workers[n - 1].terminated, workersBeforeLate),
+          "the worker runs on after a result with other counts before reduction");
+    await page.evaluate(() => { window.__alter = null; });
+    await ready();
+    await heldRun("Simple example");
+    await solved();
+    state = await read();
+    check(state.title.startsWith("CLD-C then CLD-sigma") && state.summary[0][1] === "Before",
+          `a run after a late display before reduction: ${state.title}`);
+    // A start reply for a method that the run does not expect stops the run.
+    await page.evaluate(() => {
+      window.__alterStart = (reply) => { reply.method = "bogus"; return reply; };
+    });
+    await ready();
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > p")?.textContent === "The reply is for another method.");
+    noResult(await read(), "run after a start reply for another method");
+    await page.evaluate(() => { window.__alterStart = null; });
+    await ready();
+    // A ready or before reply with the id of the run stops it.
+    // So do a second ready reply without an id and a reply that is not a record.
+    for (const [type, message] of [["ready", "The worker sent a reply that a run does not have."],
+                                   ["before", "The worker sent a reply that a run does not have."],
+                                   ["second ready", "The worker sent a second ready reply."],
+                                   ["ready with id null", "The worker sent a second ready reply."],
+                                   ["null", "The worker sent a reply that is not a record."],
+                                   ["array", "The worker sent a reply that is not a record."],
+                                   ["date", "The worker sent a reply that is not a record."]]) {
+      await page.evaluate((type) => {
+        window.__alter = (reply) => (type === "null" ? null : type === "array" ? [] : type === "date" ? new Date(0)
+          : type === "second ready" ? { type: "ready" } : type === "ready with id null" ? { type: "ready", id: null }
+          : { type, id: reply.id });
+      }, type);
+      await ready();
+      const workersBefore = await page.evaluate(() => window.__workers.length);
+      await page.click("#run");
+      await wait((m) => document.querySelector(".problem > p")?.textContent === m, message);
+      check(await page.evaluate((n) => window.__workers.length === n + 1, workersBefore), `the worker runs on after a ${type} reply`);
+      await page.evaluate(() => { window.__alter = null; });
+    }
+    // A done before the last result stops the run and starts a new worker.
+    await page.evaluate(() => { window.__alterStart = (reply) => ({ type: "done", id: reply.id }); });
+    await ready();
+    const workersBeforeDone = await page.evaluate(() => window.__workers.length);
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > p")?.textContent === "A method has no result.");
+    check(await page.evaluate((n) => window.__workers.length === n + 1, workersBeforeDone), "the worker runs on after an early done");
+    await page.evaluate(() => { window.__alterStart = null; });
+    // A reply of another type for the display before reduction is not shown, and its request ends.
+    await page.evaluate(() => { window.__alterBefore = (reply) => ({ type: "start", id: reply.id, method: "letter_minimum", stage: 1 }); });
+    await ready();
+    await page.click('button.example:has-text("Table II graph")');
+    await wait(() => document.querySelector(".empty .hint")?.textContent === "The display before reduction is not available: " +
+      "The reply failed the check of the page. The worker sent a reply that the display before reduction does not have.");
+    await page.evaluate(() => { window.__alterBefore = null; });
+    // That request ended: a run on the same input does not wait for it.
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > h2")?.textContent === "The page cannot check the result");
+    // A reply that is not a record while only the display before reduction is pending ends that
+    // request: a later run says that it cannot check its result, and does not wait.
+    await page.evaluate(() => { window.__alterBefore = () => null; });
+    await ready();
+    await page.click('button.example:has-text("Wheat yield")');
+    await wait(() => document.querySelector(".empty .hint")?.textContent === "The display before reduction is not available: " +
+      "The reply failed the check of the page. The worker sent a reply that is not a record.");
+    await page.evaluate(() => { window.__alterBefore = null; });
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > h2")?.textContent === "The page cannot check the result");
+    // A display before reduction of an earlier input is not shown for a later input.
+    await page.click('button.example:has-text("Simple example")');
+    await wait(() => document.querySelector(".headline-title")?.textContent === "Before reduction: 3 letters and 9 assignments");
+    await page.fill("#means", "");
+    const staleTitle = await page.evaluate(() => document.querySelector(".headline-title")?.textContent ?? null);
+    check(staleTitle === null, `the display before reduction of an earlier input is shown: ${staleTitle}`);
+    await page.click('button.example:has-text("Simple example")');
+    await wait(() => document.querySelector(".headline-title")?.textContent === "Before reduction: 3 letters and 9 assignments");
+    // A start or result reply with the right method but another stage stops the run.
+    for (const which of ["start", "result"]) {
+      await page.evaluate((which) => {
+        const another = (reply) => { reply.stage = 2; return reply; };
+        if (which === "start") window.__alterStart = another; else window.__alter = another;
+      }, which);
+      await ready();
+      await page.click("#run");
+      await wait(() => document.querySelector(".problem > p")?.textContent === "The reply is for another method.");
+      noResult(await read(), `run after a ${which} reply for another stage`);
+      await page.evaluate(() => { window.__alterStart = null; window.__alter = null; });
+    }
+    // An error in the second stage says so. An error reply without a text message is a solver error.
+    for (const [message, title, text] of [
+      ["staged solve failed: Solve error", "The second stage stopped with an error", "staged solve failed: Solve error"],
+      [42, "The second stage stopped with an error", "The worker sent an error without a message."],
+    ]) {
+      await page.evaluate((message) => {
+        window.__alter = (reply) => (reply.stage === 2 ? { type: "error", id: reply.id, kind: "bogus", message } : reply);
+      }, message);
+      await ready();
+      await page.click("#run");
+      await wait((t) => document.querySelector(".problem > h2")?.textContent === t, title);
+      const problem = (await read()).problem;
+      check(problem[1] === text, `second stage error: ${problem}`);
+      await page.evaluate(() => { window.__alter = null; });
+    }
+    // An error that arrives before the start reply of the second stage is still a second stage error.
+    await page.evaluate(() => {
+      window.__alterStart = (reply) => (reply.stage === 2
+        ? { type: "error", id: reply.id, kind: "input", message: "post_hoc_results must not contain self-comparisons" } : reply);
+    });
+    await ready();
+    const workersBeforeEarly = await page.evaluate(() => window.__workers.length);
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > h2")?.textContent === "The second stage stopped with an error");
+    check(await page.evaluate((n) => window.__workers.length === n + 1, workersBeforeEarly),
+          "the worker runs on after an early second stage error");
+    await page.evaluate(() => { window.__alterStart = null; });
+    // A known kind with a message that is not text is a solver error too, and the page starts a new
+    // worker. So is an input error in a second stage, whose first stage accepted the same input.
+    for (const [stage, message] of [[1, 42], [2, 42], [2, "post_hoc_results must not contain self-comparisons"]]) {
+      await page.evaluate(([stage, message]) => {
+        window.__alter = (reply) => (reply.stage === stage ? { type: "error", id: reply.id, kind: "input", message } : reply);
+      }, [stage, message]);
+      await ready();
+      const before = await page.evaluate(() => window.__workers.length);
+      await page.click("#run");
+      await wait((t) => document.querySelector(".problem > h2")?.textContent === t,
+                 stage === 1 ? "The solver stopped with an error" : "The second stage stopped with an error");
+      check(await page.evaluate((n) => window.__workers.length === n + 1 && window.__workers[n - 1].terminated, before),
+            `the worker runs on after an error reply without text in stage ${stage}`);
+      await page.evaluate(() => { window.__alter = null; });
+    }
+    await ready();
+    // A solver error in a run ends it, and the next run starts from a new worker.
+    await page.evaluate(() => {
+      window.__alter = (reply) => ({ type: "error", id: reply.id, kind: "solver", message: "assignment-minimum MILP failed: Error" });
+    });
+    let workers = await page.evaluate(() => window.__workers.length);
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > h2")?.textContent === "The solver stopped with an error");
+    check(await page.evaluate((n) => window.__workers.length === n + 1 && window.__workers[n - 1].terminated, workers),
+          "the worker runs on after a solver error");
+    await page.evaluate(() => { window.__alter = null; });
+    await ready();
+    // 26 groups in 13 significant pairs have 8,192 maximal cliques. The check of that display before
+    // reduction must not block the page.
+    await page.evaluate(() => {
+      window.__longest = 0;
+      new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) window.__longest = Math.max(window.__longest, e.duration);
+      }).observe({ type: "longtask" });
+    });
+    const pairsOf26 = ["group1,group2,significant"];
+    for (let i = 0; i < 26; i++) for (let j = i + 1; j < 26; j++) pairsOf26.push(`g${i},g${j},${j === i + 1 && i % 2 === 0}`);
+    await page.fill("#means", "");
+    await page.fill("#pairs", pairsOf26.join("\n") + "\n");
+    await wait(() => document.querySelector(".headline-title")?.textContent === "Before reduction: 8,192 letters and 106,496 assignments");
+    await page.waitForTimeout(300);
+    const longest = await page.evaluate(() => window.__longest);
+    check(longest < 1500, `the display before reduction with 8,192 letters blocked the page for ${Math.round(longest)} ms`);
+    // A display before reduction with holes in its rows fails the check; it does not break the page.
+    await page.evaluate(() => {
+      window.__alterBefore = (reply) => ({ ...reply, before: { ...reply.before, rows: new Array(reply.before.rows.length) } });
+    });
+    await page.click('button.example:has-text("Wheat yield")');
+    await wait(() => document.querySelector(".empty .hint")?.textContent === "The display before reduction is not available: " +
+      "The reply failed the check of the page. The display before reduction does not have one row for each group of the input.");
+    await page.evaluate(() => { window.__alterBefore = null; });
+    // A simulated input again, for the study and the narrow layout below.
+    await page.fill("#sim-n", "12");
+    await page.fill("#sim-seed", "4");
+    await page.click("#sim-generate");
+    await wait(() => document.querySelector(".headline-title")?.textContent.startsWith("Before reduction"));
+    await page.click("#run");
+    await solved();
+
+    // The simulation study, its tables and file, and Cancel.
+    await page.click("#view-study");
+    check(await page.evaluate(() => document.getElementById("reduce-view").hidden && !document.getElementById("study-view").hidden),
+          "the study view does not show");
+    for (const [id, value] of [["study-from", "8"], ["study-to", "12"], ["study-step", "4"], ["study-count", "2"]]) {
+      await page.fill(`#${id}`, value);
+    }
+    await page.click("#study-run");
+    await wait(() => document.getElementById("study-hint").textContent.startsWith("Done: 4 instances"));
+    const study = await page.evaluate(() => [...document.querySelectorAll(".study-table")]
+      .map((t) => [...t.querySelectorAll("tr")].map((tr) => [...tr.children].map((cell) => cell.textContent))));
+    check(study.length === 3 && same(study[0].slice(1).map((r) => [r[0], r[1]]), [["8", "2"], ["12", "2"]]),
+          `study tables: ${JSON.stringify(study)}`);
+    check(same(study[1].slice(1).map((r) => r[r.length - 1]), ["2 of 2", "2 of 2"]), "study solves within the limit");
+    check(same(study[2].slice(1).map((r) => [r[0], r[1], r[2], r[4], r[6]]), [["12", "100.0%", "100.0%", "18.8", "17.9"]]),
+          `comparison row for 12 treatments: ${JSON.stringify(study[2])}`);
+    const studyFile = await save("Download instances (CSV)");
+    check(studyFile.name === "cld-simulation-study.csv" && studyFile.text.trimEnd().split("\n").length === 5, "study file");
+    // A study reply that breaks the order of the minimums, or is for another seed, stops the study.
+    for (const [id, value] of [["study-from", "10"], ["study-to", "10"], ["study-count", "2"]]) await page.fill(`#${id}`, value);
+    // A solver error in a study ends it, and the page starts a new worker.
+    await page.evaluate(() => {
+      window.__alterInstance = (reply) => ({ type: "error", id: reply.id, kind: "solver", message: "letter-minimum MILP failed: Error" });
+    });
+    const studyWorkers = await page.evaluate(() => window.__workers.length);
+    await page.click("#study-run");
+    await wait(() => document.getElementById("study-hint").textContent ===
+      "The study stopped with an error after 0 instances: letter-minimum MILP failed: Error");
+    check(await page.evaluate((n) => window.__workers.length === n + 1 && window.__workers[n - 1].terminated, studyWorkers),
+          "the study worker runs on after a solver error");
+    await page.evaluate(() => { window.__alterInstance = null; });
+    await ready();
+    for (const [alter, message] of [
+      ["order", "The solves of the instance do not keep the order of the minimums."],
+      ["seed", "The reply is not for the instance with 10 treatments and seed 1."],
+      ["type", "The worker sent a reply that a study does not have."],
+      ["ready", "The worker sent a reply that a study does not have."],
+      ["null", "The worker sent a reply that is not a record."],
+      ["array", "The worker sent a reply that is not a record."],
+    ]) {
+      await page.evaluate((alter) => {
+        window.__alterInstance = (reply) => {
+          if (alter === "type") return { type: "start", id: reply.id, method: "letter_minimum", stage: 1 };
+          if (alter === "ready") return { type: "ready", id: reply.id };
+          if (alter === "null") return null;
+          if (alter === "array") return new Array(3);
+          if (alter === "order") reply.instance.solves.letter_then_assignment = { letters: 999, assignments: 999, milliseconds: 1 };
+          else reply.instance.seed = 999;
+          return reply;
+        };
+      }, alter);
+      const workers = await page.evaluate(() => window.__workers.length);
+      await page.click("#study-run");
+      await wait(() => document.getElementById("study-hint").textContent.startsWith("The study stopped with an error"));
+      const hint = await page.$eval("#study-hint", (e) => e.textContent);
+      check(hint === `The study stopped with an error after 0 instances: The solver returned an invalid result. ${message}`,
+            `altered study reply (${alter}): ${hint}`);
+      check(await page.evaluate((n) => window.__workers[n - 1].terminated, workers), "the study worker runs on after an invalid reply");
+      await page.evaluate(() => { window.__alterInstance = null; });
+      await ready();
+    }
+    // With another limit than 30 seconds, the page compares nothing with Table X.
+    for (const [id, value] of [["study-from", "10"], ["study-to", "10"], ["study-count", "1"], ["study-limit", "10"]]) {
+      await page.fill(`#${id}`, value);
+    }
+    await page.click("#study-run");
+    await wait(() => document.getElementById("study-hint").textContent.startsWith("Done: 1 instances"));
+    check(await page.evaluate(() => document.querySelectorAll(".study-table").length === 2 &&
+      [...document.querySelectorAll("#study-results .hint")].some((e) => e.textContent.startsWith("The comparison with Table X"))),
+          "a study with a limit of 10 seconds is compared with Table X");
+    await page.fill("#study-limit", "30");
+    for (const [id, value] of [["study-from", "45"], ["study-to", "45"], ["study-count", "5"]]) await page.fill(`#${id}`, value);
+    const workersBefore = await page.evaluate(() => window.__workers.length);
+    await page.click("#study-run");
+    await wait(() => document.getElementById("study-run").textContent === "Cancel");
+    check(await page.$eval("#run", (e) => e.disabled) && await page.$eval("#compare", (e) => e.disabled),
+          "Run is open during the study");
+    check(await page.evaluate(() => ["from", "to", "step", "count", "seed", "limit"]
+      .every((f) => document.getElementById(`study-${f}`).disabled)), "a study field is open during the study");
+    await page.waitForTimeout(300);
+    await page.click("#study-run");
+    const studyHint = await page.$eval("#study-hint", (e) => e.textContent);
+    check(/^Cancelled after \d of 5 instances\.$/.test(studyHint), `study cancel: ${studyHint}`);
+    check(await page.evaluate((n) => window.__workers.length === n + 1 && window.__workers[n - 1].terminated, workersBefore),
+          "Cancel did not stop the study worker");
+    await ready();
+    // A change of a field after the study removes its results, which belong to the old fields.
+    await page.fill("#study-seed", "2");
+    check(await page.$eval("#study-results", (e) => e.children.length === 0) &&
+          await page.$eval("#study-hint", (e) => e.textContent === ""), "study results stay after a change of a field");
+    // Many short instances: the page draws the study tables a few times, not once for each instance.
+    for (const [id, value] of [["study-from", "2"], ["study-to", "3"], ["study-step", "1"], ["study-count", "300"]]) {
+      await page.fill(`#${id}`, value);
+    }
+    await page.evaluate(() => {
+      window.__draws = 0;
+      new MutationObserver((records) => {
+        window.__draws += records.filter((r) => r.removedNodes.length > 0).length;
+      }).observe(document.getElementById("study-results"), { childList: true });
+    });
+    await page.click("#study-run");
+    await wait(() => document.getElementById("study-hint").textContent.startsWith("Done: 600 instances"));
+    const draws = await page.evaluate(() => window.__draws);
+    check(draws < 100, `the study tables were drawn ${draws} times for 600 instances`);
+    // A render that does not change the study does not draw its tables again.
+    await page.evaluate(() => { window.__draws = 0; });
+    for (let k = 0; k < 3; k++) await page.click("#view-study");
+    check(await page.evaluate(() => window.__draws) === 0, "the study tables were drawn again without a change of the study");
+    await page.click("#view-reduce");
 
     // The licenses and the data sources are in the file.
     const notices = await page.$eval(".foot", (e) => e.textContent);
@@ -493,6 +1042,11 @@ async function main() {
                matrixScrolls: wrap.scrollWidth > wrap.clientWidth && wrap.getBoundingClientRect().right <= innerWidth };
     });
     check(narrow.page <= narrow.screen && narrow.below && narrow.matrixScrolls, `narrow layout: ${JSON.stringify(narrow)}`);
+    await page.click("#view-study");
+    const narrowStudy = await page.evaluate(() => [document.documentElement.scrollWidth, innerWidth]);
+    check(narrowStudy[0] <= narrowStudy[1], `narrow study view: ${narrowStudy}`);
+    if (shots) await page.screenshot({ path: join(shots, "narrow-study.png") });
+    await page.click("#view-reduce");
     if (shots) {
       await page.screenshot({ path: join(shots, "narrow-top.png") });
       await page.evaluate(() => document.querySelector(".headline").scrollIntoView());
@@ -501,6 +1055,7 @@ async function main() {
 
     // A long file name wraps in the result and does not widen the page.
     const longName = `${"x".repeat(200)}.csv`;
+    await page.fill("#means", "");
     await page.setInputFiles("#pairs-file", { name: longName, mimeType: "text/csv",
       buffer: Buffer.from("group1,group2,significant\nB,C,true\nA,B,true\nA,C,true\n") });
     await wait(() => document.getElementById("pairs").value.startsWith("group1,group2,significant\nB,C"));
@@ -524,6 +1079,37 @@ async function main() {
       fetch("https://example.invalid/").then(() => resolve("fetched"), () => setTimeout(() => resolve("failed without the policy"), 2000));
     }));
     check(refused === "connect-src", `content security policy: ${refused}`);
+
+    // A loading error of a new worker with a message that is not text: the page says so and does not break.
+    const errorsBefore = errors.length;
+    await page.evaluate(() => { window.__hold = true; window.__held = []; });
+    await page.click("#run");
+    await wait(() => window.__held.some((r) => r.type === "start"));
+    await page.evaluate(() => { window.__alterLoad = () => ({ type: "error", message: { toString: null } }); });
+    await page.click("#run");
+    await wait(() => document.getElementById("solver-status").textContent ===
+      "The solver could not start: The worker sent an error without a message.");
+    check(errors.length === errorsBefore, `console messages after a loading error: ${errors.slice(errorsBefore).join(" | ")}`);
+
+    // While a worker loads, a ready reply with an id, or a reply that is not a record, means that the
+    // solver could not start. Each case needs a page of its own, because the solver stays failed.
+    for (const [load, message] of [["ready with id", "The worker sent a reply that loading does not have."],
+                                   ["null", "The worker sent a reply that loading does not have."]]) {
+      const other = await context.newPage();
+      await other.addInitScript(instrument);
+      await other.goto(file);
+      await other.waitForFunction(() => document.getElementById("solver-status").textContent === "Solver ready");
+      await other.evaluate((load) => {
+        window.__hold = true;
+        window.__alterLoad = () => (load === "null" ? null : { type: "ready", id: 7 });
+      }, load);
+      await other.click("#run");
+      await other.waitForFunction(() => window.__held.some((r) => r.type === "start"));
+      await other.click("#run");
+      await other.waitForFunction((m) => document.getElementById("solver-status").textContent === `The solver could not start: ${m}`,
+                                  message, { timeout: 60_000 });
+      await other.close();
+    }
 
     check(readFileSync(join(here, "..", "dist", "site", "index.html")).equals(readFileSync(built)),
           "dist/site/index.html is not the built page");

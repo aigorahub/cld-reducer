@@ -3,8 +3,8 @@
 The repository follows the turfLP layout: R at the root, Python in `python/`,
 and JavaScript in `js/`. Version 0.2.0 is tagged and published on PyPI and npm.
 The merged candidate for the method changes is 0.3.0. Version 0.3.1 adds the
-browser page in `dashboard/` and no algorithm or public API change.
-The current development version is 0.3.2.
+browser page in `dashboard/`. Version 0.3.2 adds a second stage, simulated examples, and the letters before reduction
+to that page. Neither changes a package algorithm or the public API.
 The recorded CRAN submission is still 0.2.0;
 the package was absent from the public CRAN index on 2026-10-13.
 See [submission status](submission-status.md) for the current evidence.
@@ -53,8 +53,8 @@ the essential-cover changes. Registry checks on 2026-10-13 found no 0.3.0
 publication on PyPI or npm. Check again before publishing. The retained 0.3.0
 candidate commit is `7d9b923ed1e5c867e97f485071e1d1f742a0aeaa`. Use a clean
 checkout of that commit for candidate checks. Version 0.3.1 with the browser
-page is merge commit `b12423098d288496d4364ceeb6e094ada984a613`. The development checkout uses
-0.3.2. Keep the selected version in `DESCRIPTION`,
+page is merge commit `b12423098d288496d4364ceeb6e094ada984a613`. The checkout uses
+0.3.2, the version of the second stage of the browser page. Keep the selected version in `DESCRIPTION`,
 `CITATION.cff`, `NEWS.md`, both package manifests and locks, and Python's
 `__version__`. `scripts/release.py version` checks agreement. Never replace an
 uploaded version.
@@ -62,7 +62,8 @@ uploaded version.
 Before merging a feature release, synchronize the candidate version and its
 NEWS entry. After that merge, set the next unused patch version for development
 in a separate reviewed commit. For the method stack, those versions are 0.3.0 and
-0.3.1. For the browser page, they are 0.3.1 and 0.3.2.
+0.3.1. For the browser page, they are 0.3.1 and 0.3.2. For its second stage, they are
+0.3.2 and 0.3.3.
 Add a NEWS entry that marks the later version as unreleased. The version
 check uses the same three-part number in R, Python, npm, citation metadata, and
 both lock files. Record the earlier candidate commit so that a later authorized

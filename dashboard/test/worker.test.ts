@@ -4,11 +4,11 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
-import type { CldReduction } from "../../js/src/index.js";
+import { SolverError, type CldReduction } from "../../js/src/index.js";
 import { hooks } from "../../js/src/solver.js";
 import { TEMPLATE_MEANS, TEMPLATE_PAIRS, parseMeans, parsePairs, type PairRow } from "../src/csv.js";
 import { checkReduction, explain, type Method } from "../src/data.js";
-import { handle, type Input, type Reply } from "../src/worker.js";
+import { handle, studyInstance, timed, type Input, type Reply } from "../src/worker.js";
 
 const repo = (path: string): string => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 const require = createRequire(new URL("../../js/package.json", import.meta.url));
@@ -27,13 +27,13 @@ async function ask(msg: Parameters<typeof handle>[0]): Promise<Reply[]> {
 }
 
 async function solve(input: Input, method: Method): Promise<CldReduction> {
-  const reply = (await ask({ type: "run", id: 1, input, methods: [method] })).find((r) => r.type === "result");
+  const reply = (await ask({ type: "run", id: 1, input, methods: [method], staged: false })).find((r) => r.type === "result");
   if (reply?.type !== "result") throw new Error("no result");
   return reply.reduction;
 }
 
 async function errorOf(pairs: PairRow[], means: Input["means"] = null): Promise<Reply> {
-  const replies = await ask({ type: "run", id: 7, input: { pairs, means }, methods: ["letter_minimum"] });
+  const replies = await ask({ type: "run", id: 7, input: { pairs, means }, methods: ["letter_minimum"], staged: false });
   return replies[replies.length - 1];
 }
 
@@ -78,7 +78,7 @@ describe("worker", () => {
   });
 
   it("reports each method in order and then done", async () => {
-    const replies = await ask({ type: "run", id: 3, input: simple, methods: ["letter_minimum", "assignment_minimum"] });
+    const replies = await ask({ type: "run", id: 3, input: simple, methods: ["letter_minimum", "assignment_minimum"], staged: false });
     expect(replies.map((r) => r.type)).toEqual(["start", "result", "start", "result", "done"]);
     expect(replies.every((r) => r.type !== "ready" && r.id === 3)).toBe(true);
     expect(replies.flatMap((r) => r.type === "result" ? [[r.method, r.reduction.method]] : [])).toEqual([
@@ -157,7 +157,7 @@ describe("worker", () => {
 
   it("stops a run at the first error", async () => {
     const replies = await ask({ type: "run", id: 4, input: { pairs: [], means: null },
-                                methods: ["letter_minimum", "assignment_minimum"] });
+                                methods: ["letter_minimum", "assignment_minimum"], staged: false });
     expect(replies.map((r) => r.type)).toEqual(["start", "error"]);
   });
 
@@ -174,5 +174,112 @@ describe("worker", () => {
     const message = reply.type === "error" ? reply.message : "";
     expect(message).toMatch(/^maximal clique enumeration exceeded max_cliques=10000/);
     expect(explain(message)).toContain("10,000");
+  });
+
+  it("runs a second stage after each method when asked", async () => {
+    const replies = await ask({ type: "run", id: 5, input: simple, methods: ["letter_minimum", "assignment_minimum"], staged: true });
+    expect(replies.map((r) => (r.type === "start" || r.type === "result" ? `${r.type} ${r.method} ${r.stage}` : r.type))).toEqual([
+      "start letter_minimum 1", "result letter_minimum 1", "start letter_then_assignment 2", "result letter_then_assignment 2",
+      "start assignment_minimum 1", "result assignment_minimum 1", "start assignment_then_letter 2",
+      "result assignment_then_letter 2", "done",
+    ]);
+    const counts = replies.flatMap((r) => (r.type === "result"
+      ? [[r.method, r.reduction.stats.numLettersAfter, r.reduction.stats.assignmentsAfter, checkReduction(r.reduction, r.method)]] : []));
+    // The simple example: CLD-C has 3 letters and 9 assignments; its second stage keeps 3 letters with 8 assignments.
+    expect(counts).toEqual([
+      ["letter_minimum", 3, 9, null], ["letter_then_assignment", 3, 8, null],
+      ["assignment_minimum", 3, 8, null], ["assignment_then_letter", 3, 8, null],
+    ]);
+  });
+
+  it("returns the display before reduction, and an input error as a reply", async () => {
+    const [before] = await ask({ type: "before", id: 6, input: wheat });
+    expect(before.type === "before" && [before.id, before.before.letters, before.before.assignments]).toEqual([6, 4, 56]);
+    const [bad] = await ask({ type: "before", id: 8, input: { pairs: [{ group1: "a", group2: "b", significant: "false" },
+                                                                         { group1: "a", group2: "c", significant: "true" }], means: null } });
+    expect(bad).toMatchObject({ type: "error", id: 8, kind: "input" });
+  });
+
+  it("runs a study and returns one reply for each instance", async () => {
+    const replies = await ask({ type: "study", id: 9, study: { sizes: [8, 12], count: 2, firstSeed: 5, timeLimit: 30 } });
+    expect(replies.map((r) => (r.type === "instance" ? `${r.instance.n}/${r.instance.seed}` : r.type)))
+      .toEqual(["8/5", "8/6", "12/5", "12/6", "done"]);
+  });
+
+  it("solves a simulated instance with four consistent solves", async () => {
+    const i = await studyInstance(20, 3, 30);
+    const s = i.solves;
+    for (const m of ["letter_minimum", "assignment_minimum", "letter_then_assignment", "assignment_then_letter"] as const) {
+      expect(s[m].letters).not.toBeNull();
+      expect(s[m].milliseconds).toBeGreaterThanOrEqual(0);
+    }
+    expect(s.letter_minimum.letters!).toBeLessThanOrEqual(i.lettersBefore);
+    expect(s.assignment_minimum.assignments!).toBeLessThanOrEqual(i.assignmentsBefore);
+    expect(s.letter_then_assignment.letters).toBe(s.letter_minimum.letters);
+    expect(s.letter_then_assignment.assignments!).toBeGreaterThanOrEqual(s.assignment_minimum.assignments!);
+    expect(s.assignment_then_letter.assignments).toBe(s.assignment_minimum.assignments);
+    expect(s.assignment_then_letter.letters!).toBeGreaterThanOrEqual(s.letter_minimum.letters!);
+  });
+
+  it("records a solve that reaches the time limit as not finished", async () => {
+    const run = hooks.run;
+    hooks.run = () => ({ status: "time_limit", text: "Time limit reached" });
+    try {
+      // CLD-sigma on this instance needs HiGHS, so it reaches the stub.
+      const i = await studyInstance(30, 1, 30);
+      const unfinished = Object.values(i.solves).filter((x) => x.letters === null);
+      expect(unfinished.length).toBeGreaterThan(0);
+      expect(unfinished.every((x) => x.assignments === null)).toBe(true);
+      // A second stage whose first stage did not finish does not run, and it has no time.
+      expect(i.solves.assignment_minimum.letters).toBeNull();
+      expect(i.solves.assignment_then_letter.milliseconds).toBeNull();
+      expect(i.solves.assignment_minimum.milliseconds).toBeGreaterThanOrEqual(0);
+    } finally {
+      hooks.run = run;
+    }
+  });
+});
+
+describe("timed", () => {
+  const result = (): CldReduction => ({ stats: { numLettersAfter: 2, assignmentsAfter: 4 } }) as unknown as CldReduction;
+  const late = (ms: number) => () => new Promise<CldReduction>((resolve) => setTimeout(() => resolve(result()), ms));
+
+  it("counts a solve as not finished when its whole time passes the limit, as Table X does", async () => {
+    const over = await timed(late(60), 0.02);
+    expect(over.result).toBeNull();
+    expect(over.solve.letters).toBeNull();
+    expect(over.solve.milliseconds).toBeGreaterThan(20);
+    const within = await timed(late(1), 5);
+    expect(within.solve).toMatchObject({ letters: 2, assignments: 4 });
+  });
+});
+
+describe("study errors", () => {
+  it("name the solve that failed", async () => {
+    for (const [method, name] of [["letter_minimum", "CLD-C"], ["assignment_minimum", "CLD-sigma"],
+                                  ["letter_then_assignment", "CLD-C then CLD-sigma"],
+                                  ["assignment_then_letter", "CLD-sigma then CLD-C"]] as const) {
+      await expect(timed(() => { throw new SolverError("staged solve failed: Solve error"); }, 30, method))
+        .rejects.toThrow(`${name}: staged solve failed: Solve error`);
+      await expect(timed(() => { throw "Solve error"; }, 30, method)).rejects.toThrow(`${name}: Solve error`);
+      // A time limit of a second stage, with its own prefix, is a solve that did not finish, not an error.
+      const limited = await timed(() => { throw new SolverError("staged solve failed: Time limit reached"); }, 30, method);
+      expect(limited.result).toBeNull();
+      expect(limited.solve.letters).toBeNull();
+      await expect(timed(() => { throw { toString: null }; }, 30, method)).rejects.toThrow(`${name}: a failure without a message`);
+    }
+  });
+
+  it("name the instance and the solve", async () => {
+    const run = hooks.run;
+    hooks.run = () => ({ status: "failed", text: "Solve error" });
+    try {
+      const replies = await ask({ type: "study", id: 4, study: { sizes: [30], count: 1, firstSeed: 1, timeLimit: 30 } });
+      const error = replies.find((r) => r.type === "error");
+      expect(error && error.type === "error" && error.message)
+        .toMatch(/^The instance with 30 treatments and seed 1: CLD-(C|sigma): .*Solve error$/);
+    } finally {
+      hooks.run = run;
+    }
   });
 });

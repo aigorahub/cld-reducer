@@ -129,7 +129,7 @@ See [js/README.md](js/README.md) for the pairwise input, the options, and loadin
 
 ## Browser page
 
-[`dashboard/`](dashboard/) builds one HTML file that runs the JavaScript package in a browser. Open the file; it needs no server and no network connection, and the data does not leave the computer. The page reads pairwise significance decisions as CSV, by paste or by file. It does not run significance tests. It solves with CLD-C or CLD-sigma, or with both for a comparison, and shows the distinct letters and the assignments of each result. The results download as CSV and JSON.
+[`dashboard/`](dashboard/) builds one HTML file that runs the JavaScript package in a browser. Open the file; it needs no server and no network connection, and the data does not leave the computer. The page reads pairwise significance decisions as CSV, by paste or by file. It runs no significance tests on the user's data; Generate simulates decisions with a t test. It shows the letters before reduction, and Run puts the reduced letters next to them with the time of each solve. It solves with CLD-C or CLD-sigma, or with both for a comparison. An experimental second stage, in the page only, then minimizes the other quantity. A second view follows the design of the simulation study of the 2012 paper in the browser. The results download as CSV and JSON.
 
 ```sh
 cd js && npm ci
@@ -218,7 +218,7 @@ result$stats$assignments_after    # 9 assignments
 ```
 
 Version 0.3.0 is the merged candidate for these changes. Version 0.3.1 adds the
-browser page and no algorithm or public API change. The current development
-version is 0.3.2. The published 0.2.0 packages and
+browser page. Version 0.3.2 adds a second stage, simulated examples, and the letters before reduction
+to that page. Neither changes a package algorithm or the public API. The published 0.2.0 packages and
 frozen CRAN candidate are unchanged. See [development status](docs/development-status.md)
 for implementation, review, version, and timing records.
