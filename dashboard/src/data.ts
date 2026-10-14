@@ -375,6 +375,10 @@ export function resultsCsv(results: readonly MethodResult[], means: readonly Mea
   return [head, ...lines].join("\n") + "\n";
 }
 
+/** The statistics of a result, in the order of the package. */
+const STATS = ["assignmentsBefore", "assignmentsAfter", "reductionPct", "numLettersBefore", "numLettersAfter",
+               "numGroups", "numEdges", "solverStatus", "objective"] as const;
+
 /** A time to a tenth of a millisecond. Math.round(ms * 10) / 10 overflows for a very large time. */
 const tenths = (ms: number): number => Number(ms.toFixed(1));
 
@@ -396,7 +400,8 @@ export function resultsJson(results: readonly MethodResult[], input: { source: s
       stage,
       minimizes: methodInfo(method).minimizes.toLowerCase(),
       relationshipPreserved: reduction.relationshipPreserved,
-      stats: reduction.stats,
+      // Only the statistics that checkReduction checked: another field could break the file.
+      stats: STATS.reduce((out, key) => ({ ...out, [key]: reduction.stats[key] }), {}),
       milliseconds: tenths(milliseconds),
       rows: reduction.rows.map((row) => ({
         group: row.group, letters: row.letters, assignments: tokensOf(row.assignments),

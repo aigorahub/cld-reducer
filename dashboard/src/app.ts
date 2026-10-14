@@ -264,6 +264,8 @@ function onReply(r: Reply): void {
     beforeRequest = null;
     const defect = r.type !== "before" ? null
       : checkBefore(r.before, input.pairs, input.means) ?? (isTime(r.milliseconds) ? null : "The time of the reply is not a time.");
+    // An error here comes from the input checks or from the clique limit, not from HiGHS, so the
+    // worker stays. A new worker would ask for the same display and fail the same way.
     if (defect) {
       state.before = null;
       state.beforeNote = `The reply failed the check of the page. ${defect}`;
@@ -586,7 +588,7 @@ function onStudyReply(r: Reply): void {
   let defect: string | null = null;
   if (r.type === "instance") {
     const next = planned(run.study, run.instances.length);
-    defect = next ? checkInstance(r.instance, next.n, next.seed, instanceFacts(next.n, next.seed))
+    defect = next ? checkInstance(r.instance, next.n, next.seed, instanceFacts(next.n, next.seed), run.study.timeLimit)
       : "The worker sent more instances than the study has.";
     if (!defect) {
       run.instances.push(r.instance);
@@ -950,11 +952,15 @@ function renderStudy(): void {
                  r.sigmaTime === null ? "" : duration(r.sigmaTime), `${x.et.toFixed(3)} s`,
                  `${r.tradeOff} of ${r.tradeOffKnown}`, `${TABLE_XI[r.n] ?? 0} of 1,000`]] : [];
   });
-  if (published.length) {
+  // Table X counts a search as finished within 30 seconds. Another limit gives other finished sets.
+  if (published.length && run.study.timeLimit !== 30) {
+    el("p", "hint", "The comparison with Table X of the 2012 paper needs a time limit of 30 seconds, as in 2012.",
+       el("section", "panel-block", undefined, host));
+  } else if (published.length) {
     table("Compared with 2012",
           "Here: CLD-sigma on the instances above. 2012: FIND-AM in Table X and Table XI of Ennis, Fayle, and Ennis (2012), " +
           "1,000 other instances for each size on 2012 hardware. Both columns of a pair count an exact solve as finished when its " +
-          "whole time, with the enumeration of the maximal cliques, is within the limit, and both average the assignments and the " +
+          "whole time, with the enumeration of the maximal cliques, is within 30 seconds, and both average the assignments and the " +
           "time over the finished solves only. The instances here follow the published model text and have larger maximal displays " +
           "than Table X reports, so read the two as separate studies.",
           ["Treatments", "Finished, here", "Finished, 2012", "Assignments before, here", "MA, 2012",

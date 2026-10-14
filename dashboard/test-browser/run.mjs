@@ -816,6 +816,16 @@ async function main() {
       await page.evaluate(() => { window.__alterInstance = null; });
       await ready();
     }
+    // With another limit than 30 seconds, the page compares nothing with Table X.
+    for (const [id, value] of [["study-from", "10"], ["study-to", "10"], ["study-count", "1"], ["study-limit", "10"]]) {
+      await page.fill(`#${id}`, value);
+    }
+    await page.click("#study-run");
+    await wait(() => document.getElementById("study-hint").textContent.startsWith("Done: 1 instances"));
+    check(await page.evaluate(() => document.querySelectorAll(".study-table").length === 2 &&
+      [...document.querySelectorAll("#study-results .hint")].some((e) => e.textContent.startsWith("The comparison with Table X"))),
+          "a study with a limit of 10 seconds is compared with Table X");
+    await page.fill("#study-limit", "30");
     for (const [id, value] of [["study-from", "45"], ["study-to", "45"], ["study-count", "5"]]) await page.fill(`#${id}`, value);
     const workersBefore = await page.evaluate(() => window.__workers.length);
     await page.click("#study-run");

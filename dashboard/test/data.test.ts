@@ -311,6 +311,14 @@ describe("result files", () => {
     ]);
   });
 
+  it("write only the checked statistics in JSON", () => {
+    const r = result();
+    (r.reduction.stats as unknown as Record<string, unknown>).extra = 1n;
+    const file = JSON.parse(resultsJson([r], { source: "x", pairs: 3, means: null }, "1.0.0"));
+    expect(Object.keys(file.results[0].stats)).toEqual(["assignmentsBefore", "assignmentsAfter", "reductionPct",
+      "numLettersBefore", "numLettersAfter", "numGroups", "numEdges", "solverStatus", "objective"]);
+  });
+
   it("write a very large time in JSON as a number", () => {
     const file = JSON.parse(resultsJson([{ ...result(), milliseconds: 1e308 }], { source: "x", pairs: 3, means: null }, "1.0.0"));
     expect(file.results[0].milliseconds).toBe(1e308);

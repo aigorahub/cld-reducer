@@ -63,11 +63,13 @@ const counts = (letters: unknown, assignments: unknown, n: number): boolean =>
  * Check one instance reply of a study before the page keeps it: the planned
  * treatment count and seed; the edge count and counts before reduction of its
  * graph; letter and assignment counts that a display of that graph can have;
- * times; a second stage exactly when its first stage finished; and the order of
+ * times, with a finished solve within the time limit; a second stage exactly
+ * when its first stage finished; and the order of
  * the minimums of the four solves. It does not prove that a count is minimal.
  * Returns the first problem, or null.
  */
-export function checkInstance(value: unknown, n: number, seed: number, facts: InstanceFacts | null): string | null {
+export function checkInstance(value: unknown, n: number, seed: number, facts: InstanceFacts | null,
+                              timeLimit: number): string | null {
   if (value === null || typeof value !== "object") return "The reply holds no instance.";
   const i = value as Record<string, unknown>;
   if (i.n !== n || i.seed !== seed) return `The reply is not for the instance with ${n} treatments and seed ${seed}.`;
@@ -90,6 +92,7 @@ export function checkInstance(value: unknown, n: number, seed: number, facts: In
     if (finished && !counts(s.letters, s.assignments, n)) return `The counts of the ${m} solve are not possible.`;
     if (finished && !fits(s.letters as number, s.assignments as number)) return `The counts of the ${m} solve do not fit its graph.`;
     if (finished && !ran) return `The ${m} solve has a result but did not run.`;
+    if (finished && (s.milliseconds as number) > timeLimit * 1000) return `The ${m} solve finished after the time limit.`;
   }
   const { letter_minimum: c, assignment_minimum: sigma, letter_then_assignment: cs, assignment_then_letter: sc } =
     solves as Record<ResultMethod, Solve>;

@@ -89,7 +89,7 @@ describe("checkInstance", () => {
   const altered = (f: (i: Instance) => void): Instance => { const i = valid(); f(i); return i; };
   // The graph of the instance as the page finds it from the generator: here a made-up one.
   const facts = { edges: 10, lettersBefore: 5, assignmentsBefore: 20, largest: 6 };
-  const check = (i: unknown, seed = 3) => checkInstance(i, 10, seed, facts);
+  const check = (i: unknown, seed = 3) => checkInstance(i, 10, seed, facts, 30);
 
   it("accepts a possible instance, also with a first stage that did not finish", () => {
     expect(check(valid())).toBeNull();
@@ -101,7 +101,7 @@ describe("checkInstance", () => {
 
   it("rejects another instance, counts that are not of its graph, impossible counts or times, and no instance", () => {
     expect(check(valid(), 4)).toBe("The reply is not for the instance with 10 treatments and seed 4.");
-    expect(checkInstance(valid(), 10, 3, null)).toBe("The page cannot find the maximal cliques of the instance.");
+    expect(checkInstance(valid(), 10, 3, null, 30)).toBe("The page cannot find the maximal cliques of the instance.");
     expect(check(altered((i) => { i.edges = 11; }))).toBe("The edge count of the instance does not match its graph.");
     expect(check(altered((i) => { i.assignmentsBefore = 19; })))
       .toBe("The counts before reduction of the instance do not match its graph.");
@@ -114,6 +114,8 @@ describe("checkInstance", () => {
     expect(check(altered((i) => { i.solves.assignment_then_letter.milliseconds = null; })))
       .toBe("The assignment_then_letter solve has a result but did not run.");
     expect(check("instance")).toBe("The reply holds no instance.");
+    // CLD-sigma takes 10 ms in this instance; with a limit of 0.005 s it cannot have finished.
+    expect(checkInstance(valid(), 10, 3, facts, 0.005)).toBe("The assignment_minimum solve finished after the time limit.");
     // Each letter has at least one assignment, and each group at most one assignment for each letter.
     expect(check(altered((i) => { i.solves.letter_minimum = solve(19, 18, 2); })))
       .toBe("The counts of the letter_minimum solve are not possible.");
@@ -125,11 +127,11 @@ describe("checkInstance", () => {
     const one = solve(1, 2, 1);
     expect(checkInstance({ n: 2, seed: 1, edges: 0, lettersBefore: 2, assignmentsBefore: 2,
                            solves: { letter_minimum: one, assignment_minimum: one, letter_then_assignment: one,
-                                     assignment_then_letter: one } }, 2, 1, apart))
+                                     assignment_then_letter: one } }, 2, 1, apart, 30))
       .toBe("The counts of the letter_minimum solve do not fit its graph.");
     // Four letters of at most three groups cover at most twelve of thirteen edges.
     expect(checkInstance(altered((i) => { i.edges = 13; i.solves.letter_minimum = solve(4, 12, 2); }), 10, 3,
-                         { ...facts, edges: 13, largest: 3 }))
+                         { ...facts, edges: 13, largest: 3 }, 30))
       .toBe("The counts of the letter_minimum solve do not fit its graph.");
   });
 
