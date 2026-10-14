@@ -18,7 +18,7 @@ significantly.}
 Piepho, H.-P. (2004). An algorithm for a letter-based representation
 of all-pairwise comparisons. \emph{Journal of Computational and Graphical
 Statistics}, 13(2), 456-466. \doi{10.1198/1061860043515}, as tabulated in
-Ennis, Fayle, and Ennis (2012), Table 7. \doi{10.1145/2133803.2275596}
+Ennis, Fayle, and Ennis (2012), Table VIII. \doi{10.1145/2133803.2275596}
 }
 \usage{
 piepho2004_wheat
@@ -26,14 +26,18 @@ piepho2004_wheat
 \description{
 All 190 pairwise comparisons of 20 wheat treatments (varieties) from the
 CIMMYT multi-environment yield trial analyzed by Piepho (2004) and reproduced
-in Table 7 of Ennis, Fayle, and Ennis (2012). The comparisons are
+in Table VIII of Ennis, Fayle, and Ennis (2012). The comparisons are
 "not significantly different" for 172 pairs. The standard (maximal) display
-has 4 letters and 56 letter assignments. The reduced display from
-\code{\link[=reduce_letters]{reduce_letters()}} also has 4 letters, but only 44 assignments.
+has 4 letters and 56 letter assignments. The default CLD-C result has
+the same counts. With \code{method = "assignment_minimum"}, \code{\link[=reduce_letters]{reduce_letters()}}
+returns the CLD-sigma result with 4 letters and 44 assignments.
 }
 \examples{
 dim(piepho2004_wheat)
 mean(!piepho2004_wheat$significant)
+reduce_letters(piepho2004_wheat)$stats$assignments_after
+reduce_letters(piepho2004_wheat,
+               method = "assignment_minimum")$stats$assignments_after
 }
 \seealso{
 \code{\link[=reduce_letters]{reduce_letters()}}

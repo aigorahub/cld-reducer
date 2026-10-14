@@ -13,7 +13,7 @@ def main() -> None:
     example_dir = Path(__file__).resolve().parent
     pairs = pd.read_csv(example_dir / "simple_abc_to_ac_pairs.csv")
     means = pd.read_csv(example_dir / "simple_abc_to_ac_means.csv")
-    result = reduce_letters(pairs, means)
+    result = reduce_letters(pairs, means, method="assignment_minimum")
 
     print(result.to_frame().to_string(index=False))
     print()

@@ -1,12 +1,7 @@
 # HiGHS through the highs package, with the settings of docs/algorithm.md section 6.
 
-# The clock behind the shared time budget, in seconds. Tests replace it.
-elapsed <- function() {
-  proc.time()[["elapsed"]]
-}
-
 # Solve the model with the given column bounds. `sum_limit` adds the row
-# `sum(x) <= sum_limit`; `time_limit` is the HiGHS time limit in seconds.
+# weighted decision cost <= sum_limit; `time_limit` is the HiGHS time limit in seconds.
 # Returns list(status, text, values, objective), where status is "optimal",
 # "infeasible", "time_limit", or "failed". Tests replace this function.
 solve_lp <- function(problem, col_lower, col_upper, sum_limit = NULL, time_limit = Inf) {
@@ -15,7 +10,8 @@ solve_lp <- function(problem, col_lower, col_upper, sum_limit = NULL, time_limit
   rhs <- problem$row_upper
   if (!is.null(sum_limit)) {
     a <- rbind(a, Matrix::sparseMatrix(
-      i = rep(1L, problem$num_x), j = seq_len(problem$num_x), x = 1,
+      i = rep(1L, length(problem$decision_columns)), j = problem$decision_columns,
+      x = problem$cost[problem$decision_columns],
       dims = c(1L, problem$num_cols)
     ))
     lhs <- c(lhs, -Inf)

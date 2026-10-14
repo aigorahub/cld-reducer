@@ -7,8 +7,7 @@ from typing import Any
 
 import pandas as pd
 
-from .algorithms.assignment_minimum import reduce_assignment_minimum
-from .exceptions import InvalidInputError
+from .reduction import check_method, reduce_validated
 from .result import CLDReductionResult
 from .validation import (
     adjacency_from_pairs,
@@ -23,7 +22,7 @@ def reduce_letters(
     post_hoc_results: pd.DataFrame | Sequence[Mapping[str, Any]],
     means: Mapping[Any, float] | pd.Series | pd.DataFrame | None = None,
     *,
-    method: str = "assignment_minimum",
+    method: str = "letter_minimum",
     group1: str = "group1",
     group2: str = "group2",
     significant: str = "significant",
@@ -40,7 +39,9 @@ def reduce_letters(
     means:
         Optional group means used for stable display ordering.
     method:
-        Reduction algorithm. Currently only `"assignment_minimum"` is supported.
+        CLD-C `"letter_minimum"` (default) minimizes distinct letters.
+        CLD-sigma `"assignment_minimum"` minimizes assignments.
+        Hyphenated aliases are accepted.
     group1, group2, significant:
         Column names in `post_hoc_results`.
     time_limit:
@@ -73,7 +74,7 @@ def reduce_from_adjacency(
     groups: Sequence[Any] | None = None,
     means: Mapping[Any, float] | pd.Series | pd.DataFrame | None = None,
     *,
-    method: str = "assignment_minimum",
+    method: str = "letter_minimum",
     time_limit: float | None = None,
     max_cliques: int | None = 10_000,
 ) -> CLDReductionResult:
@@ -84,14 +85,7 @@ def reduce_from_adjacency(
     """
     matrix, normalized_groups = validate_adjacency(adjacency, groups)
     normalized_means = normalize_means(means, normalized_groups)
-    if method in {"assignment_minimum", "assignment-minimum"}:
-        return reduce_assignment_minimum(
-            matrix,
-            normalized_groups,
-            normalized_means,
-            method="assignment_minimum",
-            time_limit=time_limit,
-            max_cliques=max_cliques,
-        )
-    msg = f"unsupported CLD reduction method: {method!r}"
-    raise InvalidInputError(msg)
+    strategy = check_method(method)
+    return reduce_validated(
+        matrix, normalized_groups, normalized_means, strategy, time_limit, max_cliques
+    )

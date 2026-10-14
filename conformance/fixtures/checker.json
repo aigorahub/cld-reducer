@@ -316,5 +316,196 @@
     "relationship_preserved": true
    }
   }
+ ],
+ "letter_bad": [
+  {
+   "case": "c/hand/simple-abc-adjacency",
+   "name": "loses_relationship",
+   "result": {
+    "groups": [
+     "1",
+     "2",
+     "3",
+     "4",
+     "5"
+    ],
+    "assignments": {
+     "1": [],
+     "2": [
+      "A",
+      "B"
+     ],
+     "3": [
+      "A",
+      "B",
+      "C"
+     ],
+     "4": [
+      "B",
+      "C"
+     ],
+     "5": [
+      "C"
+     ]
+    },
+    "letters": {
+     "1": "",
+     "2": "AB",
+     "3": "ABC",
+     "4": "BC",
+     "5": "C"
+    },
+    "stats": {
+     "assignments_before": 9,
+     "assignments_after": 9,
+     "num_letters_before": 3,
+     "num_letters_after": 3,
+     "num_groups": 5,
+     "num_edges": 7
+    },
+    "solver_status": "Optimal",
+    "objective": 3,
+    "reduction_pct": {
+     "numerator": 0,
+     "denominator": 9
+    },
+    "method": "letter_minimum",
+    "relationship_preserved": true
+   }
+  },
+  {
+   "case": "c/r06-25",
+   "name": "not_minimal",
+   "result": {
+    "groups": [
+     "T01",
+     "T02",
+     "T03",
+     "T04",
+     "T05",
+     "T06"
+    ],
+    "assignments": {
+     "T01": [
+      "D",
+      "E"
+     ],
+     "T02": [
+      "A",
+      "B",
+      "D"
+     ],
+     "T03": [
+      "A",
+      "C",
+      "D",
+      "E"
+     ],
+     "T04": [
+      "B"
+     ],
+     "T05": [
+      "A",
+      "B",
+      "C"
+     ],
+     "T06": [
+      "C",
+      "E"
+     ]
+    },
+    "letters": {
+     "T01": "DE",
+     "T02": "ABD",
+     "T03": "ACDE",
+     "T04": "B",
+     "T05": "ABC",
+     "T06": "CE"
+    },
+    "stats": {
+     "assignments_before": 15,
+     "assignments_after": 15,
+     "num_letters_before": 5,
+     "num_letters_after": 5,
+     "num_groups": 6,
+     "num_edges": 10
+    },
+    "solver_status": "Optimal",
+    "objective": 5,
+    "reduction_pct": {
+     "numerator": 0,
+     "denominator": 15
+    },
+    "method": "letter_minimum",
+    "relationship_preserved": true
+   }
+  },
+  {
+   "case": "c/r06-34",
+   "name": "non_canonical",
+   "result": {
+    "groups": [
+     "T01",
+     "T02",
+     "T03",
+     "T04",
+     "T05",
+     "T06"
+    ],
+    "assignments": {
+     "T01": [
+      "A",
+      "C"
+     ],
+     "T02": [
+      "B",
+      "D",
+      "E"
+     ],
+     "T03": [
+      "A",
+      "B"
+     ],
+     "T04": [
+      "B",
+      "E"
+     ],
+     "T05": [
+      "A",
+      "C",
+      "D"
+     ],
+     "T06": [
+      "C",
+      "D",
+      "E"
+     ]
+    },
+    "letters": {
+     "T01": "AC",
+     "T02": "BDE",
+     "T03": "AB",
+     "T04": "BE",
+     "T05": "ACD",
+     "T06": "CDE"
+    },
+    "stats": {
+     "assignments_before": 18,
+     "assignments_after": 15,
+     "num_letters_before": 6,
+     "num_letters_after": 5,
+     "num_groups": 6,
+     "num_edges": 11
+    },
+    "solver_status": "Optimal",
+    "objective": 5,
+    "reduction_pct": {
+     "numerator": 3,
+     "denominator": 18
+    },
+    "method": "letter_minimum",
+    "relationship_preserved": true
+   }
+  }
  ]
 }

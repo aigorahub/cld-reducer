@@ -26,7 +26,7 @@ describe("loadSolver with a binary", () => {
   it("loads from a compiled module and does not read highs.wasm", async () => {
     const wasmModule = await WebAssembly.compile(bytes);
     await loadSolver({ wasmModule, locateFile: nowhere });
-    const result = await reduceFromAdjacency(SIMPLE);
+    const result = await reduceFromAdjacency(SIMPLE, { method: "assignment_minimum" });
     expect(result.letters).toEqual(SIMPLE_LETTERS);
   });
 });

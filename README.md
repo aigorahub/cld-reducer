@@ -9,7 +9,7 @@
 
 cld-reducer reduces compact letter displays (CLDs) while preserving the pairwise statistical relationships they encode. It comes as an R package (`cldreducer`, at the root of this repository), a Python package (`cld-reducer`, in [`python/`](python/)), and a JavaScript and TypeScript package (`cld-reducer`, in [`js/`](js/)). All three solve the problem with the HiGHS solver, follow one specification, and return the same display for the same input.
 
-It implements the **assignment-minimum clique covering** problem introduced by Ennis, Fayle, and Ennis (2012): finding a CLD that uses the fewest possible individual letter-to-group assignments. The 2012 paper solves this problem with a backtracking algorithm (FIND-AM); this repository solves the same problem as a binary mixed-integer program with HiGHS. It is the implementation behind the CLD letter-reduction work presented at Sensometrics 2026.
+Its optional CLD-sigma method implements the **assignment-minimum clique covering** problem introduced by Ennis, Fayle, and Ennis (2012): finding a CLD that uses the fewest possible individual letter-to-group assignments. The 2012 paper solves this problem with a backtracking algorithm (FIND-AM); this repository solves the same problem as a binary mixed-integer program with HiGHS. It is the implementation behind the CLD letter-reduction work presented at Sensometrics 2026.
 
 See [submission status](docs/submission-status.md) for registry availability and [release instructions](docs/releasing.md) for the release process. The commands below install from the repository.
 
@@ -19,7 +19,7 @@ Compact Letter Displays are useful because two products that share at least one 
 
 For large sensory studies, standard maximal-clique CLD algorithms often assign more letters than are needed to preserve those relationships. A sample labeled `ABC`, for example, may only need `AC` if the removed `B` does not change any pairwise significance relationship.
 
-cld-reducer minimizes the total number of group-letter assignments and then checks that the reduced display reconstructs exactly the same relationship matrix as the input.
+The default CLD-C method minimizes distinct letters. The CLD-sigma option minimizes group-letter assignments. Both methods check that the display reconstructs the input relationship matrix.
 
 ## Installation
 
@@ -43,26 +43,26 @@ library(cldreducer)
 
 result <- reduce_letters(simple_abc_pairs, simple_abc_means)
 result
-#> Reduced compact letter display (assignment_minimum)
+#> Reduced compact letter display (letter_minimum)
 #>  group letters assignments
 #>      1       A           A
 #>      2      AB         A B
-#>      3      AC         A C
+#>      3     ABC       A B C
 #>      4      BC         B C
 #>      5       C           C
-#> Assignments: 9 -> 8 (11.1% fewer). Letters: 3 -> 3. Relationships preserved: TRUE.
+#> Assignments: 9 -> 9 (0.0% fewer). Letters: 3 -> 3. Relationships preserved: TRUE.
 
 result$letters
 #>    1    2    3    4    5 
-#>  "A" "AB" "AC" "BC"  "C"
+#>  "A" "AB" "ABC" "BC"  "C"
 ```
 
-The worked example reduces group 3 from `ABC` to `AC`. The `means` argument is optional; the means order the groups and the letters. If you already have the matrix of non-significant pairs, use `reduce_from_adjacency()`.
+The default returns three distinct letters. Use `method = "assignment_minimum"` to reduce group 3 from `ABC` to `AC`. The `means` argument is optional; the means order the groups and the letters. If you already have the matrix of non-significant pairs, use `reduce_from_adjacency()`.
 
-The package also contains the wheat yield example of Piepho (2004), as tabulated in Table 7 of Ennis, Fayle, and Ennis (2012): 20 treatments and 190 comparisons.
+The package also contains the wheat yield example of Piepho (2004), as tabulated in Table VIII of Ennis, Fayle, and Ennis (2012): 20 treatments and 190 comparisons.
 
 ```r
-wheat <- reduce_letters(piepho2004_wheat)
+wheat <- reduce_letters(piepho2004_wheat, method = "assignment_minimum")
 wheat$stats[c("assignments_before", "assignments_after", "num_letters_after")]
 #> $assignments_before
 #> [1] 56
@@ -105,7 +105,7 @@ means = pd.DataFrame(
 
 result = reduce_letters(pairs, means)
 print(result.letters)
-# {'1': 'A', '2': 'AB', '3': 'AC', '4': 'BC', '5': 'C'}
+# {'1': 'A', '2': 'AB', '3': 'ABC', '4': 'BC', '5': 'C'}
 ```
 
 This example works after package installation and needs no external files. The package also has a command line tool, `cld-reduce`. See [python/README.md](python/README.md).
@@ -127,17 +127,22 @@ See [js/README.md](js/README.md) for the pairwise input, the options, and loadin
 
 ## Method
 
-The method is `assignment_minimum`.
+The default method is `letter_minimum` (CLD-C). Use `assignment_minimum` for CLD-sigma.
+
+CLD-sigma follows these steps.
 
 1. Build the non-significance graph from the pairwise results.
-2. Find all maximal cliques. Every assignment-minimum covering is a subcovering of the maximal covering, which is the starting point used by the 2012 paper.
-3. Solve a binary mixed-integer program that selects group-letter assignments with the smallest total assignment count.
+2. Merge identical closed neighborhoods with their original vertex counts as weights, then find all maximal cliques. At least one assignment-minimum covering is a subcovering of the maximal covering, which is the starting point used by the 2012 paper.
+3. Solve a binary mixed-integer program with class weights, then expand the selected memberships to the original groups.
 4. Among the displays with that smallest count, pick the canonical one: the display whose membership vector is lexicographically greatest in a fixed order. The wheat example has 64 displays with 44 assignments, and without a fixed rule different solvers would print different ones. The canonical rule makes the result independent of the solver and the language.
 5. Rebuild the pairwise relationship matrix from the letters and return the result only if every original relationship is preserved.
 
 Exact assignment minimization can become expensive for dense or highly structured graphs. All three packages offer a time limit and a cap on the number of maximal cliques (10,000 by default); the call stops with a clear error beyond the cap.
 
-[docs/algorithm.md](docs/algorithm.md) is the normative specification: input rules, error messages, the canonical order, the solver settings, and the API of all three languages. The shared conformance suite in [conformance/](conformance/) has 1,422 reduce cases (plus 65 error cases and 18 label cases) with expected displays that come from an exact search in a standard-library Python script, not from a solver. R, Python, and JavaScript run all of them in CI. The Python and JavaScript runs repeat with HiGHS presolve off.
+[docs/algorithm.md](docs/algorithm.md) defines the input rules, errors, canonical order, solver settings, and APIs.
+The shared suite in [conformance/](conformance/) has 2,894 reduction cases: 1,422 for CLD-sigma, 1,442 for CLD-C, and 30 weighted reduction cases.
+It also has 65 error cases and 18 label cases. Expected displays come from exact search in a standard-library Python script.
+R, Python, and JavaScript run all cases in CI. Python and JavaScript repeat with HiGHS presolve off.
 
 ## Repository layout
 
@@ -168,3 +173,31 @@ See `CITATION.cff` for machine-readable citation metadata.
 ## License
 
 MIT. See `LICENSE.md`.
+
+## Choice of objective
+
+Both methods merge vertices with identical closed neighborhoods before solving.
+The sigma model weights each merged vertex by its original group count.
+The result restores the original groups, labels, means, and assignment counts.
+This is the vertex reduction from Lemma 2.5 of the 2012 paper.
+
+CLD-sigma (`assignment_minimum`, alias `assignment-minimum`) minimizes
+letter-to-group assignments. The default CLD-C (`letter_minimum`, alias `letter-minimum`)
+minimizes distinct letters by selecting full maximal cliques. It does not minimize
+assignments as a second objective. Equal optima use the lexicographically greatest
+binary selection vector in canonical clique order. Public `method` metadata uses
+the underscore spelling.
+
+For CLD-sigma, `objective` equals the assignments after reduction. For CLD-C it equals
+the number of letters after reduction. Assignment counts and reduction percentage
+remain assignment measures in both methods. For the simple five-group example,
+sigma uses 8 assignments and 3 letters; C uses 9 assignments and 3 letters.
+
+```r
+result <- reduce_letters(simple_abc_pairs, simple_abc_means, method = "letter_minimum")
+result$stats$objective            # 3 letters
+result$stats$assignments_after    # 9 assignments
+```
+
+Version 0.3.0 is a development candidate. The published 0.2.0 packages and pending
+frozen CRAN candidate are unchanged.

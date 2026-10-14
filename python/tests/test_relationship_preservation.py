@@ -9,7 +9,9 @@ from cld_reducer.validation import reconstruct_adjacency_from_assignments
 def test_all_significant_groups_get_distinct_letters() -> None:
     adjacency = np.eye(4, dtype=bool)
 
-    result = reduce_from_adjacency(adjacency, groups=["A", "B", "C", "D"])
+    result = reduce_from_adjacency(
+        adjacency, groups=["A", "B", "C", "D"], method="assignment_minimum"
+    )
 
     assert result.stats["assignments_after"] == 4
     assert len(set(result.letters.values())) == 4
@@ -19,7 +21,9 @@ def test_all_significant_groups_get_distinct_letters() -> None:
 def test_all_non_significant_groups_share_one_letter() -> None:
     adjacency = np.ones((4, 4), dtype=bool)
 
-    result = reduce_from_adjacency(adjacency, groups=["A", "B", "C", "D"])
+    result = reduce_from_adjacency(
+        adjacency, groups=["A", "B", "C", "D"], method="assignment_minimum"
+    )
 
     assert result.letters == {"A": "A", "B": "A", "C": "A", "D": "A"}
     assert result.stats["assignments_after"] == 4
@@ -36,7 +40,7 @@ def test_random_symmetric_graphs_preserve_relationships() -> None:
         adjacency = adjacency | adjacency.T | np.eye(6, dtype=bool)
         groups = [f"G{case_index}_{index}" for index in range(6)]
 
-        result = reduce_from_adjacency(adjacency, groups=groups)
+        result = reduce_from_adjacency(adjacency, groups=groups, method="assignment_minimum")
         reconstructed = reconstruct_adjacency_from_assignments(result.assignments, groups)
 
         assert result.relationship_preserved is True
@@ -51,7 +55,7 @@ def test_display_letters_are_delimited_after_z() -> None:
     adjacency[1:, 0] = True
     groups = ["center", *[f"leaf_{index}" for index in range(1, group_count)]]
 
-    result = reduce_from_adjacency(adjacency, groups=groups)
+    result = reduce_from_adjacency(adjacency, groups=groups, method="assignment_minimum")
     center_tokens = result.assignments["center"]
 
     assert "AA" in center_tokens

@@ -11,7 +11,7 @@ reduce_letters(
   group1 = "group1",
   group2 = "group2",
   significant = "significant",
-  method = "assignment_minimum",
+  method = "letter_minimum",
   time_limit = NULL,
   max_cliques = 10000L
 )
@@ -20,7 +20,7 @@ reduce_from_adjacency(
   adjacency,
   groups = NULL,
   means = NULL,
-  method = "assignment_minimum",
+  method = "letter_minimum",
   time_limit = NULL,
   max_cliques = 10000L
 )
@@ -42,8 +42,10 @@ appearance in \code{group1}, then \code{group2}. Every mean must be finite.}
 
 \item{group1, group2, significant}{Names of the columns of \code{pairs}.}
 
-\item{method}{The reduction method. \code{"assignment_minimum"} is the only one
-(\code{"assignment-minimum"} is also accepted).}
+\item{method}{\code{"assignment_minimum"} (CLD-sigma) minimizes assignments;
+\code{"letter_minimum"} (CLD-C, default) minimizes full maximal-clique columns, with no
+assignment secondary objective. Hyphenated aliases are also accepted.
+Public result metadata uses the underscore spelling.}
 
 \item{time_limit}{One time budget in seconds for all solves of the call, or
 \code{NULL} for no limit.}
@@ -73,17 +75,24 @@ vector;
 matrix).
 }
 
+\code{objective} equals \code{assignments_after} for CLD-sigma and \code{num_letters_after}
+for CLD-C. \code{assignments_after} and \code{reduction_pct} always measure assignments.
+Equal C optima select the lexicographically greatest binary clique vector
+in canonical order, then use the same stable mean/index letter formatting.
+
 The \code{print()} method shows the display and the counts, and
 \code{as.data.frame()} gives a table with the columns \code{group}, \code{letters}, and
 \code{assignments}.
 }
 \description{
 \code{reduce_letters()} and \code{reduce_from_adjacency()} find a compact letter
-display (CLD) with the fewest letter assignments in which two groups share a
-letter exactly when they are not significantly different. This is the
-assignment-minimum clique covering problem of Ennis, Fayle, and Ennis
-(2012). The programs are solved with 'HiGHS'. When several displays have the
-same, smallest number of assignments, the function returns the canonical one
+display (CLD) minimizing distinct letters (CLD-C, the default) or
+assignments (CLD-sigma), in which two groups share a
+letter exactly when they are not significantly different. The optional
+CLD-sigma method solves the assignment-minimum clique covering problem of
+Ennis, Fayle, and Ennis (2012). Both methods use 'HiGHS'.
+When several displays have the same minimum objective, the function returns
+the canonical one
 defined in the specification (\code{docs/algorithm.md} in the source repository),
 so the result does not depend on the solver. The same method is available
 in Python and JavaScript, and all three return the same display.

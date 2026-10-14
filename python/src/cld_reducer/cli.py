@@ -39,8 +39,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--method",
-        default="assignment_minimum",
-        choices=["assignment_minimum", "assignment-minimum"],
+        default="letter_minimum",
+        choices=["assignment_minimum", "assignment-minimum", "letter_minimum", "letter-minimum"],
         help="Reduction method",
     )
     return parser

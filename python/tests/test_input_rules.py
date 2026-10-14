@@ -42,12 +42,12 @@ def test_membership_outside_zero_and_one_is_invalid(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr(_solver, "run", wrapper)
     with pytest.raises(SolverError, match="HiGHS returned an invalid solution"):
-        reduce_from_adjacency(SINGLETON)
+        reduce_from_adjacency(SINGLETON, method="assignment_minimum")
 
 
 def test_empty_adjacency_matrix_is_rejected() -> None:
     with pytest.raises(InvalidInputError, match="adjacency must contain at least one group"):
-        reduce_from_adjacency(np.zeros((0, 0), dtype=bool))
+        reduce_from_adjacency(np.zeros((0, 0), dtype=bool), method="assignment_minimum")
 
 
 @pytest.mark.parametrize(
@@ -60,7 +60,7 @@ def test_empty_adjacency_matrix_is_rejected() -> None:
 )
 def test_duplicate_mean_labels_are_rejected_for_adjacency_input(means) -> None:
     with pytest.raises(InvalidInputError, match="means contain duplicate groups: "):
-        reduce_from_adjacency(PATH3, ["a", "b", "c"], means)
+        reduce_from_adjacency(PATH3, ["a", "b", "c"], means, method="assignment_minimum")
 
 
 @pytest.mark.parametrize("label", [None, float("nan"), pd.NA], ids=["none", "nan", "pandas-na"])
@@ -68,9 +68,9 @@ def test_missing_group_labels_are_rejected(label) -> None:
     rows = all_pairs(["a", "b", "c"], {(0, 1), (1, 2)})
     rows[1]["group2"] = label
     with pytest.raises(InvalidInputError, match="group labels must not be missing"):
-        reduce_letters(rows)
+        reduce_letters(rows, method="assignment_minimum")
     with pytest.raises(InvalidInputError, match="group labels must not be missing"):
-        reduce_from_adjacency(np.eye(2, dtype=bool), ["a", label])
+        reduce_from_adjacency(np.eye(2, dtype=bool), ["a", label], method="assignment_minimum")
 
 
 def test_missing_label_comes_before_significance() -> None:
@@ -78,39 +78,42 @@ def test_missing_label_comes_before_significance() -> None:
     rows[0]["significant"] = "maybe"
     rows[1]["group1"] = None
     with pytest.raises(InvalidInputError, match="group labels must not be missing"):
-        reduce_letters(rows)
+        reduce_letters(rows, method="assignment_minimum")
 
 
 def test_zero_rows() -> None:
-    assert reduce_letters([], {"a": 1.0}).letters == {"a": "A"}
+    assert reduce_letters([], {"a": 1.0}, method="assignment_minimum").letters == {"a": "A"}
     with pytest.raises(InvalidInputError, match="at least one group is required"):
-        reduce_letters([])
+        reduce_letters([], method="assignment_minimum")
     # A data frame has column names, and they are still required.
     with pytest.raises(InvalidInputError, match="post_hoc_results missing required columns"):
-        reduce_letters(pd.DataFrame())
+        reduce_letters(pd.DataFrame(), method="assignment_minimum")
 
 
 def test_significance_trimming_is_ascii_only() -> None:
     def rows(value: str) -> list[dict[str, object]]:
         return [{"group1": "a", "group2": "b", "significant": value}]
 
-    assert reduce_letters(rows(" ns\t\r\n")).letters == {"a": "A", "b": "A"}
+    assert reduce_letters(rows(" ns\t\r\n"), method="assignment_minimum").letters == {
+        "a": "A",
+        "b": "A",
+    }
     with pytest.raises(InvalidInputError, match="cannot coerce significance value to bool: "):
-        reduce_letters(rows("ns\u00a0"))
+        reduce_letters(rows("ns\u00a0"), method="assignment_minimum")
 
 
 @pytest.mark.parametrize("separator", ["\r", "\0", "|"])
 def test_pairs_are_identified_by_exact_labels(separator: str) -> None:
     labels = ["a", f"b{separator}c", f"a{separator}b", "c"]
     rows = all_pairs(labels, {(0, 1), (1, 2), (2, 3)})
-    result = reduce_letters(rows)
+    result = reduce_letters(rows, method="assignment_minimum")
     assert list(result.letters) == ["a", f"b{separator}c", f"a{separator}b", "c"]
     with pytest.raises(InvalidInputError, match="missing unordered pairwise comparisons"):
-        reduce_letters(rows[1:])
+        reduce_letters(rows[1:], method="assignment_minimum")
 
 
 def test_empty_string_label() -> None:
-    result = reduce_from_adjacency(np.eye(2, dtype=bool), ["", "b"])
+    result = reduce_from_adjacency(np.eye(2, dtype=bool), ["", "b"], method="assignment_minimum")
     assert result.letters == {"": "A", "b": "B"}
     assert result.to_frame()["letters"].tolist() == ["A", "B"]
 
@@ -120,14 +123,16 @@ def test_mixed_numeric_labels_keep_original_values(with_means):
     labels = [1, 2, 3.5]
     rows = all_pairs(labels, {(0, 1), (0, 2), (1, 2)})
     means = dict(zip(labels, [3.0, 2.0, 1.0], strict=True)) if with_means else None
-    result = reduce_letters(rows, means)
+    result = reduce_letters(rows, means, method="assignment_minimum")
     assert result.groups == ("1", "2", "3.5")
     assert result.letters == {"1": "A", "2": "A", "3.5": "A"}
 
 
 def test_numeric_string_label_collision_is_rejected():
     with pytest.raises(InvalidInputError, match="self-comparisons"):
-        reduce_letters([{"group1": 1, "group2": "1", "significant": False}])
+        reduce_letters(
+            [{"group1": 1, "group2": "1", "significant": False}], method="assignment_minimum"
+        )
 
 
 @pytest.mark.parametrize(
@@ -140,7 +145,9 @@ def test_numeric_string_label_collision_is_rejected():
     ],
 )
 def test_means_column_selection_is_consistent(columns):
-    result = reduce_letters(all_pairs(["a", "b"], {(0, 1)}), pd.DataFrame(columns))
+    result = reduce_letters(
+        all_pairs(["a", "b"], {(0, 1)}), pd.DataFrame(columns), method="assignment_minimum"
+    )
     assert result.groups == ("a", "b")
     assert result.letters == {"a": "A", "b": "A"}
 
@@ -148,9 +155,11 @@ def test_means_column_selection_is_consistent(columns):
 @pytest.mark.parametrize("columns", [{"group": ["a", "b"]}, {"treatment": ["a", "b"]}])
 def test_means_need_two_columns(columns):
     with pytest.raises(InvalidInputError, match="means DataFrame must have at least two columns"):
-        reduce_letters(all_pairs(["a", "b"], {(0, 1)}), pd.DataFrame(columns))
+        reduce_letters(
+            all_pairs(["a", "b"], {(0, 1)}), pd.DataFrame(columns), method="assignment_minimum"
+        )
 
 
 def test_ragged_adjacency_uses_package_error():
     with pytest.raises(InvalidInputError, match="adjacency must be a square matrix"):
-        reduce_from_adjacency([[1, 0], [0]])
+        reduce_from_adjacency([[1, 0], [0]], method="assignment_minimum")

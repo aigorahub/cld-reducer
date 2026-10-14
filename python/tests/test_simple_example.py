@@ -34,7 +34,7 @@ def simple_means() -> pd.Series:
 
 
 def test_simple_abc_assignment_reduces_to_ac() -> None:
-    result = reduce_letters(simple_pairs(), simple_means())
+    result = reduce_letters(simple_pairs(), simple_means(), method="assignment_minimum")
 
     assert result.letters == {
         "1": "A",
@@ -49,7 +49,7 @@ def test_simple_abc_assignment_reduces_to_ac() -> None:
 
 
 def test_result_can_be_converted_to_frame() -> None:
-    result = reduce_letters(simple_pairs(), simple_means())
+    result = reduce_letters(simple_pairs(), simple_means(), method="assignment_minimum")
 
     frame = result.to_frame()
 

@@ -1,3 +1,20 @@
+# cldreducer 0.3.0
+
+- Add pure CLD-C with `method="letter_minimum"` and alias `letter-minimum` in R,
+  Python, JavaScript, and the Python CLI. It minimizes full maximal-clique letter
+  columns with a fixed canonical tie rule; it has no assignment secondary objective.
+- CLD-C is the default (`letter_minimum`, alias `letter-minimum`).
+  Request `assignment_minimum` to retain the previous objective and displays.
+  Both methods use one reduction framework per language and normalize public method
+  metadata. The installed Python assignment-minimum helper retains metadata-only
+  method behavior and always runs sigma.
+- For C, objective counts letters. Assignments and reduction percentage retain their
+  assignment meanings. Explicit sigma displays and shared sigma fixtures are unchanged.
+- Apply weighted vertex reduction from Lemma 2.5 before both models. Restore
+  original groups and counts after solving. Preserve the canonical result.
+- Add independent C reference searches, a 33,867-graph census, cross-language fixtures,
+  solver failures, and installed-package checks.
+
 # cldreducer 0.2.0
 
 First release of the R package. The repository now holds three packages that follow one specification (`docs/algorithm.md`) and pass one conformance suite (`conformance/`): the R package `cldreducer` at the repository root, the Python package `cld-reducer` in `python/`, and the JavaScript package `cld-reducer` in `js/`. All three solve the problem with HiGHS and return the same display for the same input.

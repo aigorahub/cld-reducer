@@ -1,6 +1,6 @@
 # Failure paths of docs/algorithm.md section 6, through the replaceable solver call.
 
-simple <- function(...) reduce_from_adjacency(simple_adjacency(), ...)
+simple <- function(...) reduce_from_adjacency(simple_adjacency(), ..., method = "assignment_minimum")
 
 test_that("a first solve that is not optimal is a solver error", {
   for (status in c("failed", "time_limit", "infeasible")) {
@@ -49,7 +49,7 @@ test_that("a solution that leaves an edge uncovered is rejected", {
     out <- real(problem, col_lower, col_upper, sum_limit, ...)
     if (is.null(sum_limit)) {
       x <- out$values
-      x[which(x[seq_len(problem$num_x)] > 0.5)[1]] <- 0
+      x[which(x[problem$decision_columns] > 0.5)[1]] <- 0
       out$values <- x
     }
     out
@@ -65,8 +65,8 @@ first_solve_off_canonical <- function(real) {
   force(real)   # fix the real solver before a test replaces solve_lp
   function(problem, col_lower, col_upper, sum_limit = NULL, time_limit = Inf) {
     if (is.null(sum_limit)) {
-      k <- seq_len(problem$num_x)
-      problem$cost[k] <- 1 + 1e-3 * (problem$num_x - k) / problem$num_x
+      k <- seq_len(length(problem$decision_columns))
+      problem$cost[problem$decision_columns] <- problem$cost[problem$decision_columns] + 1e-3 * (length(problem$decision_columns) - k) / length(problem$decision_columns)
     }
     real(problem, col_lower, col_upper, sum_limit, time_limit)
   }
@@ -83,7 +83,7 @@ test_that("the canonical procedure reaches the canonical display from another op
     }
     out
   })
-  result <- reduce_letters(piepho2004_wheat)
+  result <- reduce_letters(piepho2004_wheat, method = "assignment_minimum")
   expect_gt(feasible_resolves, 0L)
   expect_equal(result$stats$assignments_after, 44)
   expect_equal(unname(result$letters)[1:4], c("ABC", "BD", "AD", "BD"))
@@ -100,7 +100,7 @@ test_that("later solutions are checked too", {
     }
     out
   })
-  expect_error(reduce_letters(piepho2004_wheat), "HiGHS returned an invalid solution",
+  expect_error(reduce_letters(piepho2004_wheat, method = "assignment_minimum"), "HiGHS returned an invalid solution",
                class = "cldreducer_solver_error")
   expect_equal(later, 1L)
 })
@@ -110,11 +110,11 @@ test_that("a solution that violates a fixing is rejected", {
   local_mocked_bindings(solve_lp = function(problem, col_lower, col_upper, sum_limit = NULL, ...) {
     out <- perturbed(problem, col_lower, col_upper, sum_limit, ...)
     if (!is.null(sum_limit) && identical(out$status, "optimal")) {
-      out$values[which(col_lower[seq_len(problem$num_x)] > 0.5)[1]] <- 0
+      out$values[which(col_lower[problem$decision_columns] > 0.5)[1]] <- 0
     }
     out
   })
-  expect_error(reduce_letters(piepho2004_wheat), "HiGHS returned an invalid solution",
+  expect_error(reduce_letters(piepho2004_wheat, method = "assignment_minimum"), "HiGHS returned an invalid solution",
                class = "cldreducer_solver_error")
 })
 
@@ -150,7 +150,8 @@ test_that("without a time limit no deadline applies", {
 })
 
 test_that("the solver call reports statuses from HiGHS", {
-  model <- build_model(simple_adjacency(), maximal_cliques(simple_adjacency(), NULL))
+  model <- build_model(graph_context(adjacency_to_graph(simple_adjacency(), NULL, NULL),
+                                    maximal_cliques(simple_adjacency(), NULL)))
   p <- model$problem
   free <- solve_lp(p, rep(0, p$num_cols), rep(1, p$num_cols))
   expect_equal(free$status, "optimal")

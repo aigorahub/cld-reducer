@@ -1,5 +1,5 @@
 test_that("the simple example reduces ABC to AC", {
-  result <- reduce_letters(simple_abc_pairs, simple_abc_means)
+  result <- reduce_letters(simple_abc_pairs, simple_abc_means, method = "assignment_minimum")
   expect_s3_class(result, "cld_reduction")
   expect_equal(result$letters, simple_letters)
   expect_equal(result$assignments[["3"]], c("A", "C"))
@@ -19,13 +19,13 @@ test_that("the simple example reduces ABC to AC", {
 })
 
 test_that("the pairs route and the adjacency route agree", {
-  by_pairs <- reduce_letters(simple_abc_pairs, simple_abc_means)
-  by_matrix <- reduce_from_adjacency(simple_adjacency(), means = simple_abc_means)
+  by_pairs <- reduce_letters(simple_abc_pairs, simple_abc_means, method = "assignment_minimum")
+  by_matrix <- reduce_from_adjacency(simple_adjacency(), means = simple_abc_means, method = "assignment_minimum")
   expect_equal(by_pairs, by_matrix)
 })
 
 test_that("the wheat example reduces 56 assignments to 44 with the canonical display", {
-  result <- reduce_letters(piepho2004_wheat)
+  result <- reduce_letters(piepho2004_wheat, method = "assignment_minimum")
   expect_equal(result$stats$assignments_before, 56)
   expect_equal(result$stats$assignments_after, 44)
   expect_equal(result$stats$num_letters_before, 4)
@@ -42,24 +42,24 @@ test_that("the wheat example reduces 56 assignments to 44 with the canonical dis
 
 test_that("the canonical clique order renames letters (D4 example)", {
   m <- adjacency_of(5, cbind(c(1, 1, 1, 1, 2, 3), c(2, 3, 4, 5, 5, 5)))
-  result <- reduce_from_adjacency(m, as.character(0:4))
+  result <- reduce_from_adjacency(m, as.character(0:4), method = "assignment_minimum")
   expect_equal(unname(result$letters), c("ABC", "A", "B", "C", "AB"))
   expect_equal(result$stats$assignments_before, result$stats$assignments_after)
 })
 
 test_that("means decide the letter order", {
   path <- adjacency_of(3, cbind(c(1, 2), c(2, 3)))
-  with_means <- reduce_from_adjacency(path, c("a", "b", "c"), c(a = 1, b = 2, c = 5))
+  with_means <- reduce_from_adjacency(path, c("a", "b", "c"), c(a = 1, b = 2, c = 5), method = "assignment_minimum")
   expect_equal(with_means$letters, c(a = "B", b = "AB", c = "A"))
-  without <- reduce_from_adjacency(path, c("a", "b", "c"))
+  without <- reduce_from_adjacency(path, c("a", "b", "c"), method = "assignment_minimum")
   expect_equal(without$letters, c(a = "A", b = "AB", c = "B"))
-  ties <- reduce_from_adjacency(path, c("a", "b", "c"), c(a = 2, b = 2, c = 2))
+  ties <- reduce_from_adjacency(path, c("a", "b", "c"), c(a = 2, b = 2, c = 2), method = "assignment_minimum")
   expect_equal(ties$letters, c(a = "A", b = "AB", c = "B"))
 })
 
 test_that("labels past Z are separated by spaces", {
   star <- adjacency_of(28, cbind(1, 2:28))
-  result <- reduce_from_adjacency(star)
+  result <- reduce_from_adjacency(star, method = "assignment_minimum")
   tokens <- result$assignments[["1"]]
   expect_length(tokens, 27)
   expect_equal(tail(tokens, 2), c("Z", "AA"))
@@ -68,24 +68,24 @@ test_that("labels past Z are separated by spaces", {
 })
 
 test_that("complete, empty, and single-group graphs", {
-  full <- reduce_from_adjacency(matrix(TRUE, 5, 5))
+  full <- reduce_from_adjacency(matrix(TRUE, 5, 5), method = "assignment_minimum")
   expect_equal(unname(full$letters), rep("A", 5))
-  empty <- reduce_from_adjacency(diag(TRUE, 5))
+  empty <- reduce_from_adjacency(diag(TRUE, 5), method = "assignment_minimum")
   expect_equal(unname(empty$letters), c("A", "B", "C", "D", "E"))
-  one <- reduce_from_adjacency(matrix(TRUE, 1, 1), "solo", c(solo = 2.5))
+  one <- reduce_from_adjacency(matrix(TRUE, 1, 1), "solo", c(solo = 2.5), method = "assignment_minimum")
   expect_equal(one$letters, c(solo = "A"))
   expect_equal(one$stats$reduction_pct, 0)
 })
 
 test_that("a group name that looks like a special value works", {
-  result <- reduce_from_adjacency(adjacency_of(3, cbind(1, 2)), c("NA", "10", "2"))
+  result <- reduce_from_adjacency(adjacency_of(3, cbind(1, 2)), c("NA", "10", "2"), method = "assignment_minimum")
   expect_equal(result$groups, c("NA", "10", "2"))
   expect_equal(names(result$letters), c("NA", "10", "2"))
   expect_equal(unname(result$letters), c("A", "A", "B"))
 })
 
 test_that("print and as.data.frame show the display", {
-  result <- reduce_letters(simple_abc_pairs, simple_abc_means)
+  result <- reduce_letters(simple_abc_pairs, simple_abc_means, method = "assignment_minimum")
   frame <- as.data.frame(result)
   expect_equal(names(frame), c("group", "letters", "assignments"))
   expect_equal(frame$group, as.character(1:5))

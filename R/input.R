@@ -206,14 +206,11 @@ adjacency_to_graph <- function(adjacency, groups, means) {
 }
 
 check_method <- function(method) {
-  if (!is.character(method) || length(method) != 1L || is.na(method) ||
-      !method %in% c("assignment_minimum", "assignment-minimum")) {
-    invalid_input(
-      "unsupported CLD reduction method: '",
-      paste(format(method), collapse = ", "), "'"
-    )
+  for (strategy in reduction_methods()) {
+    if (is.character(method) && length(method) == 1L && !is.na(method) &&
+        method %in% strategy$aliases) return(strategy)
   }
-  invisible("assignment_minimum")
+  invalid_input("unsupported CLD reduction method: '", paste(format(method), collapse = ", "), "'")
 }
 
 check_controls <- function(time_limit, max_cliques) {

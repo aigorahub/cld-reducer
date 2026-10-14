@@ -71,9 +71,10 @@ def test_cli_writes_reduced_letters(tmp_path: Path) -> None:
     assert completed.stderr == ""
     reduced = pd.read_csv(output)
     row = reduced.loc[reduced["group"].astype(str) == "3"].iloc[0]
-    assert row["letters"] == "AC"
+    assert row["letters"] == "ABC"
     assert row["stat_assignments_before"] == 9
-    assert row["stat_assignments_after"] == 8
+    assert row["stat_assignments_after"] == 9
+    assert row["stat_objective"] == 3
 
 
 @pytest.mark.parametrize("labels", [("001", "002"), ("NA", "NaN"), ("", "b")])

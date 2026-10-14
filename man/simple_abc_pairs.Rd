@@ -18,12 +18,15 @@ simple_abc_pairs
 }
 \description{
 The five-group example of Ennis, Fayle, and Ennis (2012) in which the
-standard display \code{ABC} of one group reduces to \code{AC}. Groups 1 to 3, 2 to 4,
+CLD-sigma method reduces the display \code{ABC} of one group to \code{AC}.
+The default CLD-C result keeps \code{ABC}. Groups 1 to 3, 2 to 4,
 and 3 to 5 do not differ significantly; all other pairs do.
 }
 \examples{
 simple_abc_pairs
 reduce_letters(simple_abc_pairs, simple_abc_means)$letters
+reduce_letters(simple_abc_pairs, simple_abc_means,
+               method = "assignment_minimum")$letters
 }
 \seealso{
 \link{simple_abc_means}, \code{\link[=reduce_letters]{reduce_letters()}}

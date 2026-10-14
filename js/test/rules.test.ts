@@ -30,25 +30,25 @@ describe("binary memberships (section 6, check 2)", () => {
         v[0] = value as number;
         return { ...out, values: v };
       };
-      await expect(reduceFromAdjacency([[true]])).rejects.toThrow(SolverError);
-      await expect(reduceFromAdjacency([[true]])).rejects.toThrow(/HiGHS returned an invalid solution/);
+      await expect(reduceFromAdjacency([[true]], { method: "assignment_minimum" })).rejects.toThrow(SolverError);
+      await expect(reduceFromAdjacency([[true]], { method: "assignment_minimum" })).rejects.toThrow(/HiGHS returned an invalid solution/);
     });
 });
 
 describe("input rules (sections 1 and 2)", () => {
   it("rejects duplicate mean labels for adjacency input", async () => {
     const means = [{ group: "a", mean: 1 }, { group: "b", mean: 2 }, { group: "c", mean: 3 }, { group: "a", mean: 9 }];
-    await expect(reduceFromAdjacency(PATH3, { groups: ["a", "b", "c"], means }))
+    await expect(reduceFromAdjacency(PATH3, { method: "assignment_minimum", groups: ["a", "b", "c"], means }))
       .rejects.toThrow(/^means contain duplicate groups: /);
-    await expect(reduceFromAdjacency(PATH3, { groups: ["a", "b", "c"], means }))
+    await expect(reduceFromAdjacency(PATH3, { method: "assignment_minimum", groups: ["a", "b", "c"], means }))
       .rejects.toThrow(InvalidInputError);
   });
 
   it.each([["null", null], ["undefined", undefined], ["NaN", NaN]])("rejects a missing label (%s)", async (_name, label) => {
     const rows = allPairs(["a", "b", "c"], new Set(["0,1", "1,2"]));
     rows[1].group2 = label;
-    await expect(reduceLetters(rows)).rejects.toThrow(/^group labels must not be missing/);
-    await expect(reduceFromAdjacency([[true, false], [false, true]], { groups: ["a", label] }))
+    await expect(reduceLetters(rows, { method: "assignment_minimum" })).rejects.toThrow(/^group labels must not be missing/);
+    await expect(reduceFromAdjacency([[true, false], [false, true]], { method: "assignment_minimum", groups: ["a", label] }))
       .rejects.toThrow(/^group labels must not be missing/);
   });
 
@@ -56,31 +56,31 @@ describe("input rules (sections 1 and 2)", () => {
     const rows = allPairs(["a", "b", "c"], new Set());
     rows[0].significant = "maybe";
     rows[1].group1 = null;
-    await expect(reduceLetters(rows)).rejects.toThrow(/^group labels must not be missing/);
+    await expect(reduceLetters(rows, { method: "assignment_minimum" })).rejects.toThrow(/^group labels must not be missing/);
   });
 
   it("treats an empty array as a table with zero rows", async () => {
-    const result = await reduceLetters([], { means: new Map([["a", 1]]) });
+    const result = await reduceLetters([], { method: "assignment_minimum", means: new Map([["a", 1]]) });
     expect(result.letters).toEqual({ a: "A" });
-    await expect(reduceLetters([])).rejects.toThrow(/^at least one group is required/);
+    await expect(reduceLetters([], { method: "assignment_minimum" })).rejects.toThrow(/^at least one group is required/);
   });
 
   it("trims only spaces, tabs, carriage returns, and line feeds", async () => {
     const rows = (value: string) => [{ group1: "a", group2: "b", significant: value }];
-    expect((await reduceLetters(rows(" ns\t\r\n"))).letters).toEqual({ a: "A", b: "A" });
-    await expect(reduceLetters(rows("ns\u00a0"))).rejects.toThrow(/^cannot coerce significance value to bool: /);
+    expect((await reduceLetters(rows(" ns\t\r\n"), { method: "assignment_minimum" })).letters).toEqual({ a: "A", b: "A" });
+    await expect(reduceLetters(rows("ns\u00a0"), { method: "assignment_minimum" })).rejects.toThrow(/^cannot coerce significance value to bool: /);
   });
 
   it.each(["\r", "\u0000", "|", ","])("identifies pairs by exact labels (separator %j)", async (sep) => {
     const labels = ["a", `b${sep}c`, `a${sep}b`, "c"];
     const rows = allPairs(labels, new Set(["0,1", "1,2", "2,3"]));
-    const result = await reduceLetters(rows);
+    const result = await reduceLetters(rows, { method: "assignment_minimum" });
     expect(result.groups).toEqual(labels);
-    await expect(reduceLetters(rows.slice(1))).rejects.toThrow(/^post_hoc_results missing unordered pairwise comparisons: /);
+    await expect(reduceLetters(rows.slice(1), { method: "assignment_minimum" })).rejects.toThrow(/^post_hoc_results missing unordered pairwise comparisons: /);
   });
 
   it("keeps the empty-string label", async () => {
-    const result = await reduceFromAdjacency([[true, false], [false, true]], { groups: ["", "b"] });
+    const result = await reduceFromAdjacency([[true, false], [false, true]], { method: "assignment_minimum", groups: ["", "b"] });
     expect(result.rows.map((r) => [r.group, r.letters])).toEqual([["", "A"], ["b", "B"]]);
   });
 });

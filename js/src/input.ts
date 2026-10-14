@@ -1,3 +1,4 @@
+import { methods, type Strategy } from "./model.js";
 // Input checks. They follow docs/algorithm.md sections 1, 2, and 6, in the same order,
 // with the stable message prefixes of section 10.
 
@@ -9,7 +10,7 @@ export type Means = ReadonlyMap<string, number> | ReadonlyArray<{ group: string;
 export interface ReduceOptions {
   /** Group means. A plain object is rejected: integer-like keys would reorder the groups. */
   means?: Means | null;
-  /** Reduction method. Only "assignment_minimum" (or "assignment-minimum") exists. */
+  /** CLD-C "letter_minimum" (default) or CLD-sigma "assignment_minimum"; hyphenated aliases accepted. */
   method?: string;
   /** One time budget in seconds for all solves of the call. */
   timeLimit?: number | null;
@@ -223,11 +224,11 @@ export function adjacencyToGraph(adjacency: unknown, options: ReduceOptions): Gr
   return { groups, adjacency: cell, means: matchMeans(meansEntries(options.means), groups) };
 }
 
-export function checkMethod(method: unknown): void {
-  const value = method ?? "assignment_minimum";
-  if (value !== "assignment_minimum" && value !== "assignment-minimum") {
-    fail(`unsupported CLD reduction method: '${String(value)}'`);
-  }
+export function checkMethod(method: unknown): Strategy {
+  const value = method ?? "letter_minimum";
+  const strategy = methods.find(s => s.aliases.some(alias => alias === value));
+  if (!strategy) throw new InvalidInputError(`unsupported CLD reduction method: '${String(value)}'`);
+  return strategy;
 }
 
 export function checkControls(options: ReduceOptions): { timeLimit: number | null; maxCliques: number | null } {
