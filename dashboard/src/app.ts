@@ -378,10 +378,11 @@ function onReply(value: unknown): void {
     // next result, not of the last start reply, which can arrive later.
     const pending = run.expected[run.results.length];
     const second = pending !== undefined && !METHODS.some((m) => m.id === pending);
-    fail(second
-      ? { ...problem, title: "The second stage stopped with an error",
-          detail: "The first stage finished. Clear \"Then minimize the other quantity\" to see its result." }
-      : problem);
+    fail(second ? { ...problem, title: "The second stage stopped with an error", detail: "The page shows no result." } : problem);
+    // The results that arrived passed their checks, so the page shows them, as Cancel does.
+    if (second && keepFinished(run)) {
+      state.problem!.detail = `The first minimization of ${shownName(pending)} finished. Its column shows that display.`;
+    }
     // After a solver error, or any error of a second stage, the next run starts from a clean worker.
     if (r.kind !== "input" || second) restartWorker();
   } else {
@@ -611,20 +612,34 @@ function startRun(methods: Method[]): void {
   render();
 }
 
+/**
+ * Show the results of a stopped run that arrived, as finishRun shows a whole run: each passed its checks
+ * on arrival, and the counts before reduction must match the checked display before reduction of the
+ * input. Returns whether the page shows them.
+ */
+function keepFinished(run: Run): boolean {
+  const before = state.before && state.before.version === run.inputVersion ? state.before : null;
+  const stats = run.results[0]?.reduction.stats;
+  if (!stats || !before || before.letters !== stats.numLettersBefore || before.assignments !== stats.assignmentsBefore) return false;
+  state.shown = { version: run.inputVersion, results: run.results, input: run.input, source: run.source, before };
+  return true;
+}
+
+/** The solve that a run waits for: the result after the ones that arrived. */
+const pendingOf = (run: Run): ResultMethod | undefined => run.expected[run.results.length];
+const isSecond = (method: ResultMethod | undefined): boolean => method !== undefined && !METHODS.some((m) => m.id === method);
+
 function cancelRun(): void {
   const run = state.run;
   if (!run) return;
   state.run = null;
   restartWorker();
-  // Cancel keeps the results that arrived, as finishRun shows them: checked, and with their checked
-  // display before reduction. So a slow second minimization leaves the display of the first.
-  const before = state.before && state.before.version === run.inputVersion ? state.before : null;
-  const stats = run.results[0]?.reduction.stats;
-  if (stats && before && before.letters === stats.numLettersBefore && before.assignments === stats.assignmentsBefore) {
-    state.shown = { version: run.inputVersion, results: run.results, input: run.input, source: run.source, before };
-    state.notice = run.stage === 2
-      ? `Cancel stopped the second minimization of ${shownName(run.current)}. Its column shows the display of the first minimization.`
-      : `Cancel stopped ${shownName(run.current)}. The page shows the methods that finished.`;
+  // So a slow second minimization leaves the display of the first.
+  const pending = pendingOf(run);
+  if (keepFinished(run)) {
+    state.notice = pending === undefined ? "Cancel stopped the run before the page showed it. The page shows all its results."
+      : isSecond(pending) ? `Cancel stopped the second minimization of ${shownName(pending)}. Its column shows the display of the first minimization.`
+      : `Cancel stopped ${shownName(pending)}. The page shows the methods that finished.`;
   } else {
     state.notice = "The run was cancelled.";
   }
@@ -774,7 +789,7 @@ function renderControls(): void {
   ui.runHint.textContent = state.solver === "failed" ? "The solver is not available."
     : studying ? "The simulation study is running."
     : running ? (!state.run!.results.length ? "Cancel stops the solver."
-      : state.run!.stage === 2 ? "Cancel keeps the display of the first minimization." : "Cancel keeps the methods that finished.")
+      : isSecond(pendingOf(state.run!)) ? "Cancel keeps the display of the first minimization." : "Cancel keeps the methods that finished.")
     : state.solver === "loading" ? "Waiting for the solver…" : "";
 
   ui.studyRun.textContent = studying ? "Cancel" : "Run the study";
@@ -1001,7 +1016,9 @@ function renderShown(host: HTMLElement, shown: Shown): void {
   el("p", "hint",
      "Each method first minimizes its own quantity, then the other quantity among the displays that keep that minimum. " +
      "The R, Python, and npm packages stop after the first minimization; Download JSON has both. " +
-     "The time covers both minimizations. The relationship check gives back every input decision from the letters.", summary);
+     "The time covers both minimizations. The relationship check gives back every input decision from the letters." +
+     (finals.some((r) => r.stage === 1) ? " A column whose Minimizes row names one quantity shows a first minimization only: " +
+       "the run stopped before its second." : ""), summary);
 }
 
 /** Place the open summary under its button, inside the window. */
@@ -1010,6 +1027,11 @@ function placeSummary(): void {
   const anchor = document.querySelector<HTMLElement>(".summary-button");
   if (!panel || !anchor || !panel.matches(":popover-open")) return;
   const r = anchor.getBoundingClientRect();
+  // A panel whose button has left the window would hang without its button, so it closes.
+  if (r.bottom < 0 || r.top > innerHeight) {
+    panel.hidePopover();
+    return;
+  }
   const margin = 16;
   const width = Math.min(panel.offsetWidth, innerWidth - 2 * margin);
   panel.style.left = `${Math.max(margin, Math.min(r.left, innerWidth - width - margin))}px`;

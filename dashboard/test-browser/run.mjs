@@ -353,6 +353,24 @@ async function main() {
           csvLines[41].startsWith("letter_then_assignment,1,") && csvLines[80] === "assignment_minimum,20,C,C" &&
           csvLines[100].startsWith("assignment_then_letter,20,"), `CSV: ${csvLines[1]}`);
     if (shots) await page.screenshot({ path: join(shots, "wide-wheat.png") });
+    // An open summary whose button scrolls out of the window closes; it never hangs outside the window.
+    const summaryAfterScroll = async (scroll) => {
+      await page.click(".summary-button");
+      await page.waitForTimeout(100);
+      await page.evaluate(scroll);
+      await page.waitForTimeout(100);
+      return page.evaluate(() => {
+        const panel = document.getElementById("summary");
+        const r = panel.getBoundingClientRect();
+        return { open: panel.matches(":popover-open"), top: r.top, bottom: r.bottom, height: innerHeight };
+      });
+    };
+    let scrolled = await summaryAfterScroll(() => { document.querySelector("#reduce-view .results-pane").scrollTop += 700; });
+    check(!scrolled.open, `the summary stays open after its button left the window: ${JSON.stringify(scrolled)}`);
+    scrolled = await summaryAfterScroll(() => { document.querySelector("#reduce-view .results-pane").scrollTop -= 690; });
+    check(!scrolled.open || (scrolled.top >= 0 && scrolled.bottom <= scrolled.height), `summary after a short scroll: ${JSON.stringify(scrolled)}`);
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => { document.querySelector("#reduce-view .results-pane").scrollTop = 0; });
 
     // Paste: semicolons, quotes, decision words, and labels that look like markup or a formula.
     await page.fill("#pairs", LABEL_PAIRS);
@@ -533,6 +551,22 @@ async function main() {
     check(state.pairs === SIMPLE_PAIRS && state.means === SIMPLE_MEANS && state.checked === "letter_minimum" &&
           state.notice === null && state.problem === null && same(state.pressed, ["Simple example"]), "Reset");
     noResult(state, "reset");
+
+    // Cancel after CLD-C and its second minimization, before CLD-sigma: CLD-C keeps its second-stage display.
+    await wait(() => document.querySelector(".headline-title")?.textContent === "Before reduction: 3 letters and 9 assignments");
+    await page.evaluate(() => { window.__hold = true; });
+    await page.click("#compare");
+    await wait(() => window.__held.length >= 4);
+    await page.evaluate(() => { for (const reply of window.__held.slice(0, 4)) window.__workers.at(-1).deliver(reply); });
+    check((await read()).hint === "Cancel keeps the methods that finished.", "the hint between two methods");
+    await page.click("#run");
+    await page.evaluate(() => { window.__hold = false; window.__held = []; });
+    state = await read();
+    check(state.notice === "Cancel stopped CLD-sigma. The page shows the methods that finished." &&
+          same(state.summary[0], ["", "Before", "CLD-C"]) &&
+          same(summaryRow(state, "Minimizes"), ["One letter for each maximal clique", "Distinct letters, then assignments"]) &&
+          state.letters[3][3] === "AC", `cancel between two methods: ${JSON.stringify([state.notice, state.summary, state.letters])}`);
+    await ready();
 
     // Replies of a cancelled run arrive late: the page ignores them, from the old worker and with the old id.
     await page.evaluate(() => { window.__hold = true; });
@@ -922,8 +956,10 @@ async function main() {
       await ready();
       await page.click("#run");
       await wait((t) => document.querySelector(".problem > h2")?.textContent === t, title);
-      const problem = (await read()).problem;
-      check(problem[1] === text, `second stage error: ${problem}`);
+      state = await read();
+      const problem = state.problem;
+      check(problem[1] === text && problem[2] === "The first minimization of CLD-C finished. Its column shows that display." &&
+            same(summaryRow(state, "Minimizes").slice(1), ["Distinct letters"]), `second stage error: ${problem}`);
       await page.evaluate(() => { window.__alter = null; });
     }
     // An error that arrives before the start reply of the second stage is still a second stage error.
@@ -1124,6 +1160,12 @@ async function main() {
                matrixScrolls: wrap.scrollWidth > wrap.clientWidth && wrap.getBoundingClientRect().right <= innerWidth };
     });
     check(narrow.page <= narrow.screen && narrow.below && narrow.matrixScrolls, `narrow layout: ${JSON.stringify(narrow)}`);
+    await page.$eval(".summary-button", (e) => e.scrollIntoView({ block: "center" }));
+    const narrowScrolled = await summaryAfterScroll(() => window.scrollBy(0, 1500));
+    check(!narrowScrolled.open || (narrowScrolled.top >= 0 && narrowScrolled.bottom <= narrowScrolled.height),
+          `narrow summary after a scroll: ${JSON.stringify(narrowScrolled)}`);
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.click("#view-study");
     const narrowStudy = await page.evaluate(() => [document.documentElement.scrollWidth, innerWidth]);
     check(narrowStudy[0] <= narrowStudy[1], `narrow study view: ${narrowStudy}`);
