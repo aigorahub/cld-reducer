@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
-import type { CldReduction } from "../../js/src/index.js";
+import { SolverError, type CldReduction } from "../../js/src/index.js";
 import { hooks } from "../../js/src/solver.js";
 import { TEMPLATE_MEANS, TEMPLATE_PAIRS, parseMeans, parsePairs, type PairRow } from "../src/csv.js";
 import { checkReduction, explain, type Method } from "../src/data.js";
@@ -255,6 +255,15 @@ describe("timed", () => {
 });
 
 describe("study errors", () => {
+  it("name the solve that failed", async () => {
+    for (const [method, name] of [["letter_minimum", "CLD-C"], ["assignment_minimum", "CLD-sigma"],
+                                  ["letter_then_assignment", "CLD-C then CLD-sigma"],
+                                  ["assignment_then_letter", "CLD-sigma then CLD-C"]] as const) {
+      await expect(timed(() => { throw new SolverError("staged solve failed: Solve error"); }, 30, method))
+        .rejects.toThrow(`${name}: staged solve failed: Solve error`);
+    }
+  });
+
   it("name the instance and the solve", async () => {
     const run = hooks.run;
     hooks.run = () => ({ status: "failed", text: "Solve error" });
@@ -262,7 +271,7 @@ describe("study errors", () => {
       const replies = await ask({ type: "study", id: 4, study: { sizes: [30], count: 1, firstSeed: 1, timeLimit: 30 } });
       const error = replies.find((r) => r.type === "error");
       expect(error && error.type === "error" && error.message)
-        .toMatch(/^The instance with 30 treatments and seed 1: CLD-(C|sigma|C then CLD-sigma|sigma then CLD-C): .*Solve error$/);
+        .toMatch(/^The instance with 30 treatments and seed 1: CLD-(C|sigma): .*Solve error$/);
     } finally {
       hooks.run = run;
     }

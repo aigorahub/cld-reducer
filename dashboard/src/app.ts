@@ -86,6 +86,8 @@ interface Run {
   current: ResultMethod;
   stage: 1 | 2;
   currentStart: number;
+  /** Every result arrived, and the run waits for its display before reduction. */
+  waiting?: boolean;
 }
 
 /** A finished run. The page shows it until the input or the method changes. */
@@ -95,7 +97,8 @@ interface Shown {
   results: MethodResult[];
   input: Input;
   source: string;
-  before: BeforeRows | null;
+  /** The checked display before reduction: the page shows no result without it. */
+  before: BeforeRows;
 }
 
 interface Problem {
@@ -260,9 +263,10 @@ function problemOf(kind: string, message: string): Problem {
 function onReply(reply: Reply): void {
   if (reply.type === "ready") return;
   // An error reply is used as text: a message that is not text, or an unknown kind, is a solver error.
-  const r: Reply = reply.type !== "error" ? reply : {
-    ...reply,
-    kind: (["input", "solver", "other"] as unknown[]).includes(reply.kind) ? reply.kind : "solver",
+  const valid = reply.type === "error" && typeof reply.message === "string" &&
+    (["input", "solver", "other"] as unknown[]).includes(reply.kind);
+  const r: Reply = reply.type !== "error" || valid ? reply : {
+    ...reply, kind: "solver",
     message: typeof reply.message === "string" ? reply.message : "The worker sent an error without a message.",
   };
   if (beforeRequest && r.id === beforeRequest.id && (r.type === "before" || r.type === "error")) {
@@ -278,21 +282,13 @@ function onReply(reply: Reply): void {
     } else if (r.type === "before") {
       state.before = { ...r.before, milliseconds: r.milliseconds, version };
       state.beforeNote = null;
-      // The page checked this display against the maximal cliques of the input. A result that the
-      // page shows already must have the same counts before reduction.
-      const shown = state.shown;
-      if (shown && shown.version === version && !shown.before) {
-        const s = shown.results[0].reduction.stats;
-        if (s.numLettersBefore !== r.before.letters || s.assignmentsBefore !== r.before.assignments) {
-          fail({ title: "The solver returned an invalid result", message: BEFORE_MISMATCH, detail: "The page shows no result." });
-        } else {
-          shown.before = state.before;
-        }
-      }
     } else {
       state.before = null;
       state.beforeNote = r.message;
     }
+    // A run that ended before this display arrived waits for it: the page checks the run against it now.
+    const run = state.run;
+    if (run?.waiting && run.inputVersion === version) finishRun(run);
     render();
     return;
   }
@@ -369,10 +365,23 @@ function finishRun(run: Run): void {
     return;
   }
   const before = state.before && state.before.version === run.inputVersion ? state.before : null;
+  if (!before) {
+    // The page shows a result only with its checked display before reduction. Ask for it now if the
+    // page has not asked yet, and wait for it.
+    requestBefore();
+    if (beforeRequest && beforeRequest.version === run.inputVersion) {
+      run.waiting = true;
+      return;
+    }
+    fail({ title: "The page cannot check the result", detail: "The page shows no result.",
+           message: "The display before reduction of this input is not available, so the page cannot check the counts before reduction." });
+    return;
+  }
   const stats = run.results[0].reduction.stats;
-  if (before && (before.letters !== stats.numLettersBefore || before.assignments !== stats.assignmentsBefore)) {
+  if (before.letters !== stats.numLettersBefore || before.assignments !== stats.assignmentsBefore) {
     // The page checked the display before reduction against the input, so the result is the wrong one.
     fail({ title: "The solver returned an invalid result", detail: "The page shows no result.", message: BEFORE_MISMATCH });
+    restartWorker();
     return;
   }
   state.shown = { version: run.inputVersion, results: run.results, input: run.input, source: run.source, before };
@@ -751,6 +760,11 @@ function renderProblem(host: HTMLElement, problem: Problem): void {
 
 function renderRunning(host: HTMLElement, run: Run): void {
   const head = el("section", "headline", undefined, host);
+  if (run.waiting) {
+    el("h2", "headline-title", "Waiting for the display before reduction…", head);
+    el("p", "muted", "The page checks the result against it before it shows the result.", head);
+    return;
+  }
   el("h2", "headline-title", `Solving with ${methodInfo(run.current).name}…`, head);
   const step = run.expected.length > 1 ? `Step ${run.results.length + 1} of ${run.expected.length}. ` : "";
   const p = el("p", "muted", `${step}Stage ${run.stage}. `, head);

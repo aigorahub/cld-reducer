@@ -93,6 +93,7 @@ function instrument() {
   window.__alterBefore = null;
   window.__alterInstance = null;
   window.__alterStart = null;
+  window.__seen = [];
   window.Worker = class extends Native {
     constructor(...args) {
       super(...args);
@@ -107,6 +108,7 @@ function instrument() {
     set onmessage(fn) {
       this.deliver = (data) => fn.call(this, new MessageEvent("message", { data }));
       super.onmessage = (e) => {
+        window.__seen.push(e.data?.type);
         if (window.__hold && ["start", "result", "done"].includes(e.data?.type)) { window.__held.push(e.data); return; }
         if (window.__holdBefore && ["before", "error"].includes(e.data?.type)) { window.__heldBefore.push([this, e.data]); return; }
         if (window.__alter && e.data?.type === "result") { this.deliver(window.__alter(structuredClone(e.data))); return; }
@@ -707,19 +709,37 @@ async function main() {
       };
     });
     await ready();
-    await page.evaluate(() => { window.__heldBefore = []; window.__holdBefore = true; });
-    await page.click('button.example:has-text("Wheat yield")');
-    await wait(() => window.__heldBefore.length === 1);
-    await page.click("#run");
-    await solved();
-    check((await read()).title.startsWith("CLD-C then CLD-sigma"), "the run without a display before reduction is not shown");
-    await page.evaluate(() => {
-      window.__holdBefore = false;
-      for (const [w, reply] of window.__heldBefore) w.deliver(reply);
-    });
+    // A run that ends before its display before reduction arrives waits for it: no result is shown or
+    // exported before the page has checked it.
+    const heldRun = async (example) => {
+      await page.evaluate(() => { window.__heldBefore = []; window.__holdBefore = true; });
+      await page.click(`button.example:has-text("${example}")`);
+      await wait(() => window.__heldBefore.length === 1);
+      await page.evaluate(() => { window.__seen = []; });
+      await page.click("#run");
+      await wait(() => window.__seen.includes("done"));
+      await page.waitForTimeout(100);
+      const waiting = await read();
+      check(waiting.summary === null && waiting.matrices.length === 0 && waiting.run === "Cancel" &&
+            waiting.title === "Waiting for the display before reduction…", `a run waiting for its display before reduction: ${waiting.title}`);
+      await page.evaluate(() => {
+        window.__holdBefore = false;
+        for (const [w, reply] of window.__heldBefore) w.deliver(reply);
+      });
+    };
+    const workersBeforeLate = await page.evaluate(() => window.__workers.length);
+    await heldRun("Wheat yield");
     await wait((m) => document.querySelector(".problem > p")?.textContent === m, BEFORE_MISMATCH);
     noResult(await read(), "result with other counts before reduction than a late display before reduction");
+    check(await page.evaluate((n) => window.__workers.length === n + 1 && window.__workers[n - 1].terminated, workersBeforeLate),
+          "the worker runs on after a result with other counts before reduction");
     await page.evaluate(() => { window.__alter = null; });
+    await ready();
+    await heldRun("Simple example");
+    await solved();
+    state = await read();
+    check(state.title.startsWith("CLD-C then CLD-sigma") && state.summary[0][1] === "Before",
+          `a run after a late display before reduction: ${state.title}`);
     // A start reply for a method that the run does not expect stops the run.
     await page.evaluate(() => {
       window.__alterStart = (reply) => { reply.method = "bogus"; return reply; };
@@ -755,6 +775,20 @@ async function main() {
       await wait((t) => document.querySelector(".problem > h2")?.textContent === t, title);
       const problem = (await read()).problem;
       check(problem[1] === text, `second stage error: ${problem}`);
+      await page.evaluate(() => { window.__alter = null; });
+    }
+    // A known kind with a message that is not text is a solver error too, and the page starts a new worker.
+    for (const stage of [1, 2]) {
+      await page.evaluate((stage) => {
+        window.__alter = (reply) => (reply.stage === stage ? { type: "error", id: reply.id, kind: "input", message: 42 } : reply);
+      }, stage);
+      await ready();
+      const before = await page.evaluate(() => window.__workers.length);
+      await page.click("#run");
+      await wait((t) => document.querySelector(".problem > h2")?.textContent === t,
+                 stage === 1 ? "The solver stopped with an error" : "The second stage stopped with an error");
+      check(await page.evaluate((n) => window.__workers.length === n + 1 && window.__workers[n - 1].terminated, before),
+            `the worker runs on after an error reply without text in stage ${stage}`);
       await page.evaluate(() => { window.__alter = null; });
     }
     await ready();
