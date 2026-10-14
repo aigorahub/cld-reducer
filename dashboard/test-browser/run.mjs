@@ -794,6 +794,16 @@ async function main() {
     await wait(() => document.querySelector(".empty .hint")?.textContent === "The display before reduction is not available: " +
       "The reply failed the check of the page. The worker sent a reply that the display before reduction does not have.");
     await page.evaluate(() => { window.__alterBefore = null; });
+    // A reply that is not a record while only the display before reduction is pending ends that
+    // request: a later run says that it cannot check its result, and does not wait.
+    await page.evaluate(() => { window.__alterBefore = () => null; });
+    await ready();
+    await page.click('button.example:has-text("Wheat yield")');
+    await wait(() => document.querySelector(".empty .hint")?.textContent === "The display before reduction is not available: " +
+      "The reply failed the check of the page. The worker sent a reply that is not a record.");
+    await page.evaluate(() => { window.__alterBefore = null; });
+    await page.click("#run");
+    await wait(() => document.querySelector(".problem > h2")?.textContent === "The page cannot check the result");
     // A display before reduction of an earlier input is not shown for a later input.
     await page.click('button.example:has-text("Simple example")');
     await wait(() => document.querySelector(".headline-title")?.textContent === "Before reduction: 3 letters and 9 assignments");

@@ -277,6 +277,12 @@ function protocolError(message: string): void {
   } else if (state.run) {
     fail({ title: "The solver returned an invalid result", message, detail: "The page shows no result." });
     restartWorker();
+  } else if (beforeRequest) {
+    // The reply can be the one for the display before reduction: end that request, so that a later
+    // run does not wait for it. The page does not ask again for this input.
+    beforeRequest = null;
+    state.before = null;
+    state.beforeNote = `The reply failed the check of the page. ${message}`;
   }
   render();
 }
