@@ -5,6 +5,7 @@ and JavaScript in `js/`. Version 0.2.0 is tagged and published on PyPI and npm.
 The merged candidate for the method changes is 0.3.0. Version 0.3.1 adds the
 browser page in `dashboard/`. Version 0.3.2 adds a second stage, simulated examples, and the letters before reduction
 to that page. Neither changes a package algorithm or the public API.
+The current development version is 0.3.3.
 The recorded CRAN submission is still 0.2.0;
 the package was absent from the public CRAN index on 2026-10-13.
 See [submission status](submission-status.md) for the current evidence.
@@ -53,8 +54,10 @@ the essential-cover changes. Registry checks on 2026-10-13 found no 0.3.0
 publication on PyPI or npm. Check again before publishing. The retained 0.3.0
 candidate commit is `7d9b923ed1e5c867e97f485071e1d1f742a0aeaa`. Use a clean
 checkout of that commit for candidate checks. Version 0.3.1 with the browser
-page is merge commit `b12423098d288496d4364ceeb6e094ada984a613`. The checkout uses
-0.3.2, the version of the second stage of the browser page. Keep the selected version in `DESCRIPTION`,
+page is merge commit `b12423098d288496d4364ceeb6e094ada984a613`. Version 0.3.2
+with the second stage of the page is merge commit
+`60bb68819591d7dc35a8c3e50dd808c4b56ca3a7`. The development checkout uses
+0.3.3. Keep the selected version in `DESCRIPTION`,
 `CITATION.cff`, `NEWS.md`, both package manifests and locks, and Python's
 `__version__`. `scripts/release.py version` checks agreement. Never replace an
 uploaded version.

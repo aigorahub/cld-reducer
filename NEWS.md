@@ -1,3 +1,8 @@
+# cldreducer 0.3.3
+
+- Unreleased development version after the 0.3.2 merge.
+  No algorithm or public API changes.
+
 # cldreducer 0.3.2
 
 - The browser page in `dashboard/` shows the letters before reduction next to

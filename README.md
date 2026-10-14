@@ -219,6 +219,7 @@ result$stats$assignments_after    # 9 assignments
 
 Version 0.3.0 is the merged candidate for these changes. Version 0.3.1 adds the
 browser page. Version 0.3.2 adds a second stage, simulated examples, and the letters before reduction
-to that page. Neither changes a package algorithm or the public API. The published 0.2.0 packages and
+to that page. Neither changes a package algorithm or the public API. The current development
+version is 0.3.3. The page is at <https://cld.aigora.ai>. The published 0.2.0 packages and
 frozen CRAN candidate are unchanged. See [development status](docs/development-status.md)
 for implementation, review, version, and timing records.

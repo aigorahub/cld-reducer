@@ -4,7 +4,7 @@ from .api import reduce_from_adjacency, reduce_letters
 from .exceptions import CLDReducerError, InvalidInputError, SolverError
 from .result import CLDReductionResult
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 __all__ = [
     "CLDReducerError",

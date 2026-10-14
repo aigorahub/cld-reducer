@@ -18,7 +18,7 @@ cd ../dashboard && npm ci && npm run build
 open dist/cld-reducer-dashboard.html     # or double-click the file
 ```
 
-`npm run build` writes `dist/cld-reducer-dashboard.html` (about 1.7 MB). The file can be copied or sent as it is. The build also writes the same page as `dist/site/index.html`, for a static web host. No host is set up. The CI workflow `js.yaml` builds the page and keeps it as the `cld-reducer-dashboard` artifact of each run.
+`npm run build` writes `dist/cld-reducer-dashboard.html` (about 1.7 MB). The file can be copied or sent as it is. The build also writes the same page as `dist/site/index.html`, for a static web host. The page is hosted at <https://cld.aigora.ai>, the Vercel project `cld-reducer` of the Aigora AI team. To deploy a new build, run `vercel link --scope aigora-ai --project cld-reducer` in `dist/site` once, then `vercel deploy --prod --scope aigora-ai` there. Vercel does not build the page: the build needs `../js`. The CI workflow `js.yaml` builds the page and keeps it as the `cld-reducer-dashboard` artifact of each run.
 
 ## Input format
 
