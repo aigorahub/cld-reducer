@@ -106,6 +106,12 @@ export function sharedTokens(tokens: readonly string[][], i: number, j: number):
   return tokens[i].filter((t) => tokens[j].includes(t));
 }
 
+/** True when each index of the array holds a value that passes the test. Array.every skips holes. */
+function each(list: readonly unknown[], test: (value: unknown, index: number) => boolean): boolean {
+  for (let i = 0; i < list.length; i++) if (!(i in list) || !test(list[i], i)) return false;
+  return true;
+}
+
 const isCount = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0;
 
 /** A time in milliseconds: a finite number that is not negative. */
@@ -122,7 +128,7 @@ export function checkReduction(value: unknown, method: ResultMethod): string | n
   if (r.method !== method) return `The reply is for the method ${String(r.method)}, not ${method}.`;
   if (r.relationshipPreserved !== true) return "The reply does not confirm the relationship check.";
   const { groups, rows, adjacency, stats } = r;
-  if (!Array.isArray(groups) || groups.length === 0 || !groups.every((g) => typeof g === "string")) {
+  if (!Array.isArray(groups) || groups.length === 0 || !each(groups, (g) => typeof g === "string")) {
     return "The reply has no list of groups.";
   }
   const n = groups.length;
@@ -136,8 +142,7 @@ export function checkReduction(value: unknown, method: ResultMethod): string | n
     }
   }
   if (!Array.isArray(adjacency) || adjacency.length !== n ||
-      !adjacency.every((line) => Array.isArray(line) && line.length === n &&
-                                 line.every((cell) => typeof cell === "boolean"))) {
+      !each(adjacency, (line) => Array.isArray(line) && line.length === n && each(line, (cell) => typeof cell === "boolean"))) {
     return "The reply has no relationship matrix of the right size.";
   }
   if (stats === null || typeof stats !== "object") return "The reply has no statistics.";
@@ -254,7 +259,7 @@ export function checkBefore(value: unknown, pairs: readonly PairRow[], means: re
   if (!graph) return "The page cannot read the decisions of the input.";
   const { groups } = graph;
   if (!Array.isArray(rows) || rows.length !== groups.length ||
-      !rows.every((row: unknown, i) => {
+      !each(rows, (row, i) => {
         if (row === null || typeof row !== "object") return false;
         const r = row as Record<string, unknown>;
         return r.group === groups[i] && typeof r.letters === "string" && typeof r.assignments === "string";

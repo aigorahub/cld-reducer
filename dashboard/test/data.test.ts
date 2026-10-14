@@ -207,6 +207,20 @@ describe("checkBefore", () => {
     expect(performance.now() - t0).toBeLessThan(2000);
   });
 
+  it("rejects arrays with holes instead of throwing", () => {
+    expect(checkBefore({ rows: new Array(3), letters: 2, assignments: 4 }, pairs, null))
+      .toBe("The display before reduction does not have one row for each group of the input.");
+    const r = chain();
+    r.adjacency = new Array(3);
+    expect(checkReduction(r, "letter_minimum")).toBe("The reply has no relationship matrix of the right size.");
+    const s = chain();
+    s.adjacency[1] = new Array(3);
+    expect(checkReduction(s, "letter_minimum")).toBe("The reply has no relationship matrix of the right size.");
+    const t = chain();
+    t.groups = new Array(3);
+    expect(checkReduction(t, "letter_minimum")).toBe("The reply has no list of groups.");
+  });
+
   it("rejects a letter that is not a maximal clique, and two letters with the same groups", () => {
     // Three groups that do not differ: the one maximal clique is all three.
     const all = [

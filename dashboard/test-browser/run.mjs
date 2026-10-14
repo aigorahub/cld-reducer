@@ -752,6 +752,16 @@ async function main() {
     noResult(await read(), "run after a start reply for another method");
     await page.evaluate(() => { window.__alterStart = null; });
     await ready();
+    // A ready or before reply with the id of the run stops it.
+    for (const type of ["ready", "before"]) {
+      await page.evaluate((type) => { window.__alter = (reply) => ({ type, id: reply.id }); }, type);
+      await ready();
+      const workersBefore = await page.evaluate(() => window.__workers.length);
+      await page.click("#run");
+      await wait(() => document.querySelector(".problem > p")?.textContent === "The worker sent a reply that a run does not have.");
+      check(await page.evaluate((n) => window.__workers.length === n + 1, workersBefore), `the worker runs on after a ${type} reply`);
+      await page.evaluate(() => { window.__alter = null; });
+    }
     // A start or result reply with the right method but another stage stops the run.
     for (const which of ["start", "result"]) {
       await page.evaluate((which) => {
@@ -779,11 +789,12 @@ async function main() {
       check(problem[1] === text, `second stage error: ${problem}`);
       await page.evaluate(() => { window.__alter = null; });
     }
-    // A known kind with a message that is not text is a solver error too, and the page starts a new worker.
-    for (const stage of [1, 2]) {
-      await page.evaluate((stage) => {
-        window.__alter = (reply) => (reply.stage === stage ? { type: "error", id: reply.id, kind: "input", message: 42 } : reply);
-      }, stage);
+    // A known kind with a message that is not text is a solver error too, and the page starts a new
+    // worker. So is an input error in a second stage, whose first stage accepted the same input.
+    for (const [stage, message] of [[1, 42], [2, 42], [2, "post_hoc_results must not contain self-comparisons"]]) {
+      await page.evaluate(([stage, message]) => {
+        window.__alter = (reply) => (reply.stage === stage ? { type: "error", id: reply.id, kind: "input", message } : reply);
+      }, [stage, message]);
       await ready();
       const before = await page.evaluate(() => window.__workers.length);
       await page.click("#run");
@@ -821,6 +832,14 @@ async function main() {
     await page.waitForTimeout(300);
     const longest = await page.evaluate(() => window.__longest);
     check(longest < 1500, `the display before reduction with 8,192 letters blocked the page for ${Math.round(longest)} ms`);
+    // A display before reduction with holes in its rows fails the check; it does not break the page.
+    await page.evaluate(() => {
+      window.__alterBefore = (reply) => ({ ...reply, before: { ...reply.before, rows: new Array(reply.before.rows.length) } });
+    });
+    await page.click('button.example:has-text("Wheat yield")');
+    await wait(() => document.querySelector(".empty .hint")?.textContent === "The display before reduction is not available: " +
+      "The reply failed the check of the page. The display before reduction does not have one row for each group of the input.");
+    await page.evaluate(() => { window.__alterBefore = null; });
     // A simulated input again, for the study and the narrow layout below.
     await page.fill("#sim-n", "12");
     await page.fill("#sim-seed", "4");
@@ -865,10 +884,12 @@ async function main() {
       ["order", "The solves of the instance do not keep the order of the minimums."],
       ["seed", "The reply is not for the instance with 10 treatments and seed 1."],
       ["type", "The worker sent a reply that a study does not have."],
+      ["ready", "The worker sent a reply that a study does not have."],
     ]) {
       await page.evaluate((alter) => {
         window.__alterInstance = (reply) => {
           if (alter === "type") return { type: "start", id: reply.id, method: "letter_minimum", stage: 1 };
+          if (alter === "ready") return { type: "ready", id: reply.id };
           if (alter === "order") reply.instance.solves.letter_then_assignment = { letters: 999, assignments: 999, milliseconds: 1 };
           else reply.instance.seed = 999;
           return reply;

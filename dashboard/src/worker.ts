@@ -52,7 +52,8 @@ export type Request =
 export type ErrorKind = "input" | "solver" | "other";
 
 export type Reply =
-  | { type: "ready" }
+  // The worker sends ready without an id. The page rejects a ready that names a run or a study.
+  | { type: "ready"; id?: undefined }
   | { type: "before"; id: number; before: Before; milliseconds: number }
   | { type: "start"; id: number; method: ResultMethod; stage: 1 | 2 }
   | { type: "result"; id: number; method: ResultMethod; stage: 1 | 2; reduction: CldReduction; milliseconds: number }

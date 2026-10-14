@@ -262,19 +262,21 @@ function problemOf(kind: string, message: string): Problem {
 }
 
 function onReply(reply: Reply): void {
-  if (reply.type === "ready") return;
+  // A worker sends ready once, when it has loaded (startWorker). A later ready that names a run or a
+  // study goes on to the checks below, which reject it.
+  if (reply.type === "ready" && (reply as { id?: unknown }).id === undefined) return;
   // An error reply is used as text: a message that is not text, or an unknown kind, is a solver error.
   const valid = reply.type === "error" && typeof reply.message === "string" &&
     (["input", "solver", "other"] as unknown[]).includes(reply.kind);
   const r: Reply = reply.type !== "error" || valid ? reply : {
-    ...reply, kind: "solver",
+    ...reply, kind: "solver" as const,
     message: typeof reply.message === "string" ? reply.message : "The worker sent an error without a message.",
   };
   if (beforeRequest && r.id === beforeRequest.id && (r.type === "before" || r.type === "error")) {
     const { version, input } = beforeRequest;
     beforeRequest = null;
-    const defect = r.type !== "before" ? null
-      : checkBefore(r.before, input.pairs, input.means) ?? (isTime(r.milliseconds) ? null : "The time of the reply is not a time.");
+    const defect = r.type !== "before" ? null : safely(() =>
+      checkBefore(r.before, input.pairs, input.means) ?? (isTime(r.milliseconds) ? null : "The time of the reply is not a time."));
     // An error here comes from the input checks or from the clique limit, not from HiGHS, so the
     // worker stays. A new worker would ask for the same display and fail the same way.
     if (defect) {
@@ -316,14 +318,14 @@ function onReply(reply: Reply): void {
     const groups = run.results[0]?.reduction.groups;
     const stage = METHODS.some((m) => m.id === r.method) ? 1 : 2;
     const previous = run.results[run.results.length - 1];
-    const defect = r.method !== expected || r.stage !== stage ? "The reply is for another method."
+    const defect = safely(() => r.method !== expected || r.stage !== stage ? "The reply is for another method."
       : checkReduction(r.reduction, r.method)
       ?? checkInput(r.reduction, run.input.pairs, run.input.means)
       ?? (isTime(r.milliseconds) ? null : "The time of the reply is not a time.")
       ?? (r.stage === 2 ? checkStage(previous.reduction, r.reduction, r.method as StagedOrder) : null)
       ?? (groups && JSON.stringify(groups) !== JSON.stringify(r.reduction.groups)
         ? "The methods returned different groups." : null)
-      ?? beforeDefect(run, r.reduction);
+      ?? beforeDefect(run, r.reduction));
     if (defect) {
       fail({ title: "The solver returned an invalid result", message: defect, detail: "The page shows no result." });
       // The worker can hold more replies of this run. Start again from a clean worker.
@@ -335,15 +337,30 @@ function onReply(reply: Reply): void {
     finishRun(run);
   } else if (r.type === "error") {
     const problem = problemOf(r.kind, r.message);
-    // The first stage finished and passed its checks; the error is in the experimental second stage.
-    fail(run.stage === 2 && r.kind !== "input"
+    // The first stage finished and passed its checks; the error is in the experimental second stage,
+    // whatever kind it names: the first stage accepted the same input.
+    const second = run.stage === 2;
+    fail(second
       ? { ...problem, title: "The second stage stopped with an error",
           detail: "The first stage finished. Clear \"Then minimize the other quantity\" to see its result." }
       : problem);
-    // After a solver error, the next run starts from a clean worker.
-    if (r.kind !== "input") restartWorker();
+    // After a solver error, or any error of a second stage, the next run starts from a clean worker.
+    if (r.kind !== "input" || second) restartWorker();
+  } else {
+    fail({ title: "The solver returned an invalid result", message: "The worker sent a reply that a run does not have.",
+           detail: "The page shows no result." });
+    restartWorker();
   }
   render();
+}
+
+/** A check that throws on a reply of an unexpected form counts as a failed check. */
+function safely(check: () => string | null): string | null {
+  try {
+    return check();
+  } catch {
+    return "The reply has a form that the page cannot read.";
+  }
 }
 
 const BEFORE_MISMATCH = "The display before reduction does not match the statistics of the package.";
@@ -609,7 +626,7 @@ function onStudyReply(r: Reply): void {
   let defect: string | null = null;
   if (r.type === "instance") {
     const next = planned(run.study, run.instances.length);
-    defect = next ? checkInstance(r.instance, next.n, next.seed, instanceFacts(next.n, next.seed), run.study.timeLimit)
+    defect = next ? safely(() => checkInstance(r.instance, next.n, next.seed, instanceFacts(next.n, next.seed), run.study.timeLimit))
       : "The worker sent more instances than the study has.";
     if (!defect) {
       run.instances.push(r.instance);
