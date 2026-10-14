@@ -46,5 +46,10 @@ def coverage(model, selected):
     return all(any(selected[k] for k in row) for row in model.coverage_columns)
 
 
+def essential_decisions(model):
+    """A clique is required exactly when it uniquely covers a vertex or edge."""
+    return sorted({row[0] for row in model.coverage_columns if len(row) == 1})
+
+
 def decode(cliques, model, selected):
     return [list(q) for q, on in zip(cliques, selected, strict=True) if on]

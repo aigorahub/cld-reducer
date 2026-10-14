@@ -9,6 +9,7 @@ from .algorithms import letter_minimum
 from .algorithms.assignment_minimum import (
     _build_model,
     _coverage,
+    _essential_decisions,
     _selected_columns,
     _validate_solver_controls,
 )
@@ -29,6 +30,7 @@ class Strategy:
     failure_prefix: str
     builder: Callable
     coverage: Callable
+    essential_decisions: Callable
     decoder: Callable
     counts_assignments: bool
 
@@ -40,6 +42,7 @@ METHODS = (
         "assignment-minimum MILP failed: ",
         _build_model,
         _coverage,
+        _essential_decisions,
         _selected_columns,
         True,
     ),
@@ -49,6 +52,7 @@ METHODS = (
         "letter-minimum MILP failed: ",
         letter_minimum.build_model,
         letter_minimum.coverage,
+        letter_minimum.essential_decisions,
         letter_minimum.decode,
         False,
     ),

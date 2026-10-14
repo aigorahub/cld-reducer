@@ -45,7 +45,7 @@ def reduce_letters(
     group1, group2, significant:
         Column names in `post_hoc_results`.
     time_limit:
-        Optional solver time limit in seconds.
+        Optional time budget in seconds for the essential scan and all solver calls.
     max_cliques:
         Optional cap on maximal cliques to enumerate before failing with a
         controlled solver error. Pass `None` to disable the cap.

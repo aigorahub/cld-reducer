@@ -29,7 +29,8 @@
 #'   `"letter_minimum"` (CLD-C, default) minimizes full maximal-clique columns, with no
 #'   assignment secondary objective. Hyphenated aliases are also accepted.
 #'   Public result metadata uses the underscore spelling.
-#' @param time_limit One time budget in seconds for all solves of the call, or
+#' @param time_limit One time budget in seconds for the essential scan and all
+#'   solves of the call, or
 #'   `NULL` for no limit.
 #' @param max_cliques The largest number of maximal cliques to enumerate before
 #'   stopping with an error, or `NULL` for no limit.
@@ -123,8 +124,10 @@ reduce_graph <- function(graph, method, time_limit, max_cliques) {
 reduction_methods <- function() list(
   list(name = "assignment_minimum", aliases = c("assignment_minimum", "assignment-minimum"),
        failure_prefix = "assignment-minimum MILP failed: ", builder = build_model,
-       coverage = assignment_coverage, decoder = assignment_columns, counts_assignments = TRUE),
+       coverage = assignment_coverage, essential_decisions = assignment_essential_decisions,
+       decoder = assignment_columns, counts_assignments = TRUE),
   list(name = "letter_minimum", aliases = c("letter_minimum", "letter-minimum"),
        failure_prefix = "letter-minimum MILP failed: ", builder = build_letter_model,
-       coverage = letter_coverage, decoder = letter_columns, counts_assignments = FALSE)
+       coverage = letter_coverage, essential_decisions = letter_essential_decisions,
+       decoder = letter_columns, counts_assignments = FALSE)
 )

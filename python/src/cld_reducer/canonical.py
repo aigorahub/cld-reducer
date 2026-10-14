@@ -19,13 +19,25 @@ def _solve_canonical(model: Any, time_limit: float | None, strategy: Any) -> tup
     """Solve once, then fix decisions in the model's canonical order under one deadline."""
     problem = model.problem
     decisions = problem.decision_columns
-    if len(set(decisions)) != len(decisions) or any(
+    decision_set = set(decisions)
+    if len(decision_set) != len(decisions) or any(
         not isinstance(v, Integral) or v < 0 or v >= problem.num_cols for v in decisions
     ):
         raise SolverError(_INVALID_SOLUTION)
     deadline = _now() + time_limit if time_limit is not None else None
     col_lower = np.zeros(problem.num_cols)
     col_upper = np.ones(problem.num_cols)
+    required = strategy.essential_decisions(model)
+    if (
+        not isinstance(required, list)
+        or any(
+            isinstance(v, bool) or not isinstance(v, Integral) or v not in decision_set
+            for v in required
+        )
+        or any(a >= b for a, b in zip(required, required[1:], strict=False))
+    ):
+        raise SolverError(_INVALID_SOLUTION)
+    col_lower[required] = 1.0
 
     outcome = _solve(model, col_lower, col_upper, None, deadline, strategy)
     selected = _check_solution(model, outcome, col_lower, col_upper, None, strategy)

@@ -62,6 +62,7 @@ test_that("native noncontiguous decisions exclude auxiliary values from the cap"
   expect_equal(out$values[2],1)
   for (strategy in reduction_methods()) {
     strategy$coverage <- function(model,selected) any(selected)
+    strategy$essential_decisions <- function(model) integer(0)
     out <- solve_canonical(list(problem=problem),NULL,strategy)
     expect_equal(out$minimum,1)
     expect_equal(out$selected,c(TRUE,FALSE))

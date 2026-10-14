@@ -43,7 +43,11 @@ def test_cost_cap_uses_weights_during_canonical_trials(presolve):
     )
     from dataclasses import replace
 
-    strategy = replace(METHODS[0], coverage=lambda _, x: (x[0] or x[1]) and (x[0] or x[2]))
+    strategy = replace(
+        METHODS[0],
+        coverage=lambda _, x: (x[0] or x[1]) and (x[0] or x[2]),
+        essential_decisions=lambda _: [],
+    )
     selected, minimum = _solve_canonical(SimpleNamespace(problem=problem), None, strategy)
     assert minimum == 2
     assert selected.tolist() == [False, True, True]

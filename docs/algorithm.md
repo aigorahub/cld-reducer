@@ -102,6 +102,45 @@ Lemma 2.5 of Ennis, Fayle, and Ennis (2012) preserves the sigma optimum when eac
 
 Reduction also preserves the original canonical sigma result. At an optimum, all members of a class have equally many assignments. Otherwise copying the least assigned member to the others would strictly reduce the cost. Choose the lexicographically greatest membership row in a class, in clique order. Copying it to the other members preserves cost and coverage. It strictly raises the full decision vector unless all members already use that row. Thus the canonical optimum has one common row per class. Visiting each class by its first original index preserves the first differing position of the expanded decision vector. The reduced canonical solve therefore selects the same expanded optimum.
 
+### Exact essential decision scan
+
+After vertex reduction and maximal clique enumeration, scan the full maximal
+cover before the first HiGHS solve. This cover gives upper bounds of K letters
+and sum over cliques c of sum over their vertices v of w[v] assignments.
+The existing binary upper bounds imply these objective bounds. Do not add a
+redundant first solve objective cap or pass an initial feasible solution.
+
+For sigma, a membership (c, v) is essential exactly when c is the only clique
+containing v, or c uniquely covers an edge incident to v. A uniquely covered
+edge requires both endpoint memberships. For C, a clique is essential exactly
+when it uniquely covers a vertex or edge. Vertex coverage also forces isolates.
+Use the model's existing coverage alternatives. Sigma returns membership column
+indices; C returns clique column indices. Auxiliary variables are excluded.
+
+These rules implement the paper's exact deletion test on the unchanged full
+cover. In M *B transpose(M), deleting a membership can change both the matching
+row and column. Symmetry makes the row check sufficient. A required relationship
+lost by deletion from the full cover cannot be restored by further deletions.
+Thus every valid subcover contains each essential decision. Conversely, deletion
+of a nonessential decision gives a valid full cover minus that decision.
+The scan preserves the feasible covers, minimum cost, and canonical optimum.
+Class weights affect cost but do not change essentiality on the reduced graph.
+
+Each strategy returns essential native model column indices as a sorted unique
+list. The shared canonical engine validates that each index is an integer and
+belongs to the ordered decision set. Malformed lists, duplicate or unsorted
+indices, and auxiliary or absent columns raise `HiGHS returned an invalid solution`
+before the solver adapter runs. In Python, booleans are not indices. R requires
+a numeric vector without dimensions. Its edge alternatives have two columns;
+one covering clique means `nrow(ends) == 1L`.
+
+Start the shared solver deadline before the scan. Set each essential lower bound
+to 1 before the first solve. Keep optional lower bounds at 0 and all initial
+upper bounds at 1. Preserve these bounds in canonical trials and validate them
+on every returned solution, including the first. Run HiGHS even when every
+decision is essential. The scan does not delete optional decisions or use
+FIND-AM backtracking. HiGHS chooses compatible optional decisions under the BIP.
+
 ## 4. CLD-sigma model
 
 The default pure CLD-C model is specified in section 14.
@@ -135,7 +174,7 @@ Equivalently: visiting the `x` variables in order, each is 1 whenever some optim
 
 **Procedure** (the sequential fixing procedure). The `y` variables are never fixed; the `x` fixings are bound changes (lower bound 1 or upper bound 0), not new rows.
 
-1. Solve the model once. Let `z` be the rounded objective value and `S` the rounded `x` of the solution. This is the minimum.
+1. Run the exact essential scan of section 3 and apply its lower bounds. Solve the model once without an objective cap. Let `z` be the rounded objective value and `S` the rounded `x` of the solution. This is the minimum.
 2. Visit the `x` variables in `(c, g)` order. For variable `v`:
    1. If `S[v]` is 1, fix `v` to 1 (lower bound 1) and continue.
    2. If `S[v]` is 0, solve again with every earlier fixing, `v` fixed to 1, and the added limit `weighted_cost(x) <= z`. If the model is feasible, replace `S` with the new solution and fix `v` to 1. If it is infeasible, fix `v` to 0 (upper bound 0).
@@ -168,7 +207,7 @@ R keeps presolve off because the CRAN `highs` package bundles HiGHS 1.14, where 
 
 **Failure prefix.** Solver status errors use `letter-minimum MILP failed: ` for CLD-C and `assignment-minimum MILP failed: ` for CLD-sigma.
 
-**One budget.** `time_limit` is one budget for all solves in a call, measured from just before the first solve with a monotonic clock (R `proc.time()[["elapsed"]]`, Python `time.monotonic()`, JavaScript `performance.now() / 1000`). Each solve gets the time left as its HiGHS time limit. When no time is left before a solve starts, or HiGHS stops on the time limit, the call raises a solver error with the selected method's failure prefix and the text `Time limit reached`. The clique enumeration is not part of the budget.
+**One budget.** `time_limit` is one budget for the essential scan and all solves in a call, measured from just before that scan with a monotonic clock (R `proc.time()[["elapsed"]]`, Python `time.monotonic()`, JavaScript `performance.now() / 1000`). Each solve gets the time left as its HiGHS time limit. When no time is left before a solve starts, or HiGHS stops on the time limit, the call raises a solver error with the selected method's failure prefix and the text `Time limit reached`. Vertex reduction, clique enumeration, and model construction are not part of the budget.
 
 **Checks after each solve.**
 
@@ -406,7 +445,7 @@ stable mean/index sort and formatting. The simple five-group example has C=3 and
 
 Each language has one pipeline, registry, binary-model contract, canonical engine,
 solver adapter, renderer and result checks. The two registry entries supply their
-model builder, decision coverage check and column decoder. Production normalization
+model builder, decision coverage check, essential decision scan and column decoder. Production normalization
 uses this registry; the independent reference has its own allow-list. No foreign
 runtime or generator is needed.
 

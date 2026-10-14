@@ -55,7 +55,7 @@ it("caps only noncontiguous native decisions and visits their declared order", a
   expect(out.status).toBe("optimal"); expect(out.values![1]).toBe(1);
   for (const strategy of methods) {
     const model: Model = {problem,members:[],edges:[],groupColumns:[],edgeEnds:[]};
-    const out = solveCanonical(model,null,{...strategy,coverage:(_,s)=>s.some(Boolean)});
+    const out = solveCanonical(model,null,{...strategy,coverage:(_,s)=>s.some(Boolean),essentialDecisions:()=>[]});
     expect(out.minimum).toBe(1); expect(out.selected).toEqual([true,false]);
   }
 });

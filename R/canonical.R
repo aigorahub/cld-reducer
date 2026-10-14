@@ -53,6 +53,13 @@ solve_canonical <- function(model, time_limit, strategy) {
   deadline <- if (is.null(time_limit)) NULL else elapsed() + time_limit
   col_lower <- rep(0, problem$num_cols)
   col_upper <- rep(1, problem$num_cols)
+  required <- strategy$essential_decisions(model)
+  if (!is.numeric(required) || !is.null(dim(required)) ||
+      any(!is.finite(required) | required != floor(required) | !required %in% decisions) ||
+      anyDuplicated(required) || is.unsorted(required, strictly = TRUE)) {
+    solver_error("HiGHS returned an invalid solution")
+  }
+  col_lower[required] <- 1
 
   outcome <- solve_step(model, col_lower, col_upper, NULL, deadline, strategy)
   selected <- check_solution(model, outcome, col_lower, col_upper, NULL, strategy)

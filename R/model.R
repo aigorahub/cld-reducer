@@ -84,6 +84,14 @@ assignment_coverage <- function(model, selected) {
       any(selected[ends[, 1L]] & selected[ends[, 2L]])
     }, logical(1)))
 }
+assignment_essential_decisions <- function(model) {
+  vertices <- unlist(model$group_columns[lengths(model$group_columns) == 1L],
+                     use.names = FALSE)
+  edges <- unlist(lapply(model$edge_ends, function(ends) {
+    if (nrow(ends) == 1L) ends[1L, ] else integer(0)
+  }), use.names = FALSE)
+  sort(unique(c(integer(0), vertices, edges)))
+}
 assignment_columns <- function(cliques, model, selected) {
   columns <- lapply(seq_along(cliques), function(c) {
     model$members[model$members[, "clique"] == c & selected, "group"]
@@ -115,5 +123,10 @@ build_letter_model <- function(context) {
 }
 letter_coverage <- function(model, selected) {
   all(vapply(model$coverage_columns, function(cs) any(selected[cs]), logical(1)))
+}
+letter_essential_decisions <- function(model) {
+  required <- unlist(model$coverage_columns[lengths(model$coverage_columns) == 1L],
+                     use.names = FALSE)
+  sort(unique(c(integer(0), required)))
 }
 letter_columns <- function(cliques, model, selected) cliques[selected]

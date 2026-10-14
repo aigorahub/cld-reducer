@@ -152,7 +152,9 @@ def test_noncontiguous_decision_indices(strategy):
         row_upper=np.array([np.inf, np.inf]),
     )
     model = SimpleNamespace(problem=problem)
-    custom = dataclasses.replace(strategy, coverage=lambda m, s: any(s))
+    custom = dataclasses.replace(
+        strategy, coverage=lambda m, s: any(s), essential_decisions=lambda _: []
+    )
     selected, optimum = canonical._solve_canonical(model, None, custom)
     assert optimum == 1
     assert selected.tolist() == [True, False]

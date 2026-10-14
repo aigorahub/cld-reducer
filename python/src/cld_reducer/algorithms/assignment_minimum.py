@@ -156,6 +156,15 @@ def _coverage(model: _Model, selected: np.ndarray) -> bool:
     )
 
 
+def _essential_decisions(model: _Model) -> list[int]:
+    """Exact single-deletion test on the full cover, using coverage alternatives."""
+    required = {columns[0] for columns in model.group_columns if len(columns) == 1}
+    for ends in model.edge_ends:
+        if len(ends) == 1:
+            required.update(ends[0])
+    return sorted(required)
+
+
 def _selected_columns(
     cliques: list[tuple[int, ...]], model: _Model, selected: np.ndarray
 ) -> list[list[int]]:

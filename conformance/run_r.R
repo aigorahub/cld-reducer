@@ -52,6 +52,24 @@ matrix_of <- function(rows) {
   do.call(rbind, lapply(rows, column))
 }
 
+# Scan fixtures use native column indices after converting the zero based oracle.
+scan_count <- 0L
+for (case in read_fixture("essential")$cases) {
+  adjacency <- matrix_of(case$adjacency) != 0
+  graph <- ns$adjacency_to_graph(adjacency, NULL, NULL)
+  context <- ns$graph_context(graph, lapply(case$cliques,function(c) as.integer(unlist(c))+1L),
+                             as.integer(unlist(case$weights)))
+  for (k in seq_along(ns$reduction_methods())) {
+    strategy <- ns$reduction_methods()[[k]]
+    key <- if (k == 1L) "essential_sigma" else "essential_c"
+    expected <- as.integer(unlist(case[[key]]))+1L
+    actual <- strategy$essential_decisions(strategy$builder(context))
+    if (!identical(actual,expected)) fail(case$id,"essential decisions differ for ",strategy$name)
+  }
+  scan_count <- scan_count+1L
+}
+cat(sprintf("essential scan: %d cases checked for both methods\n",scan_count))
+
 call_case <- function(case) {
   options <- list()
   # Historical sigma fixtures predate the C default. Keep their inputs frozen.

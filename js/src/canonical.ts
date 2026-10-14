@@ -8,12 +8,21 @@ const INVALID_SOLUTION = "HiGHS returned an invalid solution";
 export function solveCanonical(model: Model, timeLimit: number | null, strategy: Strategy): { selected: boolean[]; minimum: number } {
   const { problem } = model;
   const decisions = problem.decisionColumns;
-  if (new Set(decisions).size !== decisions.length || decisions.some(v => !Number.isInteger(v) || v < 0 || v >= problem.numCols)) {
+  const decisionSet = new Set(decisions);
+  if (decisionSet.size !== decisions.length || decisions.some(v => !Number.isInteger(v) || v < 0 || v >= problem.numCols)) {
     throw new SolverError(INVALID_SOLUTION);
   }
   const deadline = timeLimit !== null ? clock.now() + timeLimit : null;
   let colLower = new Float64Array(problem.numCols);
   const colUpper = new Float64Array(problem.numCols).fill(1);
+  const required = strategy.essentialDecisions(model);
+  if (!Array.isArray(required)) throw new SolverError(INVALID_SOLUTION);
+  let previous = -1;
+  for (const v of required) {
+    if (!Number.isInteger(v) || !decisionSet.has(v) || v <= previous) throw new SolverError(INVALID_SOLUTION);
+    previous = v;
+  }
+  for (const v of required) colLower[v] = 1;
 
   let outcome = solve(model, colLower, colUpper, null, deadline, strategy);
   let selected = checkSolution(model, outcome, colLower, colUpper, null, strategy);
