@@ -238,8 +238,9 @@ Configure npm trusted publishing near the next authorized release.
 | npm trusted publisher | Registry maintainer, next release | Configure near the next authorized upload and verify it with that release |
 | Repository description | Updated 2026-10-09 | Describes R, Python, and JavaScript packages |
 | Tag and release | `v0.3.3` published 2026-10-15 | Immutable package commit `01d89dee3474fe1e11ab03dc5b9ca6d47f1dac24`; see submission status for files and checks |
-| win-builder | Both passed 2026-10-10 | Zero errors, zero warnings, one NOTE on the frozen R archive |
-| CRAN submission | Submitted and confirmed 2026-10-10 | Automated Windows and Debian pretests: one NOTE each; manual review pending |
+| 0.2.0 win-builder | Both passed 2026-10-10 | Zero errors, zero warnings, one NOTE on the frozen 0.2.0 R archive |
+| 0.2.0 CRAN submission | Submitted and confirmed 2026-10-10 | Automated Windows and Debian pretests: one NOTE each; manual review pending |
+| 0.3.3 win-builder | R-release passed 2026-10-15; R-devel pending | Zero errors, zero warnings, one NOTE on Windows R 4.6.1; see submission status for the frozen archive and log |
 
 References: [npm trusted publishers](https://docs.npmjs.com/trusted-publishers/),
 [PyPI trusted publishers](https://docs.pypi.org/trusted-publishers/),

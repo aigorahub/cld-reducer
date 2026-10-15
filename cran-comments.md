@@ -30,17 +30,17 @@ Debian pretests also reported one NOTE each, with no errors or warnings.
 Manual review was pending in the last recorded email. The public CRAN package
 index did not list cldreducer on 2026-10-13.
 
-## 0.3.0 candidate checks
+## Historical 0.3.0 candidate checks
 
 The local source tests at `8e9464b63d8c1ddddc87d07420db6bfab46b555c`
 pass 631 R assertions. All 47 GitHub checks pass at that commit, including
 R package checks and the PDF manual check. The preceding implementation
 archive check reported zero errors, zero warnings, and one new-submission NOTE.
 
-These checks do not certify a new frozen submission file. Before submitting
-0.3.0, build the archive from its approved release commit. Record its SHA-256,
-R version, local archive checks, example times, and new win-builder results.
-Do not use the frozen 0.2.0 hash or results as evidence for that file.
+These are historical source checks, not checks of a frozen submission file.
+The next candidate is the frozen 0.3.3 archive recorded below. Use its own
+SHA-256 and check results. Do not use the 0.2.0 or 0.3.0 results as evidence
+for that archive.
 
 ## 0.3.3 candidate checks
 

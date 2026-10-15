@@ -22,7 +22,9 @@ was still pending at that check.
 The [GitHub release](https://github.com/aigorahub/cld-reducer/releases/tag/v0.3.3)
 holds the exact files and separate registry manifests. Public npm and PyPI files
 match their workflow SHA-256 hashes. Fresh public installs passed the CLD-C,
-CLD-sigma, version, and pair API checks. The npm check also loaded the WASM solver.
+CLD-sigma, and pair API checks. The Python check verified the installed version
+as 0.3.3. The npm check loaded the WASM solver. A separate registry check
+confirmed that the npm `latest` tag points to 0.3.3.
 
 | File | SHA-256 |
 |---|---|
