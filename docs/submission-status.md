@@ -14,7 +14,8 @@ CRAN does not yet list the package. The R 0.3.3 archive is a checked candidate,
 not a new submission. The [CRAN policy](https://cran.r-project.org/web/packages/policies.html)
 prohibits another submission while an earlier version is pending without a
 response from a CRAN maintainer. No such response was found in the maintainer's
-email on 2026-10-15. The Windows 0.3.3 check results were also pending then.
+email on 2026-10-15. The Windows R-release result passed; the R-devel result
+was still pending at that check.
 
 ## Version 0.3.3 files and checks
 
@@ -41,7 +42,10 @@ The R 0.3.3 archive passed `R CMD check --as-cran --timings` on macOS with
 R 4.6.1: zero errors, zero warnings, and one New submission NOTE. All 631 tests
 passed. PDF and HTML manuals passed. The longest example took 0.315 seconds.
 The archive passed the package-content check. The same file was uploaded to
-win-builder R-release and R-devel. Results are pending.
+win-builder R-release and R-devel. The [R-release log](https://win-builder.r-project.org/bmqR3hnotkU3/00check.log)
+reports zero errors, zero warnings, and one NOTE on R 4.6.1 for Windows.
+The NOTE covers a new submission and the spelling flags CLD, CLDs, Ennis,
+Fayle, and Piepho. PDF and HTML manuals passed. The R-devel result is pending.
 
 ## Earlier 0.2.0 release
 
@@ -125,7 +129,7 @@ the automated pretest described above.
 
 ## Remaining steps
 
-- Collect and record the 0.3.3 Windows check results.
+- Collect and record the 0.3.3 Windows R-devel result.
 - Respond to CRAN reviewer requests before submitting the checked 0.3.3 candidate.
   Record acceptance separately.
 - After CRAN acceptance, verify public installation and update this record.

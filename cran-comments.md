@@ -50,9 +50,12 @@ errors, zero warnings, and one New submission NOTE. All 631 testthat checks
 passed. The PDF and HTML manuals passed. The longest example took 0.315 seconds.
 SHA-256: `bbeb2b822e805b5a2dced15166364c02d4a053e6d2f16c65f184df58189cafd4`.
 
-The same file was uploaded to win-builder R-release and R-devel. Results were
-still pending at the last email check on 2026-10-15. This archive has not been
-submitted to CRAN. CRAN is still reviewing 0.2.0, with no maintainer response
+The same file was uploaded to win-builder R-release and R-devel. The
+[R-release check](https://win-builder.r-project.org/bmqR3hnotkU3/00check.log)
+on R 4.6.1 for Windows passed with zero errors, zero warnings, and one NOTE
+for a new submission and spelling flags. PDF and HTML manuals passed.
+The R-devel result was still pending at the last email check on 2026-10-15.
+This archive has not been submitted to CRAN. CRAN is still reviewing 0.2.0, with no maintainer response
 after the automated pretest. Wait for that response before another submission.
 
 ## Notes for the reviewer
