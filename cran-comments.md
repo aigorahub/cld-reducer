@@ -6,8 +6,10 @@ weighted vertex reduction, essential decisions, and a certificate that can avoid
 BIP construction. Its merged source commit is
 `7d9b923ed1e5c867e97f485071e1d1f742a0aeaa`. It has not been submitted to CRAN.
 Versions 0.3.1 and 0.3.2 add and extend a browser page outside the R package
-and do not change the R code. The current checkout is development version 0.3.3. Use the retained
-candidate commit for new 0.3.0 submission checks.
+and do not change the R code. Version 0.3.3 is published on npm and PyPI.
+Its checked R archive comes from `01d89dee3474fe1e11ab03dc5b9ca6d47f1dac24`.
+The current checkout is development version 0.3.4. Do not rebuild the frozen
+0.3.3 archive from this checkout.
 
 John Ennis is the sole package author and maintainer. The package code is MIT
 licensed. See `docs/submission-status.md` for the registry and email records.
@@ -28,17 +30,33 @@ Debian pretests also reported one NOTE each, with no errors or warnings.
 Manual review was pending in the last recorded email. The public CRAN package
 index did not list cldreducer on 2026-10-13.
 
-## 0.3.0 candidate checks
+## Historical 0.3.0 candidate checks
 
 The local source tests at `8e9464b63d8c1ddddc87d07420db6bfab46b555c`
 pass 631 R assertions. All 47 GitHub checks pass at that commit, including
 R package checks and the PDF manual check. The preceding implementation
 archive check reported zero errors, zero warnings, and one new-submission NOTE.
 
-These checks do not certify a new frozen submission file. Before submitting
-0.3.0, build the archive from its approved release commit. Record its SHA-256,
-R version, local archive checks, example times, and new win-builder results.
-Do not use the frozen 0.2.0 hash or results as evidence for that file.
+These are historical source checks, not checks of a frozen submission file.
+The next candidate is the frozen 0.3.3 archive recorded below. Use its own
+SHA-256 and check results. Do not use the 0.2.0 or 0.3.0 results as evidence
+for that archive.
+
+## 0.3.3 candidate checks
+
+On 2026-10-15, the archive `cldreducer_0.3.3.tar.gz` passed local
+`R CMD check --as-cran --timings` on macOS with R 4.6.1. There were zero
+errors, zero warnings, and one New submission NOTE. All 631 testthat checks
+passed. The PDF and HTML manuals passed. The longest example took 0.315 seconds.
+SHA-256: `bbeb2b822e805b5a2dced15166364c02d4a053e6d2f16c65f184df58189cafd4`.
+
+The same file was uploaded to win-builder R-release and R-devel. The
+[R-release check](https://win-builder.r-project.org/bmqR3hnotkU3/00check.log)
+on R 4.6.1 for Windows passed with zero errors, zero warnings, and one NOTE
+for a new submission and spelling flags. PDF and HTML manuals passed.
+The R-devel result was still pending at the last email check on 2026-10-15.
+This archive has not been submitted to CRAN. CRAN is still reviewing 0.2.0, with no maintainer response
+after the automated pretest. Wait for that response before another submission.
 
 ## Notes for the reviewer
 

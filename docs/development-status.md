@@ -1,6 +1,6 @@
 # Development status
 
-Status on 2026-10-14. Registry publication is recorded separately in
+Status on 2026-10-15. Registry publication is recorded separately in
 [submission status](submission-status.md).
 
 ## Version and delivery
@@ -23,10 +23,15 @@ to the browser page, and no package algorithm or public API change. PR #15 merge
 Its source tree matches reviewed head
 `02f29a7f206b779cc392acb6dd64ec1eafaa130f`.
 
-The next development version is 0.3.3. This metadata update adds no algorithm
-or public API changes. Neither merge nor a version update publishes a package.
-Tags and registry uploads remain separate. Keep the 0.3.0 candidate commit when
-preparing a later authorized release.
+Version 0.3.3 is tagged at merge commit
+`01d89dee3474fe1e11ab03dc5b9ca6d47f1dac24` (PR #18). Its tree matches reviewed
+head `9e391d365f4d9993f6cf48b4f817b054d3081a95`. npm and PyPI publication
+completed on 2026-10-15. Both public installs passed their checks. The R 0.3.3
+archive passed local checks but is not submitted while CRAN reviews 0.2.0.
+
+The next development version is 0.3.4. This metadata update adds no algorithm
+or public API changes. The 0.3.3 tag and release files remain unchanged.
+The earlier 0.3.0 candidate and frozen 0.2.0 submission remain historical records.
 
 ## Implemented behavior
 

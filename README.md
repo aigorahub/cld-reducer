@@ -34,7 +34,7 @@ pip install "git+https://github.com/aigorahub/cld-reducer.git#subdirectory=pytho
 
 The `#subdirectory=python` part is needed because the Python package lives in `python/`. The JavaScript package is built from `js/`; see [js/README.md](js/README.md).
 
-The examples below describe version 0.3.0 and later. On 2026-10-13, PyPI and npm still provide version 0.2.0, which minimizes assignments and does not offer CLD-C. Use the repository build for the new methods. CRAN does not yet list the package. See [submission status](docs/submission-status.md) for the dated registry checks.
+The examples below work with version 0.3.3, published on PyPI and npm on 2026-10-15. Both packages default to CLD-C. Use `assignment_minimum` for CLD-sigma. CRAN still has version 0.2.0 under review and does not yet list the package. See [submission status](docs/submission-status.md) for the release records.
 
 ## Usage in R
 
@@ -137,7 +137,7 @@ cd ../dashboard && npm ci && npm run build
 open dist/cld-reducer-dashboard.html
 ```
 
-The page is built from source and is not published. The `js.yaml` workflow keeps the built file as the `cld-reducer-dashboard` artifact of each run. See [dashboard/README.md](dashboard/README.md) for the input format, the limits, and the tests.
+The page is hosted at <https://cld.aigora.ai> and can also be built as an offline HTML file. The `js.yaml` workflow keeps the built file as the `cld-reducer-dashboard` artifact of each run. See [dashboard/README.md](dashboard/README.md) for the input format, the limits, and the tests.
 
 ## Method
 
@@ -220,6 +220,6 @@ result$stats$assignments_after    # 9 assignments
 Version 0.3.0 is the merged candidate for these changes. Version 0.3.1 adds the
 browser page. Version 0.3.2 adds a second stage, simulated examples, and the letters before reduction
 to that page. Neither changes a package algorithm or the public API. The current development
-version is 0.3.3. The page is at <https://cld.aigora.ai>. The published 0.2.0 packages and
-frozen CRAN candidate are unchanged. See [development status](docs/development-status.md)
+version is 0.3.4. Version 0.3.3 is published on npm and PyPI.
+The page is at <https://cld.aigora.ai>. The frozen 0.2.0 CRAN submission remains unchanged. See [development status](docs/development-status.md)
 for implementation, review, version, and timing records.
