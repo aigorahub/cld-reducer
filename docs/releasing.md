@@ -1,13 +1,14 @@
 # Package releases
 
 The repository follows the turfLP layout: R at the root, Python in `python/`,
-and JavaScript in `js/`. Version 0.2.0 is tagged and published on PyPI and npm.
+and JavaScript in `js/`. Version 0.3.3 is tagged and published on PyPI and npm.
+Version 0.2.0 remains available as the earlier release.
 The merged candidate for the method changes is 0.3.0. Version 0.3.1 adds the
 browser page in `dashboard/`. Version 0.3.2 adds a second stage, simulated examples, and the letters before reduction
 to that page. Neither changes a package algorithm or the public API.
-The current development version is 0.3.3.
+The current development version is 0.3.4.
 The recorded CRAN submission is still 0.2.0;
-the package was absent from the public CRAN index on 2026-10-13.
+the package was absent from the public CRAN index on 2026-10-15.
 See [submission status](submission-status.md) for the current evidence.
 These instructions describe future releases. Checks do not grant permission
 to merge or publish.
@@ -49,15 +50,18 @@ See the Python section of `NEWS.md` for all API and input changes.
 
 ## Validate the candidate
 
-Version 0.2.0 is already used. Version 0.3.0 is the candidate for CLD-C and
-the essential-cover changes. Registry checks on 2026-10-13 found no 0.3.0
-publication on PyPI or npm. Check again before publishing. The retained 0.3.0
-candidate commit is `7d9b923ed1e5c867e97f485071e1d1f742a0aeaa`. Use a clean
-checkout of that commit for candidate checks. Version 0.3.1 with the browser
+Versions 0.2.0 and 0.3.3 are already published on npm and PyPI.
+Use a new, unused version for the next package release. The retained 0.3.0
+implementation candidate is `7d9b923ed1e5c867e97f485071e1d1f742a0aeaa`.
+It remains a historical reference; the 0.3.3 release includes those method changes.
+Version 0.3.1 with the browser
 page is merge commit `b12423098d288496d4364ceeb6e094ada984a613`. Version 0.3.2
 with the second stage of the page is merge commit
 `60bb68819591d7dc35a8c3e50dd808c4b56ca3a7`. The development checkout uses
-0.3.3. Keep the selected version in `DESCRIPTION`,
+0.3.4. The 0.3.3 release is tagged at
+`01d89dee3474fe1e11ab03dc5b9ca6d47f1dac24`; its npm and PyPI files are public.
+Do not upload version 0.3.3 to either registry again.
+Keep the selected version in `DESCRIPTION`,
 `CITATION.cff`, `NEWS.md`, both package manifests and locks, and Python's
 `__version__`. `scripts/release.py version` checks agreement. Never replace an
 uploaded version.
@@ -66,7 +70,7 @@ Before merging a feature release, synchronize the candidate version and its
 NEWS entry. After that merge, set the next unused patch version for development
 in a separate reviewed commit. For the method stack, those versions are 0.3.0 and
 0.3.1. For the browser page, they are 0.3.1 and 0.3.2. For its second stage, they are
-0.3.2 and 0.3.3.
+0.3.2 and 0.3.3. After the 0.3.3 registry release, the development version is 0.3.4.
 Add a NEWS entry that marks the later version as unreleased. The version
 check uses the same three-part number in R, Python, npm, citation metadata, and
 both lock files. Record the earlier candidate commit so that a later authorized
@@ -200,7 +204,12 @@ with the new tag and `dry_run=false`.
 Check public metadata and install its wheel in a clean environment. TestPyPI is
 optional and uses separate publisher settings.
 
-Submit the frozen, checked R archive through CRAN's submission process. The
+Wait for a CRAN maintainer response before replacing a pending submission.
+The 0.2.0 submission is still pending as of 2026-10-15. The checked 0.3.3
+archive remains a candidate. See the current Windows check status in
+[submission status](submission-status.md).
+
+When the pending review permits it, submit the frozen, checked R archive through CRAN's submission process. The
 maintainer handles confirmation and reviewer correspondence. Record submission
 and acceptance as separate events. A submitted package is not yet installable
 from CRAN.
@@ -221,14 +230,14 @@ Configure npm trusted publishing near the next authorized release.
 
 | Action | Owner | Required evidence |
 |---|---|---|
-| Python history and identity | Resolved 2026-10-10 | Earlier publication was sensPy; `cld-reducer` 0.2.0 is live |
+| Python history and identity | Resolved | Earlier publication was sensPy; `cld-reducer` 0.3.3 is live on PyPI as of 2026-10-15 |
 | Data reuse basis | John Ennis | Source and permission for each data set |
 | Authors and maintainer | Confirmed 2026-10-09 | John Ennis is the sole package author and maintainer |
 | GitHub `npm` and `pypi` environments | Configured 2026-10-09 | Only the `main` branch is allowed |
 | PyPI trusted publisher | Configured and verified 2026-10-10 | `publish-python.yaml`, environment `pypi`; release workflow succeeded |
 | npm trusted publisher | Registry maintainer, next release | Configure near the next authorized upload and verify it with that release |
 | Repository description | Updated 2026-10-09 | Describes R, Python, and JavaScript packages |
-| Tag and release | `v0.2.0` created 2026-10-10 | Immutable package commit `8a09915a6ad0dcb1fc0ca17bce4ebaa46ddc2b39`; see submission status for release notes |
+| Tag and release | `v0.3.3` published 2026-10-15 | Immutable package commit `01d89dee3474fe1e11ab03dc5b9ca6d47f1dac24`; see submission status for files and checks |
 | win-builder | Both passed 2026-10-10 | Zero errors, zero warnings, one NOTE on the frozen R archive |
 | CRAN submission | Submitted and confirmed 2026-10-10 | Automated Windows and Debian pretests: one NOTE each; manual review pending |
 

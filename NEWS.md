@@ -1,7 +1,13 @@
+# cldreducer 0.3.4
+
+- Unreleased development version after the 0.3.3 npm and PyPI release.
+- Update release records. No algorithm or public API changes.
+
 # cldreducer 0.3.3
 
-- Unreleased development version after the 0.3.2 merge.
-  No algorithm or public API changes.
+- Published on npm and PyPI on 2026-10-15.
+  No package algorithm or public API changes since 0.3.2.
+  The R archive is a checked candidate, not a CRAN publication.
 - The browser page in `dashboard/` uses the Aigora design of the turfLP
   dashboard: its colors, fonts, mark, and app bar. The page says what the
   reduction gives, shows the counts of each result as a row of numbers, and
