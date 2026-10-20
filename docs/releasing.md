@@ -6,7 +6,9 @@ Version 0.2.0 remains available as the earlier release.
 The merged candidate for the method changes is 0.3.0. Version 0.3.1 adds the
 browser page in `dashboard/`. Version 0.3.2 adds a second stage, simulated examples, and the letters before reduction
 to that page. Neither changes a package algorithm or the public API.
-Version 0.3.4 adds the staged methods to the R package (PR #20) and is not published.
+Version 0.3.4 adds the staged methods to the R package (PR #20, merge commit
+`c3ea076b4051a749f11a488ed9e18c79a7d0e6c7`) and is not published. The current
+development version is 0.3.5.
 The recorded CRAN submission is still 0.2.0;
 the package was absent from the public CRAN index on 2026-10-15.
 See [submission status](submission-status.md) for the current evidence.
@@ -57,8 +59,9 @@ It remains a historical reference; the 0.3.3 release includes those method chang
 Version 0.3.1 with the browser
 page is merge commit `b12423098d288496d4364ceeb6e094ada984a613`. Version 0.3.2
 with the second stage of the page is merge commit
-`60bb68819591d7dc35a8c3e50dd808c4b56ca3a7`. The development checkout uses
-0.3.4. The 0.3.3 release is tagged at
+`60bb68819591d7dc35a8c3e50dd808c4b56ca3a7`. The 0.3.4 candidate with the staged R methods is
+merge commit `c3ea076b4051a749f11a488ed9e18c79a7d0e6c7`. The development checkout uses
+0.3.5. The 0.3.3 release is tagged at
 `01d89dee3474fe1e11ab03dc5b9ca6d47f1dac24`; its npm and PyPI files are public.
 Do not upload version 0.3.3 to either registry again.
 Keep the selected version in `DESCRIPTION`,

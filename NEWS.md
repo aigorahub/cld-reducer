@@ -1,6 +1,12 @@
+# cldreducer 0.3.5
+
+- Unreleased development version after the 0.3.4 candidate. No algorithm or
+  public API changes.
+
 # cldreducer 0.3.4
 
-- Candidate version after the 0.3.3 npm and PyPI release. Not published.
+- Candidate version after the 0.3.3 npm and PyPI release, merged as
+  `c3ea076b4051a749f11a488ed9e18c79a7d0e6c7` (PR #20). Not published.
 - Update release records.
 - Add the staged methods `letter_then_assignment` (CLD-C, then CLD-sigma) and
   `assignment_then_letter` (CLD-sigma, then CLD-C) to the R package, with

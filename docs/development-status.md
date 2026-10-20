@@ -32,7 +32,9 @@ archive passed local checks but is not submitted while CRAN reviews 0.2.0.
 Version 0.3.4 adds the staged methods `letter_then_assignment` and
 `assignment_then_letter` to the R package (PR #20). They port the second stage of
 the browser page; Python and JavaScript do not have them. Version 0.3.4 is not
-published. The 0.3.3 tag and release files remain unchanged.
+published; PR #20 merged it as commit `c3ea076b4051a749f11a488ed9e18c79a7d0e6c7`.
+The next development version is 0.3.5. The 0.3.3 tag and release files remain
+unchanged.
 The earlier 0.3.0 candidate and frozen 0.2.0 submission remain historical records.
 
 ## Implemented behavior
