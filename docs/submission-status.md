@@ -2,7 +2,8 @@
 
 Status verified on 2026-10-15. Version 0.3.3 is published on npm and PyPI.
 The release tag `v0.3.3` points to merged commit
-`01d89dee3474fe1e11ab03dc5b9ca6d47f1dac24`. The development version is 0.3.4.
+`01d89dee3474fe1e11ab03dc5b9ca6d47f1dac24`. The 0.3.4 candidate (staged R methods) is merge commit
+`c3ea076b4051a749f11a488ed9e18c79a7d0e6c7` and is not published. The development version is 0.3.5.
 
 | Registry | Package | Status |
 |---|---|---|
