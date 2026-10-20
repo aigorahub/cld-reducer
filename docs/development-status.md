@@ -83,8 +83,8 @@ study view. That model gives larger maximal displays than Table X of the 2012
 paper reports; the dashboard README gives the figures. An experimental second
 stage minimizes the other quantity at the minimum of the first method. It is
 solver code of the page: it builds on the package model, canonical engine, and
-HiGHS, and it exists in the page only. A change of the
-specification or of the R and Python packages for it is a separate decision.
+HiGHS. Version 0.3.4 ports it to the R package as `letter_then_assignment` and
+`assignment_then_letter`; Python and npm do not have it.
 
 The first review of the page found four defects: a late file read could
 replace newer input, the reply check did not cover the display string, a long

@@ -92,7 +92,19 @@ test_that("names the method, accepts the hyphen aliases and reports the second o
   expect_equal(unname(c_then_sigma$letters), c("A", "AB", "AC", "BC", "C"))
 })
 
-test_that("names the second stage in a solver error and keeps one time budget", {
+test_that("does not charge clique enumeration or model building to the time limit", {
+  # A fake clock: each clique enumeration takes 100 seconds, and nothing else takes time.
+  now <- 0
+  real <- maximal_cliques
+  local_mocked_bindings(elapsed = function() now,
+                        maximal_cliques = function(...) { now <<- now + 100; real(...) })
+  for (method in c("letter_then_assignment", "assignment_then_letter")) {
+    out <- reduce_from_adjacency(multipartite222_adjacency(), method = method, time_limit = 10)
+    expect_identical(out$method, method)
+  }
+})
+
+test_that("names the second stage in a solver error", {
   real <- solve_lp
   calls <- 0L
   local_mocked_bindings(solve_lp = function(...) {

@@ -26,9 +26,8 @@ staged_prefix <- "staged solve failed: "
 
 reduce_staged <- function(graph, staged, time_limit, max_cliques) {
   controls <- check_controls(time_limit, max_cliques)
-  deadline <- if (is.null(controls$time_limit)) NULL else elapsed() + controls$time_limit
   first <- reduce_graph(graph, staged$first, controls$time_limit, controls$max_cliques)
-  tryCatch(second_stage(graph, staged, first, deadline, controls$max_cliques),
+  tryCatch(second_stage(graph, staged, first, controls$time_limit, controls$max_cliques),
     cldreducer_solver_error = function(e) {
       # Every solver error of the second stage names it.
       if (startsWith(conditionMessage(e), staged_prefix)) stop(e)
@@ -36,7 +35,11 @@ reduce_staged <- function(graph, staged, time_limit, max_cliques) {
     })
 }
 
-second_stage <- function(graph, staged, first, deadline, max_cliques) {
+# `time_limit` covers the solves of the second stage, as the first stage's
+# limit covers its own: vertex reduction, clique enumeration, and model
+# construction are not part of the budget (section 6), so only the time spent
+# inside the canonical solves counts against it.
+second_stage <- function(graph, staged, first, time_limit, max_cliques) {
   invalid <- function() solver_error(staged_prefix, "HiGHS returned an invalid solution")
   letters_first <- staged$letters_first
   bound <- if (letters_first) first$stats$num_letters_after else first$stats$assignments_after
@@ -73,7 +76,14 @@ second_stage <- function(graph, staged, first, deadline, max_cliques) {
     row_upper = c(base$row_upper, rep(0, k), bound)
   )
   model <- c(unclass(plan), list(problem = problem))
-  remaining <- function() if (is.null(deadline)) NULL else remaining_time(deadline, list(failure_prefix = staged_prefix))
+  spent <- 0
+  timed <- function(solve) {
+    left <- if (is.null(time_limit)) NULL else time_limit - spent
+    if (!is.null(left) && left <= 0) solver_error(staged_prefix, "Time limit reached")
+    started <- elapsed()
+    on.exit(spent <<- spent + elapsed() - started)
+    solve(left)
+  }
 
   if (letters_first) {
     used <- function(selected) length(unique(members[selected, "clique"]))
@@ -82,7 +92,7 @@ second_stage <- function(graph, staged, first, deadline, max_cliques) {
       coverage = function(m, selected) assignment_coverage(m, selected) && used(selected) <= bound))
     # The decisions are the memberships, with positive weights, so the
     # essential cover proof of the package applies unchanged.
-    solution <- solve_canonical(model, remaining(), strategy)
+    solution <- timed(function(left) solve_canonical(model, left, strategy))
     columns <- assignment_columns(cliques, plan, solution$selected)
   } else {
     # A vertex or an edge that one clique alone covers forces that clique.
@@ -96,10 +106,10 @@ second_stage <- function(graph, staged, first, deadline, max_cliques) {
       essential_decisions = function(m) as.integer(forced)))
     # A cover by the chosen cliques does not prove that memberships within
     # the bound exist, so the certificate is off; the third solve checks it.
-    chosen <- solve_canonical(model, remaining(), strategy, certificate = FALSE)$selected
+    chosen <- timed(function(left) solve_canonical(model, left, strategy, certificate = FALSE))$selected
     subset <- cliques[chosen]
     sub_plan <- assignment$planner(graph_context(small, subset, reduced$weights, TRUE))
-    inner <- solve_canonical(sub_plan, remaining(), utils::modifyList(assignment, list(failure_prefix = staged_prefix)))
+    inner <- timed(function(left) solve_canonical(sub_plan, left, utils::modifyList(assignment, list(failure_prefix = staged_prefix))))
     if (inner$minimum != bound) invalid()
     columns <- assignment$decoder(subset, sub_plan, inner$selected)
     if (length(columns) != length(subset)) invalid()

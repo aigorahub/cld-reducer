@@ -539,7 +539,10 @@ letters and no more assignments. The weighted vertex reduction stays exact.
   chosen cliques, gives the canonical memberships; its minimum must equal A, and
   every chosen clique must keep a member.
 
-One time budget covers both stages. Every solver error of the second stage starts
+`time_limit` applies to each stage, as in the page: the first stage uses it as the
+package method does, and the solves of the second stage share one more budget of the
+same length. As in section 6, vertex reduction, clique enumeration, and model
+construction are not part of either budget. Every solver error of the second stage starts
 with `staged solve failed: `. The result is rendered and checked as in sections 7 to
 9. The second stage must keep the first minimum exactly, or the call fails with an
 invalid solution. `objective` is the second count: assignments after reduction for
