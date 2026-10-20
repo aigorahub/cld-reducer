@@ -8,7 +8,7 @@ BIP construction. Its merged source commit is
 Versions 0.3.1 and 0.3.2 add and extend a browser page outside the R package
 and do not change the R code. Version 0.3.3 is published on npm and PyPI.
 Its checked R archive comes from `01d89dee3474fe1e11ab03dc5b9ca6d47f1dac24`.
-The current checkout is development version 0.3.4. Do not rebuild the frozen
+Version 0.3.4 adds the staged methods to the R package and is not submitted. Do not rebuild the frozen
 0.3.3 archive from this checkout.
 
 John Ennis is the sole package author and maintainer. The package code is MIT

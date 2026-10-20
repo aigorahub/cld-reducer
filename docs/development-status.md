@@ -29,8 +29,10 @@ head `9e391d365f4d9993f6cf48b4f817b054d3081a95`. npm and PyPI publication
 completed on 2026-10-15. Both public installs passed their checks. The R 0.3.3
 archive passed local checks but is not submitted while CRAN reviews 0.2.0.
 
-The next development version is 0.3.4. This metadata update adds no algorithm
-or public API changes. The 0.3.3 tag and release files remain unchanged.
+Version 0.3.4 adds the staged methods `letter_then_assignment` and
+`assignment_then_letter` to the R package (PR #20). They port the second stage of
+the browser page; Python and JavaScript do not have them. Version 0.3.4 is not
+published. The 0.3.3 tag and release files remain unchanged.
 The earlier 0.3.0 candidate and frozen 0.2.0 submission remain historical records.
 
 ## Implemented behavior
@@ -38,6 +40,10 @@ The earlier 0.3.0 candidate and frozen 0.2.0 submission remain historical record
 CLD-C is the default and minimizes distinct letters. CLD-sigma remains available
 as `assignment_minimum` and minimizes assignments. Neither method has a second
 optimization objective. Equal primary optima use the fixed canonical rule.
+In R, the staged methods add the second objective: `letter_then_assignment` keeps
+the CLD-C minimum and then minimizes assignments, and `assignment_then_letter`
+keeps the CLD-sigma minimum and then minimizes letters (`docs/algorithm.md`
+section 15).
 
 Both methods combine vertices with identical closed neighborhoods. Sigma uses
 the original class sizes as decision costs. The result expands back to the
