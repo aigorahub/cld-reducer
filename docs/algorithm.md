@@ -510,3 +510,40 @@ and overrides only its method metadata, after sigma result validation.
 The documented TypeScript spellings are `assignment_minimum`, `assignment-minimum`,
 `letter_minimum`, `letter-minimum`; the public `method?: string` stays unrestricted
 so unsupported strings receive the established runtime input error.
+
+## 15. Staged methods (R only)
+
+`letter_then_assignment` (alias `letter-then-assignment`) minimizes the letter count
+L first and then the assignment count among displays with L letters (CLD-C, then
+CLD-sigma). `assignment_then_letter` (alias `assignment-then-letter`) minimizes the
+assignment count A first and then the letter count among displays with A
+assignments (CLD-sigma, then CLD-C). Only the R package has them. They port the
+second stage of the browser page in `dashboard/src/staged.ts`
+(`docs/plans/dashboard-staged-solve/plan.md`).
+
+The first stage is the package method with the same controls. Calling the other
+method next would not keep the first minimum, so the second stage is its own model:
+the sigma model of section 4 on the reduced graph, plus one binary column u[c] for
+each canonical maximal clique, the rows x[c, g] - u[c] <= 0 for every membership,
+and one bound row. One column for each maximal clique loses no lexicographic
+optimum: two letters inside one maximal clique merge into their union, with fewer
+letters and no more assignments. The weighted vertex reduction stays exact.
+
+- C then sigma adds sum(u) <= L and minimizes the weighted memberships. The
+  decisions are the memberships, so the canonical engine of section 5 and the
+  essential cover proof apply unchanged; coverage also requires at most L used
+  cliques.
+- Sigma then C adds sum(w x) <= A and minimizes sum(u). The decisions are the clique
+  columns, the essential decisions are the cliques that alone cover a group or an
+  edge, and the essential cover proof is off. A third solve, the sigma model on the
+  chosen cliques, gives the canonical memberships; its minimum must equal A, and
+  every chosen clique must keep a member.
+
+One time budget covers both stages. Every solver error of the second stage starts
+with `staged solve failed: `. The result is rendered and checked as in sections 7 to
+9. The second stage must keep the first minimum exactly, or the call fails with an
+invalid solution. `objective` is the second count: assignments after reduction for
+C then sigma, letters after reduction for sigma then C.
+
+The tests compare both orders with a search over displays made of cliques of any
+size on every labeled graph of 3 to 5 groups, as the page tests do.

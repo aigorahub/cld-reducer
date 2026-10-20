@@ -44,7 +44,11 @@ appearance in \code{group1}, then \code{group2}. Every mean must be finite.}
 
 \item{method}{\code{"assignment_minimum"} (CLD-sigma) minimizes assignments;
 \code{"letter_minimum"} (CLD-C, default) minimizes full maximal-clique columns, with no
-assignment secondary objective. Hyphenated aliases are also accepted.
+assignment secondary objective. The staged methods minimize one count and then
+the other among the displays that keep the first minimum:
+\code{"letter_then_assignment"} (CLD-C, then CLD-sigma) and
+\code{"assignment_then_letter"} (CLD-sigma, then CLD-C). They exist in R only.
+Hyphenated aliases are also accepted.
 Public result metadata uses the underscore spelling.}
 
 \item{time_limit}{One time budget in seconds for the essential scan,
@@ -77,7 +81,9 @@ matrix).
 }
 
 \code{objective} equals \code{assignments_after} for CLD-sigma and \code{num_letters_after}
-for CLD-C. \code{assignments_after} and \code{reduction_pct} always measure assignments.
+for CLD-C. For a staged method it is the second count: \code{assignments_after}
+for \code{"letter_then_assignment"} and \code{num_letters_after} for
+\code{"assignment_then_letter"}. \code{assignments_after} and \code{reduction_pct} always measure assignments.
 Equal C optima select the lexicographically greatest binary clique vector
 in canonical order, then use the same stable mean/index letter formatting.
 

@@ -206,6 +206,14 @@ assignments as a second objective. Equal optima use the lexicographically greate
 binary selection vector in canonical clique order. Public `method` metadata uses
 the underscore spelling.
 
+The R package also has two staged methods. `letter_then_assignment` finds the
+fewest letters and then the fewest assignments among displays with that many
+letters (CLD-C, then CLD-sigma). `assignment_then_letter` finds the fewest
+assignments and then the fewest letters among those displays (CLD-sigma, then
+CLD-C). Each keeps its first minimum exactly; calling one method after the other
+would not. Python and JavaScript do not have them yet. See section 15 of
+[docs/algorithm.md](docs/algorithm.md).
+
 For CLD-sigma, `objective` equals the assignments after reduction. For CLD-C it equals
 the number of letters after reduction. Assignment counts and reduction percentage
 remain assignment measures in both methods. For the simple five-group example,

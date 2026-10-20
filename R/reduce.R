@@ -28,7 +28,11 @@
 #' @param group1,group2,significant Names of the columns of `pairs`.
 #' @param method `"assignment_minimum"` (CLD-sigma) minimizes assignments;
 #'   `"letter_minimum"` (CLD-C, default) minimizes full maximal-clique columns, with no
-#'   assignment secondary objective. Hyphenated aliases are also accepted.
+#'   assignment secondary objective. The staged methods minimize one count and then
+#'   the other among the displays that keep the first minimum:
+#'   `"letter_then_assignment"` (CLD-C, then CLD-sigma) and
+#'   `"assignment_then_letter"` (CLD-sigma, then CLD-C). They exist in R only.
+#'   Hyphenated aliases are also accepted.
 #'   Public result metadata uses the underscore spelling.
 #' @param time_limit One time budget in seconds for the essential scan,
 #'   certificate checks, and all solves of the call, or
@@ -54,7 +58,9 @@
 #'     matrix).
 #'
 #'   `objective` equals `assignments_after` for CLD-sigma and `num_letters_after`
-#'   for CLD-C. `assignments_after` and `reduction_pct` always measure assignments.
+#'   for CLD-C. For a staged method it is the second count: `assignments_after`
+#'   for `"letter_then_assignment"` and `num_letters_after` for
+#'   `"assignment_then_letter"`. `assignments_after` and `reduction_pct` always measure assignments.
 #'   Equal C optima select the lexicographically greatest binary clique vector
 #'   in canonical order, then use the same stable mean/index letter formatting.
 #'
@@ -102,6 +108,8 @@ reduce_from_adjacency <- function(adjacency, groups = NULL, means = NULL,
 }
 
 reduce_graph <- function(graph, method, time_limit, max_cliques) {
+  staged <- staged_method(method)
+  if (!is.null(staged)) return(reduce_staged(graph, staged, time_limit, max_cliques))
   strategy <- check_method(method)
   controls <- check_controls(time_limit, max_cliques)
   groups <- graph$groups
