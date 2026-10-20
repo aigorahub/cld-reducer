@@ -6,7 +6,7 @@ Version 0.2.0 remains available as the earlier release.
 The merged candidate for the method changes is 0.3.0. Version 0.3.1 adds the
 browser page in `dashboard/`. Version 0.3.2 adds a second stage, simulated examples, and the letters before reduction
 to that page. Neither changes a package algorithm or the public API.
-The current development version is 0.3.4.
+Version 0.3.4 adds the staged methods to the R package (PR #20) and is not published.
 The recorded CRAN submission is still 0.2.0;
 the package was absent from the public CRAN index on 2026-10-15.
 See [submission status](submission-status.md) for the current evidence.
@@ -71,6 +71,7 @@ NEWS entry. After that merge, set the next unused patch version for development
 in a separate reviewed commit. For the method stack, those versions are 0.3.0 and
 0.3.1. For the browser page, they are 0.3.1 and 0.3.2. For its second stage, they are
 0.3.2 and 0.3.3. After the 0.3.3 registry release, the development version is 0.3.4.
+For the staged R methods, they are 0.3.4 and 0.3.5.
 Add a NEWS entry that marks the later version as unreleased. The version
 check uses the same three-part number in R, Python, npm, citation metadata, and
 both lock files. Record the earlier candidate commit so that a later authorized

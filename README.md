@@ -129,7 +129,7 @@ See [js/README.md](js/README.md) for the pairwise input, the options, and loadin
 
 ## Browser page
 
-[`dashboard/`](dashboard/) builds one HTML file that runs the JavaScript package in a browser. Open the file; it needs no server and no network connection, and the data does not leave the computer. The page reads pairwise significance decisions as CSV, by paste or by file. It runs no significance tests on the user's data; Generate simulates decisions with a t test. It shows the letters before reduction, and Run puts the reduced letters next to them with the time of each solve. It solves with CLD-C or CLD-sigma, or with both for a comparison. An experimental second stage, in the page only, then minimizes the other quantity, and the page shows that display under the name of the method. A second view follows the design of the simulation study of the 2012 paper in the browser. The results download as CSV and JSON.
+[`dashboard/`](dashboard/) builds one HTML file that runs the JavaScript package in a browser. Open the file; it needs no server and no network connection, and the data does not leave the computer. The page reads pairwise significance decisions as CSV, by paste or by file. It runs no significance tests on the user's data; Generate simulates decisions with a t test. It shows the letters before reduction, and Run puts the reduced letters next to them with the time of each solve. It solves with CLD-C or CLD-sigma, or with both for a comparison. A second stage then minimizes the other quantity, and the page shows that display under the name of the method; the R package has the same two orders as `letter_then_assignment` and `assignment_then_letter`. A second view follows the design of the simulation study of the 2012 paper in the browser. The results download as CSV and JSON.
 
 ```sh
 cd js && npm ci
@@ -206,6 +206,14 @@ assignments as a second objective. Equal optima use the lexicographically greate
 binary selection vector in canonical clique order. Public `method` metadata uses
 the underscore spelling.
 
+The R package also has two staged methods. `letter_then_assignment` finds the
+fewest letters and then the fewest assignments among displays with that many
+letters (CLD-C, then CLD-sigma). `assignment_then_letter` finds the fewest
+assignments and then the fewest letters among those displays (CLD-sigma, then
+CLD-C). Each keeps its first minimum exactly; calling one method after the other
+would not. Python and JavaScript do not have them yet. See section 15 of
+[docs/algorithm.md](docs/algorithm.md).
+
 For CLD-sigma, `objective` equals the assignments after reduction. For CLD-C it equals
 the number of letters after reduction. Assignment counts and reduction percentage
 remain assignment measures in both methods. For the simple five-group example,
@@ -219,7 +227,7 @@ result$stats$assignments_after    # 9 assignments
 
 Version 0.3.0 is the merged candidate for these changes. Version 0.3.1 adds the
 browser page. Version 0.3.2 adds a second stage, simulated examples, and the letters before reduction
-to that page. Neither changes a package algorithm or the public API. The current development
-version is 0.3.4. Version 0.3.3 is published on npm and PyPI.
+to that page. Neither changes a package algorithm or the public API. Version 0.3.4 adds the
+staged methods to the R package; it is not published. Version 0.3.3 is published on npm and PyPI.
 The page is at <https://cld.aigora.ai>. The frozen 0.2.0 CRAN submission remains unchanged. See [development status](docs/development-status.md)
 for implementation, review, version, and timing records.
